@@ -1,0 +1,71 @@
+/*
+ * SYNTRAC design tokens: single source of truth for colour.
+ *
+ * Brand colours come from docs/branding/SYNTRAC_Brand_Kit (BRAND_GUIDELINES.md). The kit's
+ * application canvas is charcoal; by owner decision this app uses a LIGHT canvas (cream and sand),
+ * so semantic tokens below map the same brand palette onto light surfaces.
+ *
+ * Components reference semantic tokens only; never hard-code a colour.
+ * tokens.test.ts verifies WCAG AA for every text/surface pair and that brand, chart and
+ * severity colours cannot be mistaken for each other.
+ */
+:root {
+  /* Brand palette (from the brand kit) */
+  --brand-forest: #2e5d4a;
+  --brand-sage: #7a8f7a;
+  --brand-clay: #c89b7a;
+  --brand-sand: #e8dcc6;
+  --brand-cream: #f5f0e7;
+  --brand-charcoal: #282b28;
+  --brand-slate: #4a5568;
+  --brand-critical: #c96b5b; /* indicator colour (icons, borders); too light for text fills */
+  --brand-warning: #d6a34a;
+  --brand-info: #6c9eaa;
+  --brand-muted: #b9b7ae; /* secondary text on DARK surfaces only; unused by the light theme */
+
+  /* Light-theme neutrals derived from the palette */
+  --neutral-paper: #fbf8f2;
+  --neutral-line: #cfc2a8;
+
+  /* Surfaces */
+  --color-bg: var(--brand-cream);
+  --color-surface: var(--neutral-paper);
+  --color-surface-alt: var(--brand-sand);
+  --color-border: var(--neutral-line);
+
+  /* Text */
+  --color-text: var(--brand-charcoal);
+  --color-text-muted: var(--brand-slate);
+
+  /* Actions: forest is primary; sage is the secondary brand colour */
+  --color-primary: var(--brand-forest);
+  --color-on-primary: var(--brand-cream);
+  --color-accent: #859a85; /* sage lightened so charcoal text on it passes AA */
+  --color-on-accent: var(--brand-charcoal);
+
+  /* Severity tiers. Colour never stands alone: each tier also has a label and a shape
+     (unusual = circle, suspicious = triangle, confirmed = octagon).
+     Brand mapping: unusual = Info, suspicious = Warning, confirmed = Critical.
+     The confirmed fill is a darker derivative of Critical so cream text passes AA. */
+  --severity-unusual-fg: var(--brand-charcoal);
+  --severity-unusual-bg: var(--brand-info);
+  --severity-suspicious-fg: var(--brand-charcoal);
+  --severity-suspicious-bg: var(--brand-warning);
+  --severity-confirmed-fg: var(--brand-cream);
+  --severity-confirmed-bg: #a3483a;
+  --severity-confirmed-indicator: var(--brand-critical);
+
+  /* Charts: sage = baseline, clay = comparison (per brand guidelines). Pair with line styles or markers. */
+  --chart-1: var(--brand-forest);
+  --chart-2: var(--brand-sage);
+  --chart-3: #b07a56; /* clay darkened to reach 3:1 as a line/bar against cards */
+  --chart-4: var(--brand-slate);
+  --chart-5: #7a5c78;
+  --chart-6: #8a7a5c;
+
+  --font-sans: Inter, 'Segoe UI', Arial, sans-serif;
+  --font-mono: 'Cascadia Mono', Consolas, monospace;
+  --radius-card: 14px;
+  --radius-control: 9px;
+  --shadow-card: 0 8px 20px rgba(40, 43, 40, 0.08);
+}

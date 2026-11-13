@@ -1,0 +1,22 @@
+[package]
+name = "syntrac-store"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+serde_json = "1.0.154"
+syntrac-core = { version = "0.1.0", path = "../syntrac-core" }
+thiserror = "2.0.21"
+uuid = "1.26.1"
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+rusqlite = "0.40.2"
+syntrac-testkit = { path = "../syntrac-testkit" }
+tempfile = "3.27.0"
+

@@ -35,8 +35,8 @@ powershell -ExecutionPolicy Bypass -File scripts/dev/verify.ps1
 # Run the desktop app in dev mode
 cd app; pnpm tauri dev
 
-# ETW feasibility spike (opens an elevated window; UAC prompt)
-powershell -ExecutionPolicy Bypass -File scripts/dev/run-etw-spike.ps1 -Seconds 30
+# ETW feasibility spike (opens an elevated window; UAC prompt). Open/close a few programs while it runs.
+powershell -ExecutionPolicy Bypass -File scripts/dev/run-etw-spike.ps1 -Seconds 30 -ProcessKeywords 10
 ```
 
 There is deliberately **no hosted CI**. `verify.ps1` is the gate; run it before every push.

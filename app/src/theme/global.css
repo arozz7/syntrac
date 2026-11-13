@@ -1,0 +1,93 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  /* Telemetry values align in columns */
+  font-variant-numeric: tabular-nums;
+}
+
+h1,
+h2 {
+  margin: 0 0 0.25rem;
+  letter-spacing: -0.01em;
+}
+
+.muted {
+  color: var(--color-text-muted);
+}
+
+.shell {
+  max-width: 56rem;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+.shell__header {
+  margin-bottom: 1.5rem;
+  border-bottom: 2px solid var(--color-border);
+  padding-bottom: 1rem;
+}
+
+.shell__logo {
+  display: block;
+  height: 4.5rem;
+  /* The logo file has built-in clear space; never stretch it. */
+  width: auto;
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.tiers {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.tiers li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 8.5rem;
+  padding: 0.2rem 0.75rem;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.chip--unusual {
+  background: var(--severity-unusual-bg);
+  color: var(--severity-unusual-fg);
+}
+
+.chip--suspicious {
+  background: var(--severity-suspicious-bg);
+  color: var(--severity-suspicious-fg);
+}
+
+.chip--confirmed {
+  background: var(--severity-confirmed-bg);
+  color: var(--severity-confirmed-fg);
+}

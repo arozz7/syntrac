@@ -1,0 +1,23 @@
+﻿[workspace]
+resolver = "2"
+members = [
+    "crates/syntrac-core",
+    "crates/syntrac-store",
+    "crates/syntrac-collector",
+    "crates/syntrac-service",
+    "crates/syntrac-testkit",
+    "app/src-tauri",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+publish = false
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+

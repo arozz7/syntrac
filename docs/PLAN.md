@@ -112,7 +112,7 @@ Each phase ends with an `aiChangeLog/phase-XX.md` entry, updated docs and README
 - [x] Tauri 2 + React/TS shell with theme tokens and an automated contrast test (shell only, no dashboard features)
 - [x] `scripts/dev/verify.ps1` and file-size checker (Windows PowerShell 5.1 compatible)
 - [x] `ARCHITECTURE.md`, `SCHEMA.md`, `THREAT-MODEL.md`
-- [ ] ETW spike: per-provider event counts and CPU overhead. **Requires an elevated terminal; the user runs it.**
+- [ ] ETW spike: per-provider event counts and CPU overhead. **Requires an elevated terminal; the user runs it.** Round 1 done (network and overhead answered; process-start fields not yet seen). Round 2 pending, see `aiChangeLog/phase-00.md`.
 
 ### Phase 1: Visibility
 Service install and run, ETW process and network sources, metrics sampler, startup process snapshot, parent/child tracking, SQLite schema and migrations, retention job, named-pipe protocol. UI: dashboard, process list, connections list.
@@ -126,6 +126,12 @@ YAML rules engine with starter rules (exe in temp path, unsigned new exe, unusua
 
 ### Phase 4: AI investigation (local only)
 `LLMService` adapter for llama-server, prompts in config, natural-language questions answered through a fixed set of **read-only query tools** (not raw SQL), event explanations from correlated context. The adapter refuses non-loopback endpoints by default.
+
+Target backend (the owner's own local model server, read on 2026-11-12, not running at that time):
+- SYNTRAC talks to **the server's proxy**, `http://127.0.0.1:<port>/v1` (OpenAI-compatible: `/v1/chat/completions`, `/v1/models`, `/health`), not to the raw llama-server behind it. These values come from the server's own config and may change, so they live in SYNTRAC's `config/`, not in code.
+- Default model there: a 27-billion-parameter hybrid-reasoning model with a 131072 context. Requesting a *different* registered model name makes the server reload (503 with `Retry-After`, plus a 30-minute idle guard), so SYNTRAC must send the configured model name verbatim and never switch models on its own.
+- Design consequences: it is slow (its own benchmarks show roughly 4 tokens/s decode, 300 s request timeout), so use streaming, small structured contexts and a generous timeout; reasoning output may arrive separately from the answer; and the LLM may be offline, so every AI feature must degrade gracefully and no detection may depend on it.
+- Privacy: the server's config can have `log_conversations = true`, which stores full prompts and responses in `logs/conversations.<date>.jsonl`. Anything SYNTRAC sends is persisted there in plaintext. See THREAT-MODEL.
 
 ### Later
 Sysmon adapter, DuckDB analytics, installer and signing, file/registry ETW.
@@ -143,5 +149,8 @@ Sysmon adapter, DuckDB analytics, installer and signing, file/registry ETW.
 
 ## 8. Open questions
 
-- **Phase 4:** llama-server host, port and model. Not found on PATH and not listening during the Phase 0 probe, so these must come from the user before Phase 4.
+- **Phase 4 (answered):** host, port and model found in the local model server's config (see Phase 4 above).
+  Still to decide before Phase 4: whether to turn off `log_conversations` in the local model server (a setting in the other
+  project, which only the owner should change) or accept plaintext prompt logging, and whether SYNTRAC may start the
+  server itself or only connect to it when the owner has started it.
 - Retention defaults (30 days raw) to be revisited after measuring real event volume in the Phase 0/1 spike.
