@@ -81,6 +81,19 @@ interrupt/driver time belongs to no process, and unelevated runs cannot read man
 `processes.ended_approximate` (INTEGER, default 0): 1 when `ended` is only an upper bound. Set when a startup snapshot
 finds a process recorded as running that is no longer alive (it exited while the collector was down); closed at the
 snapshot time. A later real exit report replaces the bound and clears the flag.
+
+## Executable identity (v6)
+
+`executable_identity` (migration v6, additive): one row per executable, `exe_id` = `executables.id` (the same dimension the
+rollups use). Permanent: the purge of detail never touches it. Columns: `last_attempt` (when the file was last looked at,
+successfully or not), `inspected_at` (when the facts were measured), `failure_kind` / `failure_message` /
+`failure_attempts` (NULL kind: the last look succeeded; attempts count consecutive failures and set the back-off), and the
+facts, all NULL until a first successful read: `size`, `modified`, `sha256` (NULL when too large to hash),
+`signature_status` (`valid`, `untrusted`, `altered`, `unsigned`), `signer`, `thumbprint`, `signature_kind` (`embedded`,
+`catalog`), version resource (`company`, `product`, `description`, `original_filename`, `file_version`) and `zone_id` (the
+mark of the web; 3 = Internet). Anything derivable from the path alone (location class, product) is NOT stored: it is computed
+by `syntrac_core::exe_location` when shown. Plan: `docs/IDENTITY-PLAN.md`.
+
 ## Retention
 
 `Retention::purge_before(cutoff)` removes events, flows, metrics older than the cutoff, and ended processes that ended
@@ -94,5 +107,5 @@ create the `-shm` file, so the database folder must let the reading user create 
 
 ## Planned (not yet migrated)
 
-Executables (hash, signature, first/last seen), remote endpoints (first/last seen), DNS index table, config snapshots
+Remote endpoints (first/last seen), DNS index table, config snapshots
 and diffs, baselines, application profiles, alerts, hourly/daily rollups.

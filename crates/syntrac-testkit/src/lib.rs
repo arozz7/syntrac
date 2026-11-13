@@ -2,7 +2,9 @@
 
 pub mod contract;
 pub mod fixtures;
+pub mod identity_contract;
 pub mod memory;
+mod memory_identity;
 mod memory_rollup;
 pub mod mocks;
 pub mod rollup_contract;
@@ -11,6 +13,6 @@ pub mod trend_contract;
 
 pub use memory::InMemoryRepository;
 pub use mocks::{
-    FailingTelemetrySource, ManualClock, MockMetricsSource, MockTelemetrySource, RestartCounter,
+    FailingTelemetrySource, FakeInspector, ManualClock, MockMetricsSource, MockTelemetrySource, RestartCounter,
     RestartableTelemetrySource, ScriptedTelemetrySource,
 };

@@ -135,6 +135,18 @@ year of rows never reaches the app), and merging, averaging and ranking are pure
 the whole range (not recorded counts as zero); network totals leave out loopback. Summing a year takes about 2 s, ranking the
 sums under 1 ms, so the app's backend keeps the sums of each range until the rollup watermark moves (an hour).
 
+## Executable identity
+
+What the files themselves tell us about each executable (signature, version resource, SHA-256, size and date, mark of the
+web), kept permanently per executable (`executable_identity`, schema v6) and shown as evidence, never as a verdict. Core
+(`exe_identity.rs`) holds the types and the two ports: `FileInspector` (reads a file; the Windows adapter arrives in I1b, tests
+use `FakeInspector`) and `IdentityRepository` (in-memory and SQLite, one contract suite). `identity_run.rs` is the pure,
+bounded pass `inspect_due`: an executable is due when never looked at, when a failure's back-off (1 h, 6 h, 1 day, weekly) has
+passed, or when it has RUN since the last look and a day has passed; a recheck compares size and time first and reads the file
+again only if they differ. `exe_location.rs` derives, from the path alone, a location class (System, Program Files, ProgramData,
+user profile, Temporary, Network, Other) and a product key (signer or company, plus install root) that groups the four
+Acme programs into one product. Plan and slices: `docs/IDENTITY-PLAN.md`.
+
 ## Collector adapters (`syntrac-collector`)
 
 Each Windows adapter is split in two: a thin adapter that reads raw values, and a **pure, unit-tested function** that

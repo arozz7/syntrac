@@ -24,6 +24,32 @@ pub struct RollupState {
     executables: HashMap<String, LedgerEntry>,
     destinations: HashMap<IpAddr, LedgerEntry>,
     pairs: HashMap<(String, IpAddr), LedgerEntry>,
+    /// Executable identities (permanent, like the ledgers), by executable key.
+    identities: HashMap<String, syntrac_core::IdentityRecord>,
+}
+
+impl RollupState {
+    /// Every executable the rollups know: key and the spelling first seen.
+    pub(crate) fn known_executables(&self) -> impl Iterator<Item = (&String, &String)> {
+        self.paths.iter()
+    }
+
+    pub(crate) fn executable_ledger_of(&self, key: &str) -> Option<LedgerEntry> {
+        self.executables.get(key).copied()
+    }
+
+    pub(crate) fn identity_of(&self, key: &str) -> Option<&syntrac_core::IdentityRecord> {
+        self.identities.get(key)
+    }
+
+    /// Stores an identity under the executable's key; false when the executable was never seen.
+    pub(crate) fn save_identity(&mut self, record: &syntrac_core::IdentityRecord) -> bool {
+        let Some(path) = self.paths.get(&record.exe.key) else { return false };
+        let mut stored = record.clone();
+        stored.exe = syntrac_core::Executable { key: record.exe.key.clone(), path: path.clone() };
+        self.identities.insert(record.exe.key.clone(), stored);
+        true
+    }
 }
 
 fn widen<K: std::hash::Hash + Eq>(map: &mut HashMap<K, LedgerEntry>, key: K, observed: LedgerEntry) {

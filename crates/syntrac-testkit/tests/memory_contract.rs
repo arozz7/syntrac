@@ -1,4 +1,4 @@
-﻿use syntrac_testkit::contract::{
+use syntrac_testkit::contract::{
     event_repository_contract, flow_queries_contract, metrics_repository_contract, process_queries_contract,
     process_repository_contract, recent_flows_contract, retention_contract,
 };
@@ -52,4 +52,9 @@ fn in_memory_repository_satisfies_the_storage_stats_contract() {
 #[test]
 fn in_memory_repository_satisfies_the_trend_contract() {
     syntrac_testkit::trend_contract::trend_contract(InMemoryRepository::default);
+}
+
+#[test]
+fn in_memory_repository_satisfies_the_identity_contract() {
+    syntrac_testkit::identity_contract::identity_contract(InMemoryRepository::default);
 }

@@ -243,6 +243,32 @@ pub const MIGRATIONS: &[&str] = &[
         hours_done_before INTEGER NOT NULL
     );
     ",
+    // 6: what the files themselves tell us about each executable (docs/IDENTITY-PLAN.md, I1a). Additive: nothing existing is
+    // touched. One row per executable, keyed like the rollups. Permanent: the purge of detail never touches it. A row with
+    // size NULL has no facts yet (the first look failed); ailure_kind NULL means the last look succeeded.
+    "
+    CREATE TABLE executable_identity (
+        exe_id           INTEGER PRIMARY KEY,
+        last_attempt     INTEGER NOT NULL,
+        inspected_at     INTEGER,
+        failure_kind     TEXT,
+        failure_message  TEXT,
+        failure_attempts INTEGER NOT NULL DEFAULT 0,
+        size             INTEGER,
+        modified         INTEGER,
+        sha256           TEXT,
+        signature_status TEXT,
+        signer           TEXT,
+        thumbprint       TEXT,
+        signature_kind   TEXT,
+        company          TEXT,
+        product          TEXT,
+        description      TEXT,
+        original_filename TEXT,
+        file_version     TEXT,
+        zone_id          INTEGER
+    );
+    ",
 ];
 
 /// The migration (1-based number) that rewrites every table. An existing database gets a backup copy before it is applied

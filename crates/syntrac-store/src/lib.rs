@@ -4,12 +4,15 @@
 mod codec;
 mod connection;
 mod events;
+mod identities;
 mod inspect;
 mod metrics;
 #[cfg(test)]
 mod migration_v4_tests;
 #[cfg(test)]
 mod migration_v5_tests;
+#[cfg(test)]
+mod migration_v6_tests;
 mod migrations;
 mod processes;
 mod rollups;

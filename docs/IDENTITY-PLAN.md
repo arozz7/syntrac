@@ -1,7 +1,8 @@
 # Executable identity: implementation plan (I1-I3)
 
-Status: **PROPOSED, awaiting approval.** No code has been written. Nothing below is decided until the user approves it; the
-open decisions are listed at the end.
+Status: **APPROVED 2026-11-13** with the decisions at the end: `sha2` for hashing; known programs stored in the database and
+written through the service pipe (changed from the proposal, because a profile file could be lost or corrupted); revocation
+checks off; run-as account deferred to I4.
 
 ## Goal
 
@@ -60,7 +61,7 @@ is the one that resists imitation.
   few per tick with a pause between them, and writes the results. Failures are stored (`inspect_error`, retry later with a
   back-off), never fatal.
 
-**Storage (schema v6, additive, no rewrite, no backup needed like v5).** One new table `executable_identity` keyed by
+**Storage (schema v6, additive, no rewrite, no backup needed like v5).** (Recorded deviation in I1a: location class and product are derived from the path on demand, not stored.) One new table `executable_identity` keyed by
 `exe_id` (the existing dimension table), holding the fields above. Permanent like the ledgers: a few hundred rows (470
 executables today), well under a megabyte per year. Detail retention and the purge do not touch it. The storage guard (S4)
 continues to apply. The worker writes only a handful of rows, so the guard does not pause it; it is skipped when a write
@@ -97,6 +98,13 @@ the program drill-down. Where the same `exe_id` has no identity yet the UI says 
   that were confirmed. SYNTRAC then marks a program as "known", and flags an executable that matches a known product's name
   but not its signer or location ("looks like Acme but is not signed by Acme Software, Inc."). Starts from the entries already
   in memory (`project-known-programs`: Acme). This list later feeds the Phase 3 "unusual for this program" baselines.
+  **Storage (decision 2):** a `known_products` table in the database (schema v7, additive), so it is backed up, integrity
+  checked and migrated with everything else. The UI stays read-only on the database; changes go to the service over the named
+  pipe, which gains its first write commands (`known_product_set`, `known_product_remove`). The pipe's existing protections
+  (access list of SYSTEM, Administrators and the installing user; 4 KiB request cap; per-connection deadline; first-instance
+  flag) stay, the new commands are validated (length limits, no control characters, label and note stored as text) and are
+  the only writes the pipe allows. Their own tests come first (rejected oversize or malformed requests, a non-listed caller,
+  a read-only ping still works). I3 gets a short plan addendum before its code, since it changes the pipe protocol.
 - **I4 (not in this plan, own plan later).** Run-as account per process, service-name mapping, autostart and scheduled-task
   mapping, Uninstall records. Needs a collector and event-schema change.
 
@@ -120,8 +128,9 @@ the program drill-down. Where the same `exe_id` has no identity yet the UI says 
 ## Threat-model and docs updates
 
 New rows in `docs/THREAT-MODEL.md`: the privileged service reads attacker-chosen paths (mitigations above); signer text is
-untrusted; a known-programs file editable by any process of the installing user (D2) can be used to mark a rogue program as
-known (accepted, like the database itself, with the hardening path of routing writes through the service). Update
+untrusted; the pipe's first write commands (I3) widen its surface, so they are validated and capped, and a program running as
+the installing user can still mark a rogue program as known through them (accepted for a personal tool; every change is
+logged with its time). Update
 `docs/SCHEMA.md` (v6), `docs/ARCHITECTURE.md`, `docs/PLAN.md` (Phase 2 item split into I1-I4) and write
 `aiChangeLog/phase-I1a.md`, `phase-I1b.md`, and so on.
 
@@ -131,7 +140,10 @@ Online lookups of any kind (certificate revocation, hash reputation, VirusTotal)
 programs, an "is this malware" score (Phase 3 uses these signals for rules and baselines), kernel-driver and module
 (DLL) inspection, per-process (rather than per-executable) identity.
 
-## Decisions for the user
+## Decisions (resolved 2026-11-13)
+
+1. `sha2` crate for hashing. 2. Known programs in the database, written through the service pipe. 3. Revocation checks off.
+4. Run-as account deferred to I4. 5. Defaults below accepted. The original options follow for the record.
 
 1. **Hashing:** add the `sha2` crate (small, widely used, testable with known-answer vectors, no unsafe code of ours;
    recommended) or use the Windows BCrypt API (no new dependency, but more unsafe code). The threat model says "minimal

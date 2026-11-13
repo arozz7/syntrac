@@ -159,3 +159,52 @@ impl TelemetrySource for RestartableTelemetrySource {
         }
     }
 }
+
+/// A `FileInspector` over scripted files, for tests: it answers from a table and remembers what it was asked, so a test can
+/// prove a file was NOT read again. Paths are matched without regard to case, like Windows.
+#[derive(Debug, Default)]
+pub struct FakeInspector {
+    files: std::cell::RefCell<
+        std::collections::HashMap<String, Result<syntrac_core::FileFacts, syntrac_core::InspectError>>,
+    >,
+    stats: std::cell::Cell<usize>,
+    inspections: std::cell::RefCell<Vec<String>>,
+}
+
+impl FakeInspector {
+    /// Sets (or replaces) what this path will answer.
+    pub fn set(&self, path: &str, answer: Result<syntrac_core::FileFacts, syntrac_core::InspectError>) {
+        self.files.borrow_mut().insert(path.to_lowercase(), answer);
+    }
+
+    /// How many cheap size-and-time checks were made.
+    pub fn stat_count(&self) -> usize {
+        self.stats.get()
+    }
+
+    /// The paths that were read in full, in order.
+    pub fn full_inspections(&self) -> Vec<String> {
+        self.inspections.borrow().clone()
+    }
+
+    fn answer(&self, path: &str) -> Result<syntrac_core::FileFacts, syntrac_core::InspectError> {
+        self.files.borrow().get(&path.to_lowercase()).cloned().unwrap_or_else(|| {
+            Err(syntrac_core::InspectError {
+                kind: syntrac_core::InspectErrorKind::NotFound,
+                message: "no such file".into(),
+            })
+        })
+    }
+}
+
+impl syntrac_core::FileInspector for FakeInspector {
+    fn stamp(&self, path: &str) -> Result<syntrac_core::FileStamp, syntrac_core::InspectError> {
+        self.stats.set(self.stats.get() + 1);
+        self.answer(path).map(|facts| facts.stamp)
+    }
+
+    fn inspect(&self, path: &str) -> Result<syntrac_core::FileFacts, syntrac_core::InspectError> {
+        self.inspections.borrow_mut().push(path.to_owned());
+        self.answer(path)
+    }
+}

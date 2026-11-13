@@ -2,8 +2,11 @@
 
 pub mod correlator;
 pub mod event;
+pub mod exe_identity;
+pub mod exe_location;
 pub mod flow;
 pub mod identity;
+pub mod identity_run;
 pub mod metrics;
 pub mod pipeline;
 pub mod ports;
@@ -18,8 +21,14 @@ pub mod trend;
 
 pub use correlator::correlate;
 pub use event::{EventCategory, EventEnvelope, EventPayload, NetAction, NetProtocol, Severity};
+pub use exe_identity::{
+    FileFacts, FileInspector, FileStamp, IdentityEntry, IdentityFailure, IdentityRecord, IdentityRepository,
+    InspectError, InspectErrorKind, Signature, SignatureKind, SignatureStatus, VersionInfo,
+};
+pub use exe_location::{classify_location, install_root, product_key, LocationClass, ProductKey};
 pub use flow::{Destination, FlowAggregator, FlowRow};
 pub use identity::ProcessInstanceId;
+pub use identity_run::{inspect_due, retry_after, IdentityPass, IdentitySettings};
 pub use metrics::{
     CpuBreakdown, CpuContribution, MetricsSample, OtherProcesses, ProcessMetric, PurgeCounts, SystemMetrics,
     SystemPoint,
