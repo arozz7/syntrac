@@ -1,4 +1,4 @@
-# SYNTRAC Database Schema
+﻿# SYNTRAC Database Schema
 
 SQLite in WAL mode. The service is the only writer; the UI opens the file read-only.
 Migrations are an ordered, append-only list in `crates/syntrac-store/src/migrations.rs`; the applied count is kept in
@@ -41,7 +41,53 @@ Index: `(pid, started)`, which serves `resolve(pid, at)`.
 
 Indexes: `(ts)`, `(category, ts)`, `(process_instance_id, ts)`.
 
+## Version 2
+
+### `flows`: indexed copy of each `network_flow` event
+
+One row per (process instance, protocol, remote address, remote port, time window). Also present in `events` for the
+timeline; this table exists so queries such as "top destinations" use indexes, not JSON.
+
+| Column | Type | Notes |
+|---|---|---|
+| `event_id` | TEXT PK | Same id as the row in `events` |
+| `window_start`, `window_end` | INTEGER | Aligned fixed windows (default 10 s) |
+| `process_instance_id` | TEXT NULL | NULL when unattributed |
+| `pid` | INTEGER | PID the source reported |
+| `protocol` | TEXT | `tcp` / `udp` |
+| `remote_addr`, `remote_port` | TEXT, INTEGER | Canonical form (IPv4-mapped IPv6 becomes IPv4); ports in host order |
+| `bytes_sent`, `bytes_received` | INTEGER | Saturate at i64::MAX |
+| `opened`, `closed`, `failed` | INTEGER | Counts of connect/accept, close, failure events in the window |
+
+Indexes: `(window_start)`, `(remote_addr, remote_port, window_start)`, `(process_instance_id, window_start)`.
+
+### `system_metrics`: one row per sample
+
+`ts` (PK), `cpu_percent` (share of the WHOLE machine, 0-100), `memory_used`, `memory_total`, `disk_read`, `disk_write`,
+`net_received`, `net_sent` (bytes since the previous sample), and the long tail not listed individually:
+`others_count`, `others_cpu`, `others_memory`.
+
+### `process_metrics`: the heaviest processes per sample
+
+`ts`, `instance` (NULL when the process is unknown), `pid`, `cpu_percent` (share of the whole machine), `memory_bytes`.
+Indexes: `(ts)`, `(instance, ts)`.
+
+`cpu_breakdown(from, to)` averages over ALL samples in the window (absent samples count as zero), and reports:
+the heaviest processes, the long tail, and `unaccounted` = system CPU minus everything measured. A gap is expected:
+interrupt/driver time belongs to no process, and unelevated runs cannot read many system processes.
+
+## Retention
+
+`Retention::purge_before(cutoff)` removes events, flows, metrics older than the cutoff, and ended processes that ended
+before it. Running processes are always kept. Default: 30 days, checked hourly.
+
+## Read-only access
+
+`SqliteStore::open_read_only` opens a WAL database for reading, including while the writer is running. SQLite needs to
+create the `-shm` file, so the database folder must let the reading user create files. Restricted ACLs on the folder
+(planned for the Phase 1b installer) must keep that in mind.
+
 ## Planned (not yet migrated)
 
-Executables (hash, signature, first/last seen), remote endpoints (IP/domain, first/last seen), metrics samples,
-config snapshots and diffs, baselines, application profiles, alerts, hourly/daily rollups, retention bookkeeping.
+Executables (hash, signature, first/last seen), remote endpoints (first/last seen), DNS index table, config snapshots
+and diffs, baselines, application profiles, alerts, hourly/daily rollups.

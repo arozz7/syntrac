@@ -17,6 +17,7 @@ workspace = true
 
 [dev-dependencies]
 rusqlite = "0.40.2"
+syntrac-core = { path = "../syntrac-core" }
 syntrac-testkit = { path = "../syntrac-testkit" }
 tempfile = "3.27.0"
 

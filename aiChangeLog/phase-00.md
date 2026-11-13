@@ -136,9 +136,12 @@ Answers:
 4. **Aggregate network data events into flows.** About 255 events/s of per-packet-ish data events must not be stored
    one by one; store connection open/close and per-flow byte totals per time window.
 5. **Byte-swap ports**, with a unit test.
-6. **Direction matters.** On receive events the `daddr`/`dport` fields look like the local endpoint (for example a
-   192.168.x.x address). The remote endpoint is probably in `saddr`/`sport`. Verify from the manifest before relying
-   on it. Also map network event ids to meanings (connect, send, receive, close, TCP vs UDP, v4 vs v6) from the manifest.
+6. **Direction (CORRECTED in Phase 1a).** TCP events always describe the connection as local `saddr` / remote `daddr`,
+   in both directions (a TCP receive showed the remote server in `daddr`). Only for UDP receive is `daddr` this machine
+   or a multicast group, and the remote end is the sender (`saddr`/`sport`). The earlier version of this note said
+   receive events carry the local endpoint in `daddr`; that was wrong for TCP. Event ids were mapped from the manifest
+   (10/11 send/receive, 12 connect, 13 close, 15 accept, 17 fail, 42/43 UDP send/receive, IPv6 equivalents; 14, 16 and 18
+   ignored).
 7. **DNS:** use the caller-side events (3006/3008) for process attribution and `QueryResults` for name-to-IP links.
 8. `ferrisetw` stays the first choice behind `TelemetrySource`.
 
@@ -150,3 +153,4 @@ has no remote; scrub or drop them before ever publishing it.
 ## Next
 
 Phase 1 (Visibility). A task-level plan is proposed for approval before any code.
+

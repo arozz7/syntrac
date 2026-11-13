@@ -1,0 +1,25 @@
+# SYNTRAC collector service configuration.
+# Every setting shown is the default; delete or edit as needed. Unknown keys are rejected.
+
+# database_path = "C:/ProgramData/Syntrac/syntrac.db"   # default location when omitted
+
+# Network activity is folded into flows over windows of this many seconds.
+flow_window_secs = 10
+
+# A finished window is stored this many seconds later, so events that arrive late (ETW delivers in
+# buffered batches) join it instead of producing a duplicate row.
+flow_flush_grace_secs = 3
+
+# How often the sources are drained (milliseconds).
+drain_interval_ms = 500
+
+# Resource sampling.
+metrics_interval_secs = 5
+top_processes = 25            # heaviest processes recorded individually per sample; the rest are summed
+
+# Retention: raw data older than this is removed, checked every purge_interval_minutes.
+retention_days = 30
+purge_interval_minutes = 60
+
+# How often a status line is logged (events stored, drops, own CPU).
+status_interval_secs = 30

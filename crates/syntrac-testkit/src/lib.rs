@@ -6,4 +6,4 @@ pub mod memory;
 pub mod mocks;
 
 pub use memory::InMemoryRepository;
-pub use mocks::{ManualClock, MockTelemetrySource};
+pub use mocks::{FailingTelemetrySource, ManualClock, MockMetricsSource, MockTelemetrySource, ScriptedTelemetrySource};

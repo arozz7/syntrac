@@ -38,46 +38,93 @@ impl EventCategory {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NetProtocol {
     Tcp,
     Udp,
 }
 
+/// What a raw network event reported. Byte counts apply to `Send` and `Receive` only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NetAction {
+    /// A connection attempt was made.
+    Connect,
+    /// A connection was established or accepted.
+    Accept,
+    Send,
+    Receive,
+    Close,
+    /// A connection attempt failed.
+    Fail,
+}
+
 /// What happened. Sources report raw PIDs; the correlator resolves them to instances.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum EventPayload {
+    /// A process was created while monitoring.
     ProcessStarted {
         pid: u32,
         parent_pid: u32,
+        /// Real creation time reported by the OS (not the event time).
+        created: Timestamp,
         image_path: String,
         command_line: Option<String>,
     },
     ProcessExited {
         pid: u32,
+        created: Timestamp,
         exit_code: Option<u32>,
     },
-    NetworkConnection {
+    /// A process that was already running when monitoring began (startup snapshot).
+    /// Distinct from `ProcessStarted` so restarts do not flood the timeline or trip "new process" rules.
+    ProcessObserved {
+        pid: u32,
+        parent_pid: u32,
+        created: Timestamp,
+        image_path: String,
+        command_line: Option<String>,
+    },
+    /// Raw, per-packet-ish network activity. Aggregated into `NetworkFlow`; never persisted.
+    NetworkActivity {
         pid: u32,
         protocol: NetProtocol,
-        local_addr: IpAddr,
-        local_port: u16,
+        action: NetAction,
         remote_addr: IpAddr,
         remote_port: u16,
+        bytes: u32,
     },
+    /// Network activity of one process instance with one remote endpoint over one time window.
+    NetworkFlow {
+        pid: u32,
+        protocol: NetProtocol,
+        remote_addr: IpAddr,
+        remote_port: u16,
+        bytes_sent: u64,
+        bytes_received: u64,
+        opened: u32,
+        closed: u32,
+        failed: u32,
+        window_start: Timestamp,
+        window_end: Timestamp,
+    },
+    /// A DNS lookup. `addresses` is empty when the lookup returned nothing.
     DnsQuery {
         pid: u32,
         query: String,
+        addresses: Vec<IpAddr>,
     },
 }
 
 impl EventPayload {
     pub fn category(&self) -> EventCategory {
         match self {
-            Self::ProcessStarted { .. } | Self::ProcessExited { .. } => EventCategory::Process,
-            Self::NetworkConnection { .. } => EventCategory::Network,
+            Self::ProcessStarted { .. } | Self::ProcessExited { .. } | Self::ProcessObserved { .. } => {
+                EventCategory::Process
+            }
+            Self::NetworkActivity { .. } | Self::NetworkFlow { .. } => EventCategory::Network,
             Self::DnsQuery { .. } => EventCategory::Dns,
         }
     }
@@ -87,7 +134,9 @@ impl EventPayload {
         match self {
             Self::ProcessStarted { .. } => "process_started",
             Self::ProcessExited { .. } => "process_exited",
-            Self::NetworkConnection { .. } => "network_connection",
+            Self::ProcessObserved { .. } => "process_observed",
+            Self::NetworkActivity { .. } => "network_activity",
+            Self::NetworkFlow { .. } => "network_flow",
             Self::DnsQuery { .. } => "dns_query",
         }
     }
@@ -97,9 +146,16 @@ impl EventPayload {
         match self {
             Self::ProcessStarted { pid, .. }
             | Self::ProcessExited { pid, .. }
-            | Self::NetworkConnection { pid, .. }
+            | Self::ProcessObserved { pid, .. }
+            | Self::NetworkActivity { pid, .. }
+            | Self::NetworkFlow { pid, .. }
             | Self::DnsQuery { pid, .. } => *pid,
         }
+    }
+
+    /// Raw network activity is an intermediate form; only its aggregated flows are stored.
+    pub fn is_persisted(&self) -> bool {
+        !matches!(self, Self::NetworkActivity { .. })
     }
 }
 

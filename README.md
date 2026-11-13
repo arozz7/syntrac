@@ -1,4 +1,4 @@
-# SYNTRAC
+﻿# SYNTRAC
 
 **System intelligence and activity tracking** for Windows: a personal workstation intelligence platform that answers
 
@@ -35,8 +35,14 @@ powershell -ExecutionPolicy Bypass -File scripts/dev/verify.ps1
 # Run the desktop app in dev mode
 cd app; pnpm tauri dev
 
-# ETW feasibility spike (opens an elevated window; UAC prompt). Open/close a few programs while it runs.
-powershell -ExecutionPolicy Bypass -File scripts/dev/run-etw-spike.ps1 -Seconds 30 -ProcessKeywords 10
+# Run the collector in an elevated window (UAC prompt); summary goes to aiChangeLog/console-run-*.txt
+powershell -ExecutionPolicy Bypass -File scripts/dev/run-console.ps1 -Seconds 60
+# ...then review the run's database (read-only):
+python -I scripts/dev/inspect-run.py data/syntrac-<stamp>.db
+
+# Collector without ETW (no elevation): startup snapshot, metrics, storage
+target/debug/syntrac-service.exe --no-etw --seconds 20 --db data/try.db
+
 ```
 
 There is deliberately **no hosted CI**. `verify.ps1` is the gate; run it before every push.
@@ -60,3 +66,6 @@ There is deliberately **no hosted CI**. `verify.ps1` is the gate; run it before 
 
 Light canvas (cream and sand) built on the SYNTRAC Brand Kit in `docs/branding/SYNTRAC_Brand_Kit/` (forest green,
 sage, clay). Colours live only in `app/src/theme/tokens.css` and are verified against WCAG AA by an automated test.
+
+
+

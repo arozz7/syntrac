@@ -1,20 +1,30 @@
 //! In-memory repository: lets the whole pipeline run offline with no database.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::net::IpAddr;
 
 use syntrac_core::{
-    EventEnvelope, EventQuery, EventRepository, ProcessInstanceId, ProcessRecord, ProcessRepository, RepoError,
-    Timestamp,
+    CpuBreakdown, CpuContribution, Destination, EventEnvelope, EventPayload, EventQuery, EventRepository, FlowQueries,
+    MetricsRepository, MetricsSample, ProcessInstanceId, ProcessRecord, ProcessRepository, PurgeCounts, RepoError,
+    Retention, SystemPoint, Timestamp,
 };
 
 #[derive(Debug, Default)]
 pub struct InMemoryRepository {
     processes: HashMap<ProcessInstanceId, ProcessRecord>,
     events: Vec<EventEnvelope>,
+    metrics: Vec<MetricsSample>,
 }
 
 impl ProcessRepository for InMemoryRepository {
-    fn record_start(&mut self, record: ProcessRecord) -> Result<(), RepoError> {
+    fn record_start(&mut self, mut record: ProcessRecord) -> Result<(), RepoError> {
+        if let Some(existing) = self.processes.get(&record.id) {
+            // Never clear a recorded exit: a late startup snapshot must not resurrect the process.
+            record.ended = record.ended.or(existing.ended);
+            record.exit_code = record.exit_code.or(existing.exit_code);
+            record.parent_id = record.parent_id.or(existing.parent_id);
+            record.command_line = record.command_line.or_else(|| existing.command_line.clone());
+        }
         self.processes.insert(record.id, record);
         Ok(())
     }
@@ -67,5 +77,153 @@ impl EventRepository for InMemoryRepository {
             found.truncate(limit);
         }
         Ok(found)
+    }
+}
+
+impl MetricsRepository for InMemoryRepository {
+    fn append_metrics(&mut self, sample: &MetricsSample) -> Result<(), RepoError> {
+        self.metrics.push(sample.clone());
+        Ok(())
+    }
+
+    fn system_series(&self, from: Timestamp, to: Timestamp) -> Result<Vec<SystemPoint>, RepoError> {
+        let mut points: Vec<SystemPoint> = self
+            .metrics
+            .iter()
+            .filter(|s| s.ts >= from && s.ts <= to)
+            .map(|s| SystemPoint { ts: s.ts, system: s.system, others: s.others })
+            .collect();
+        points.sort_by_key(|p| p.ts);
+        Ok(points)
+    }
+
+    fn cpu_breakdown(&self, from: Timestamp, to: Timestamp, limit: usize) -> Result<CpuBreakdown, RepoError> {
+        let samples: Vec<&MetricsSample> = self.metrics.iter().filter(|s| s.ts >= from && s.ts <= to).collect();
+        let window_samples = samples.len() as u32;
+        if samples.is_empty() {
+            return Ok(CpuBreakdown {
+                window_samples: 0,
+                system_avg_cpu_percent: 0.0,
+                processes: Vec::new(),
+                others_avg_cpu_percent: 0.0,
+                unaccounted_avg_cpu_percent: 0.0,
+            });
+        }
+
+        // (sum, peak, samples present) per (instance, pid)
+        let mut totals: HashMap<(Option<ProcessInstanceId>, u32), (f32, f32, u32)> = HashMap::new();
+        for sample in &samples {
+            for process in &sample.processes {
+                let entry = totals.entry((process.instance, process.pid)).or_insert((0.0, 0.0, 0));
+                entry.0 += process.cpu_percent;
+                entry.1 = entry.1.max(process.cpu_percent);
+                entry.2 += 1;
+            }
+        }
+
+        let divisor = window_samples as f32;
+        let mut processes: Vec<CpuContribution> = totals
+            .into_iter()
+            .map(|((instance, pid), (sum, peak, present))| CpuContribution {
+                instance,
+                pid,
+                avg_cpu_percent: sum / divisor,
+                peak_cpu_percent: peak,
+                samples_present: present,
+            })
+            .collect();
+        processes.sort_by(|a, b| b.avg_cpu_percent.total_cmp(&a.avg_cpu_percent));
+        // Measured across ALL listed processes, before the limit hides some of them.
+        let listed_avg: f32 = processes.iter().map(|p| p.avg_cpu_percent).sum();
+        processes.truncate(limit);
+
+        let system_avg = samples.iter().map(|s| s.system.cpu_percent).sum::<f32>() / divisor;
+        let others_avg = samples.iter().map(|s| s.others.cpu_percent).sum::<f32>() / divisor;
+        Ok(CpuBreakdown {
+            window_samples,
+            system_avg_cpu_percent: system_avg,
+            processes,
+            others_avg_cpu_percent: others_avg,
+            unaccounted_avg_cpu_percent: (system_avg - listed_avg - others_avg).max(0.0),
+        })
+    }
+}
+
+/// A flow owner: the process instance, or for unattributed flows the PID the source reported.
+type Owner = (Option<ProcessInstanceId>, Option<u32>);
+
+#[derive(Default)]
+struct DestinationTotals {
+    bytes_sent: u64,
+    bytes_received: u64,
+    flows: u32,
+    owners: HashSet<Owner>,
+}
+
+impl FlowQueries for InMemoryRepository {
+    fn top_destinations(&self, from: Timestamp, to: Timestamp, limit: usize) -> Result<Vec<Destination>, RepoError> {
+        let mut totals: HashMap<(IpAddr, u16), DestinationTotals> = HashMap::new();
+
+        for event in &self.events {
+            let EventPayload::NetworkFlow {
+                pid,
+                remote_addr,
+                remote_port,
+                bytes_sent,
+                bytes_received,
+                window_start,
+                ..
+            } = &event.payload
+            else {
+                continue;
+            };
+            if *window_start < from || *window_start > to {
+                continue;
+            }
+            let entry = totals.entry((*remote_addr, *remote_port)).or_default();
+            entry.bytes_sent += bytes_sent;
+            entry.bytes_received += bytes_received;
+            entry.flows += 1;
+            // Unattributed flows count as their own process, keyed by the PID the source reported.
+            entry.owners.insert(match event.process_instance_id {
+                Some(id) => (Some(id), None),
+                None => (None, Some(*pid)),
+            });
+        }
+
+        let mut destinations: Vec<Destination> = totals
+            .into_iter()
+            .map(|((remote_addr, remote_port), total)| Destination {
+                remote_addr,
+                remote_port,
+                bytes_sent: total.bytes_sent,
+                bytes_received: total.bytes_received,
+                flow_count: total.flows,
+                process_count: total.owners.len() as u32,
+            })
+            .collect();
+        destinations.sort_by_key(|d| std::cmp::Reverse(d.bytes_sent + d.bytes_received));
+        destinations.truncate(limit);
+        Ok(destinations)
+    }
+}
+
+impl Retention for InMemoryRepository {
+    fn purge_before(&mut self, cutoff: Timestamp) -> Result<PurgeCounts, RepoError> {
+        let events_before = self.events.len();
+        self.events.retain(|e| e.ts >= cutoff);
+
+        let processes_before = self.processes.len();
+        // Keep running processes, and ended ones that ended at or after the cutoff.
+        self.processes.retain(|_, p| p.ended.is_none_or(|ended| ended >= cutoff));
+
+        let metrics_before = self.metrics.len();
+        self.metrics.retain(|s| s.ts >= cutoff);
+
+        Ok(PurgeCounts {
+            events: (events_before - self.events.len()) as u64,
+            processes: (processes_before - self.processes.len()) as u64,
+            metric_samples: (metrics_before - self.metrics.len()) as u64,
+        })
     }
 }

@@ -28,6 +28,8 @@ lines, network destinations, activity history) and runs a privileged component, 
 | Malware tampers with the DB or kills the service to hide | Service recovery policy; tamper-evidence and "collector offline" alerts (Phase 3) |
 | LLM backend persists prompts: the local model server's `log_conversations = true` setting writes every prompt and response to `logs/conversations.<date>.jsonl` in plaintext (7-day retention) | Owner decision: keep it a setting and test both ways. SYNTRAC's `llm.context_detail` defaults to `summary` (redacted aggregates); `full` is a deliberate opt-in. Treat that log directory as sensitive as the SYNTRAC database |
 | Prompt injection via a crafted process name or domain | Telemetry passed as data; LLM limited to read-only tools; no tool can modify config or the DB |
+| Blind spots: processes the collector cannot open (protected or other-user) get no identity, and CPU used by interrupts/drivers belongs to no process | Skipped processes are counted and logged; the CPU breakdown reports "unaccounted" explicitly; the service runs elevated to shrink the gap |
+| Restricted database ACL breaks read-only readers (SQLite must create the WAL `-shm` file) | Phase 1b installer sets the ACL deliberately and tests the unelevated UI reading it; until then the folder inherits normal ProgramData permissions |
 | Event flood exhausts disk or CPU | Provider filtering, batching, retention, measured CPU budget (ETW spike) |
 | Supply-chain compromise of dependencies | Lockfiles committed (`Cargo.lock`, `pnpm-lock.yaml`), `--frozen-lockfile`, minimal dependency set |
 | False positives erode trust | Tiered severities, explanation per alert, allowlists |

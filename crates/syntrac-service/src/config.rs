@@ -1,0 +1,75 @@
+//! Service configuration, loaded from TOML. Every field has a safe default, unknown keys are
+//! rejected (so a typo cannot silently do nothing), and values that would break the run loop are refused.
+
+use std::path::PathBuf;
+
+use serde::Deserialize;
+
+#[derive(Debug, thiserror::Error)]
+pub enum ConfigError {
+    #[error("could not parse the configuration: {0}")]
+    Parse(#[from] toml::de::Error),
+    #[error("invalid configuration: {0}")]
+    Invalid(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ServiceConfig {
+    /// Database file. When absent the host chooses a default location.
+    pub database_path: Option<PathBuf>,
+    /// Network flows are aggregated into windows of this length.
+    pub flow_window_secs: u64,
+    /// A flow window is stored this many seconds after it ends, so late-arriving events still join it.
+    pub flow_flush_grace_secs: u64,
+    /// How often the host drains the telemetry sources.
+    pub drain_interval_ms: u64,
+    pub metrics_interval_secs: u64,
+    /// How many of the heaviest processes are recorded individually per metrics sample.
+    pub top_processes: usize,
+    pub retention_days: u32,
+    pub purge_interval_minutes: u64,
+    /// How often a status line (events stored, drops, own CPU) is logged.
+    pub status_interval_secs: u64,
+}
+
+impl Default for ServiceConfig {
+    fn default() -> Self {
+        Self {
+            database_path: None,
+            flow_window_secs: 10,
+            flow_flush_grace_secs: 3,
+            drain_interval_ms: 500,
+            metrics_interval_secs: 5,
+            top_processes: 25,
+            retention_days: 30,
+            purge_interval_minutes: 60,
+            status_interval_secs: 30,
+        }
+    }
+}
+
+impl ServiceConfig {
+    pub fn from_toml_str(text: &str) -> Result<Self, ConfigError> {
+        let config: Self = toml::from_str(text)?;
+        config.validate()?;
+        Ok(config)
+    }
+
+    fn validate(&self) -> Result<(), ConfigError> {
+        let checks = [
+            (self.flow_window_secs, "flow_window_secs"),
+            (self.flow_flush_grace_secs, "flow_flush_grace_secs"),
+            (self.drain_interval_ms, "drain_interval_ms"),
+            (self.metrics_interval_secs, "metrics_interval_secs"),
+            (u64::from(self.retention_days), "retention_days"),
+            (self.purge_interval_minutes, "purge_interval_minutes"),
+            (self.top_processes as u64, "top_processes"),
+            (self.status_interval_secs, "status_interval_secs"),
+        ];
+        match checks.iter().find(|(value, _)| *value == 0) {
+            Some((_, name)) => Err(ConfigError::Invalid(format!("{name} must be greater than zero"))),
+            None => Ok(()),
+        }
+    }
+}

@@ -3,42 +3,57 @@
 use crate::event::{EventEnvelope, EventPayload};
 use crate::identity::ProcessInstanceId;
 use crate::ports::{ProcessRecord, ProcessRepository, RepoError};
+use crate::time::Timestamp;
 
 /// Attributes `event` to a process instance, updating the process table as needed.
 ///
-/// Events must be fed in timestamp order. An event whose PID is unknown (for example a
-/// connection that predates monitoring) is returned unattributed, never guessed.
+/// Events must be fed in timestamp order. An event whose process cannot be identified (a
+/// connection that predates monitoring, or the exit of a process we never saw) is returned
+/// unattributed and does NOT fail the batch.
 pub fn correlate<R: ProcessRepository + ?Sized>(
     repo: &mut R,
     mut event: EventEnvelope,
 ) -> Result<EventEnvelope, RepoError> {
     let owner = match &event.payload {
-        EventPayload::ProcessStarted { pid, parent_pid, image_path, command_line } => {
-            // The start event's timestamp stands in for the creation time.
-            let id = ProcessInstanceId::from_pid_and_creation(*pid, event.ts);
-            let parent_id = repo.resolve(*parent_pid, event.ts)?;
-            repo.record_start(ProcessRecord {
-                id,
-                pid: *pid,
-                parent_pid: *parent_pid,
-                parent_id,
-                image_path: image_path.clone(),
-                command_line: command_line.clone(),
-                started: event.ts,
-                ended: None,
-                exit_code: None,
-            })?;
-            Some(id)
+        EventPayload::ProcessStarted { pid, parent_pid, created, image_path, command_line }
+        | EventPayload::ProcessObserved { pid, parent_pid, created, image_path, command_line } => {
+            Some(register(repo, *pid, *parent_pid, *created, image_path, command_line.as_deref())?)
         }
-        EventPayload::ProcessExited { pid, exit_code } => {
-            let owner = repo.resolve(*pid, event.ts)?;
-            if let Some(id) = owner {
-                repo.record_exit(id, event.ts, *exit_code)?;
+        EventPayload::ProcessExited { pid, created, exit_code } => {
+            let id = ProcessInstanceId::from_pid_and_creation(*pid, *created);
+            match repo.record_exit(id, event.ts, *exit_code) {
+                Ok(()) => Some(id),
+                Err(RepoError::NotFound) => None,
+                Err(other) => return Err(other),
             }
-            owner
         }
         other => repo.resolve(other.pid(), event.ts)?,
     };
     event.process_instance_id = owner;
     Ok(event)
+}
+
+fn register<R: ProcessRepository + ?Sized>(
+    repo: &mut R,
+    pid: u32,
+    parent_pid: u32,
+    created: Timestamp,
+    image_path: &str,
+    command_line: Option<&str>,
+) -> Result<ProcessInstanceId, RepoError> {
+    let id = ProcessInstanceId::from_pid_and_creation(pid, created);
+    // The parent is whoever owned parent_pid when THIS process was created, not when we heard about it.
+    let parent_id = repo.resolve(parent_pid, created)?;
+    repo.record_start(ProcessRecord {
+        id,
+        pid,
+        parent_pid,
+        parent_id,
+        image_path: image_path.to_owned(),
+        command_line: command_line.map(str::to_owned),
+        started: created,
+        ended: None,
+        exit_code: None,
+    })?;
+    Ok(id)
 }

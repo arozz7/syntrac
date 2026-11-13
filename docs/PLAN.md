@@ -115,6 +115,9 @@ Each phase ends with an `aiChangeLog/phase-XX.md` entry, updated docs and README
 - [x] ETW spike: per-provider event counts and CPU overhead. Two rounds run by the owner; process, network and DNS fields confirmed. Findings and Phase 1 consequences in `aiChangeLog/phase-00.md`.
 
 ### Phase 1: Visibility
+**Split into 1a (collection pipeline, console mode) and 1b (service host, named pipe, UI).**
+- 1a: built and verified offline (130 Rust tests, `verify.ps1` exit 0). Live elevated run pending, see `aiChangeLog/phase-01a.md`.
+- 1b: awaiting approval after the 1a live run.
 Service install and run, ETW process and network sources, metrics sampler, startup process snapshot, parent/child tracking, SQLite schema and migrations, retention job, named-pipe protocol. UI: dashboard, process list, connections list.
 Done when the UI can close and reopen with no data loss, and a connection links to the correct process even after PID reuse.
 Real-world acceptance check (owner's workstation, 2026-11-12): the owner sees sustained ~30% CPU with no obvious cause, and the dashboard's top-consumers view over history must show which processes contribute. Collector overhead is measured with the service running, both idle and under load, against the 2% budget.
@@ -158,3 +161,4 @@ Sysmon adapter, DuckDB analytics, installer and signing, file/registry ETW.
   `log_conversations` handling decided: an option, tested both ways (see the privacy option under Phase 4). Still to
   decide before Phase 4: whether SYNTRAC may start the server itself or only connect to it when the owner has started it.
 - Retention defaults (30 days raw) to be revisited after measuring real event volume in the Phase 0/1 spike.
+

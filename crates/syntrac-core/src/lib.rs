@@ -2,17 +2,24 @@
 
 pub mod correlator;
 pub mod event;
+pub mod flow;
 pub mod identity;
+pub mod metrics;
+pub mod pipeline;
 pub mod ports;
 pub mod time;
 
-mod pipeline;
-
 pub use correlator::correlate;
-pub use event::{EventCategory, EventEnvelope, EventPayload, NetProtocol, Severity};
+pub use event::{EventCategory, EventEnvelope, EventPayload, NetAction, NetProtocol, Severity};
+pub use flow::{Destination, FlowAggregator};
 pub use identity::ProcessInstanceId;
-pub use pipeline::{ingest, IngestError};
+pub use metrics::{
+    CpuBreakdown, CpuContribution, MetricsSample, OtherProcesses, ProcessMetric, PurgeCounts, SystemMetrics,
+    SystemPoint,
+};
+pub use pipeline::{ingest_metrics, IngestError, Pipeline};
 pub use ports::{
-    EventQuery, EventRepository, ProcessRecord, ProcessRepository, RepoError, SourceError, TelemetrySource,
+    EventQuery, EventRepository, FlowQueries, MetricsRepository, MetricsSource, ProcessRecord, ProcessRepository,
+    RepoError, Retention, SourceError, TelemetrySource,
 };
 pub use time::{Clock, Timestamp};

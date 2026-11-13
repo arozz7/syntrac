@@ -1,7 +1,11 @@
 //! SQLite persistence for SYNTRAC. Business logic depends on the repository traits in
 //! `syntrac-core`, never on this crate directly.
 
+mod codec;
+mod connection;
+mod events;
+mod metrics;
 mod migrations;
-mod sqlite;
+mod processes;
 
-pub use sqlite::SqliteStore;
+pub use connection::SqliteStore;
