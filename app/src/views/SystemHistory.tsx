@@ -115,8 +115,12 @@ function HistoryBody({ data }: { data: SystemHistoryView }) {
         </section>
 
         <section className="card">
-          <h2>Disk</h2>
-          <Chart option={disk} label="Disk traffic over time" />
+          <h2>Program file I/O</h2>
+          <p className="muted">
+            Everything programs asked to read and write, including data served from the cache and pipes. It is not
+            physical disk traffic, and it misses programs that ended between two samples.
+          </p>
+          <Chart option={disk} label="Program file I/O over time" />
           <dl className="facts">
             <div>
               <dt>Read</dt>

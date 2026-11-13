@@ -82,7 +82,7 @@ export interface BytesSeries {
   pick: (bucket: DataBucket) => number;
 }
 
-/** Bytes moved per bucket as grouped bars (the first series in the first colour, the second in the second). */
+/** Bytes per bucket as grouped bars (the first series in the first colour, the second in the second). */
 export function buildBytesChartOption(
   buckets: Bucket[],
   granularity: Granularity,

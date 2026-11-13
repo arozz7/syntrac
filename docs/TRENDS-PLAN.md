@@ -60,6 +60,18 @@ curves; range 24 h / 7 d / 30 d / 90 d / 1 year / all available), *Programs* (ra
 first and last seen), *Network* (top destinations, a "new this week" list, click a row for who talked to it and when). Same
 range picker component and chart wrapper, no new dependencies, light theme only.
 
+## Known limits of the collected data
+
+- **The "disk" numbers are program file I/O, not physical disk traffic** (checked 2026-11-13). The collector sums every
+  process's `ReadTransferCount` / `WriteTransferCount` (sysinfo 0.36.1, `GetProcessIoCounters`): all I/O the programs requested,
+  including reads served from the cache and pipe traffic. Only living processes are summed, so the I/O of a process that ends
+  between two samples is lost. Measured against Windows' own `PhysicalDisk(_Total)` counter over a 60 s window: reads 86.0 MB
+  (collector) against 36.0 MB (Windows), writes 162.0 MB against 150.2 MB. A second test (a short-lived process reading 1.9 GB,
+  mostly cached) showed 57 MB in the collector. The History screen therefore calls this "Program file I/O" and says so.
+- Physical disk traffic per drive would need a different source (Windows `PhysicalDisk` / `LogicalDisk` performance counters, per
+  drive), a collector change and a new rollup table (schema v6). Per-program disk would need the ETW disk-I/O provider. Neither is
+  planned; both need their own plan and approval.
+
 ## Slices (each ends with `verify.ps1` green, a rehearsal on the live data, and a commit)
 
 - **T1 System history** (done). Deviation from the design above, recorded: the bucketing into local days and the gap handling

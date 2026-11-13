@@ -27,11 +27,17 @@ const withHistory = (history: SystemHistoryView) =>
   makeFakeApi({ systemHistory: vi.fn(async () => ({ state: 'ok' as const, data: history })) });
 
 describe('SystemHistory', () => {
-  it('draws the load, network and disk charts', async () => {
+  it('draws the load, network and file I/O charts', async () => {
     show();
     expect(await screen.findByLabelText('CPU and memory over time')).toBeTruthy();
     expect(screen.getByLabelText('Network traffic over time')).toBeTruthy();
-    expect(screen.getByLabelText('Disk traffic over time')).toBeTruthy();
+    expect(screen.getByLabelText('Program file I/O over time')).toBeTruthy();
+  });
+
+  it('does not present program file I/O as physical disk traffic', async () => {
+    show();
+    expect(await screen.findByRole('heading', { name: 'Program file I/O' })).toBeTruthy();
+    expect(screen.getByText(/not physical disk traffic/i)).toBeTruthy();
   });
 
   it('opens on the last 7 days and asks for that range', async () => {

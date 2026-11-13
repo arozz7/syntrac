@@ -42,3 +42,8 @@ will not look different until more days have been rolled up: today only about a 
 
 ## Not in T1
 Programs (T2) and Network (T3); anything that ranks or lists executables or destinations.
+
+## Follow-up: the disk numbers were checked (2026-11-13)
+The user asked whether the disk figures can be trusted and split by drive. They are the sum of every live process's read and
+write transfer counters, not physical disk traffic (details and measurements in `docs/TRENDS-PLAN.md`, "Known limits"). The
+History card is now titled "Program file I/O" and says so. No per-drive data exists; that needs a separate, approved plan.
