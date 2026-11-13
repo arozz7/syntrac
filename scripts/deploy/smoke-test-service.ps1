@@ -173,6 +173,13 @@ if ($installed) {
     Add-Result 'Ordinary user can read the collector status over the pipe' (($status.ExitCode -eq 0) -and $status.Output.Contains('SYNTRAC collector')) ($status.Output -split "`n" | Select-Object -First 1)
     Write-Host $status.Output
 
+    # The orphan guard runs when the service starts. It must have run (and been able to LIST sessions as SYSTEM),
+    # or a leftover session could silently starve ETW again. Look at the newest log file.
+    $newestLog = Get-ChildItem -Path $logDir -Filter '*.log' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime | Select-Object -Last 1
+    $guardLines = @()
+    if ($newestLog) { $guardLines = @(Get-Content $newestLog.FullName -ErrorAction SilentlyContinue | Select-String -Pattern 'leftover SYNTRAC|No leftover SYNTRAC|Could not list trace sessions' | Select-Object -Last 3 | ForEach-Object { $_.Line }) }
+    $guardRan = ($guardLines.Count -gt 0) -and -not ($guardLines[-1] -match 'Could not list trace sessions')
+    Add-Result 'Orphan guard ran at start and could list the trace sessions' $guardRan ($guardLines -join ' | ')
     $etwReceived = Wait-EtwDelivering 60
     Add-Result 'ETW delivers events (a started but silent trace would pass every other check)' ($etwReceived -gt 0) "$etwReceived events received within 60 s"
 

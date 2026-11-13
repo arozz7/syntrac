@@ -10,9 +10,11 @@ use std::time::{Duration, Instant};
 
 use syntrac_collector::etw::EtwSource;
 use syntrac_collector::etw_stats::{EtwReport, EtwStats};
+use syntrac_collector::orphan_guard::clean_up_orphans;
 use syntrac_collector::snapshot::SnapshotSource;
 use syntrac_collector::sysmetrics::SysinfoMetricsSource;
 use syntrac_collector::system::{is_elevated, own_cpu_time, SystemClock};
+use syntrac_collector::trace_sessions::WindowsSessions;
 use syntrac_collector::volumes::system_path_converter;
 use syntrac_core::silence::{SilenceAction, SilencePolicy, SilenceVerdict, SilenceWatchdog};
 use syntrac_core::{
@@ -103,6 +105,9 @@ pub fn run_host(
     // ETW first, so nothing is missed while the snapshot is taken.
     let mut sources: Vec<Box<dyn TelemetrySource>> = Vec::new();
     let etw_stats: Option<Arc<EtwStats>> = if options.use_etw {
+        // A leftover SYNTRAC trace session can starve every other session of events, so clear our own leftovers
+        // first. This cannot fail the start: problems are logged and reported, never raised.
+        clean_up_orphans(&options.etw_session_name, &WindowsSessions);
         let source = EtwSource::start(system_path_converter(), &options.etw_session_name)
             .map_err(|e| HostError::failed(e.to_string()))?;
         let stats = source.stats();

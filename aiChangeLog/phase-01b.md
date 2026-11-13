@@ -204,3 +204,14 @@ kill), and how to stop it recurring. Proposed: at ETW start, look for other `Syn
 syntrac-service process is running, a leftover `SyntracConsole` session is certainly an orphan and can be stopped
 (logged), otherwise only warn. `scripts/dev/etw-probe.ps1` now shows buffers and losses for every session and tests
 each provider on its own.
+
+### Orphan guard (2026-11-12)
+
+Before a collector starts its trace, it now clears SYNTRAC's own leftover trace sessions (`syntrac_collector::orphan_guard`,
+12 tests): a known collector session (`SyntracCollector` / `SyntracConsole`) other than its own is stopped only when no
+other `syntrac-service` process is running; any other `Syntrac*` session is only reported with the `logman` command to stop
+it; sessions of other programs are never touched; failing to list or stop never prevents the collector from starting.
+Windows access is in `trace_sessions` (QueryAllTracesW, stop by name with a timeout, process check); the dev tool
+`cargo run -p syntrac-collector --example list_trace_sessions` shows what it sees and would do, without stopping anything.
+Unelevated it sees 0 sessions (no error), so the name-parsing path is verified only by an elevated run. The smoke test now
+checks that the guard ran and could list sessions under SYSTEM.
