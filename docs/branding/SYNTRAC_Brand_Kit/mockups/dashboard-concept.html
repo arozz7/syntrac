@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SYNTRAC — Dashboard Concept</title>
+<link rel="stylesheet" href="../styles/design-tokens.css">
+<style>
+*{box-sizing:border-box} body{margin:0;background:#222521;color:var(--syn-cream);font:14px Inter,"Segoe UI",sans-serif}
+.app{min-height:100vh;display:grid;grid-template-columns:220px 1fr}
+.sidebar{background:#252925;border-right:1px solid #454a42;padding:24px 16px;display:flex;flex-direction:column}
+.brand{display:flex;align-items:center;gap:10px;margin:2px 8px 36px;font-size:21px;font-weight:750;letter-spacing:2px}
+.brand img{width:42px;height:46px}.brand span{color:var(--syn-sage)}
+nav{display:grid;gap:7px}.nav{padding:12px 14px;border-radius:9px;color:#d4d2c9;text-decoration:none}.nav.active{background:#385345;color:#fff}.nav:hover{background:#343b34}
+.status{margin-top:auto;border-top:1px solid #4a5047;padding:18px 8px 4px;color:#bfc5b7;font-size:12px}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#8cae72;margin-right:8px}
+main{padding:26px 30px 36px;min-width:0}.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
+h1{font-size:25px;margin:0 0 5px;letter-spacing:.2px}.sub{color:var(--syn-muted);font-size:13px}.actions{display:flex;gap:10px;align-items:center}
+button{border:1px solid var(--syn-border);border-radius:8px;background:#343a33;color:var(--syn-cream);padding:9px 13px;font:inherit}
+button.primary{background:var(--syn-forest);border-color:var(--syn-forest)}
+.grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:15px}
+.card{background:linear-gradient(145deg,#363b35,#2f332e);border:1px solid #4b5048;border-radius:var(--radius-card);padding:17px;box-shadow:var(--shadow-card);min-width:0}
+.card h2{font-size:14px;margin:0 0 15px;color:#e9e4d9;font-weight:650}.muted{color:var(--syn-muted)}
+.metrics{grid-column:span 8;display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.metric{background:#292e29;border:1px solid #454b43;border-radius:11px;padding:14px}
+.metric .label{font-size:12px;color:var(--syn-muted)}.metric strong{display:block;font-size:26px;margin:9px 0 3px;font-variant-numeric:tabular-nums}.metric small{color:#a8bd9e}
+.security{grid-column:span 4}.security .score{font-size:28px;color:#a8bd9e;font-weight:700}.alert{padding:10px 0;border-top:1px solid #4b5048;display:flex;gap:10px;align-items:flex-start}.badge{font-size:10px;padding:4px 7px;border-radius:20px;background:#574b35;color:#f0c77f;white-space:nowrap}
+.process{grid-column:span 5}.network{grid-column:span 4}.activity{grid-column:span 3}
+table{width:100%;border-collapse:collapse;font-size:12px}th{text-align:left;color:#aaa99f;font-weight:500;padding:8px 6px;border-bottom:1px solid #51564d}td{padding:10px 6px;border-bottom:1px solid #41463f}tr:last-child td{border:0}
+.pill{color:#b9d0ad;background:#35483a;border-radius:20px;padding:4px 7px;font-size:10px}
+.bar{height:7px;border-radius:10px;background:#4b5148;overflow:hidden;margin-top:7px}.bar i{display:block;height:100%;background:var(--syn-sage);border-radius:10px}
+.event{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid #454a42;font-size:12px}.event:last-child{border:0}.event b{display:block;font-weight:550;margin-bottom:3px}.time{color:#aaa99f;white-space:nowrap}
+.timeline{grid-column:span 7}.insights{grid-column:span 5}
+.chart{height:130px;display:flex;align-items:end;gap:8px;padding:12px 3px 0;border-bottom:1px solid #596056}
+.chart i{display:block;flex:1;background:linear-gradient(180deg,#91a98b,#486d56);border-radius:5px 5px 0 0;opacity:.9}
+@media(max-width:1100px){.metrics{grid-column:span 12}.security{grid-column:span 12}.process,.network,.activity{grid-column:span 6}.timeline,.insights{grid-column:span 12}}
+@media(max-width:700px){.app{grid-template-columns:1fr}.sidebar{display:none}main{padding:20px 14px}.metrics{grid-template-columns:repeat(2,1fr)}.process,.network,.activity{grid-column:span 12}.top{align-items:flex-start;gap:12px;flex-direction:column}}
+</style></head>
+<body><div class="app">
+<aside class="sidebar">
+ <div class="brand"><img src="../assets/logos/syntrac-mark.svg" alt="">SYN<span>TRAC</span></div>
+ <nav><a class="nav active">▦ &nbsp; Dashboard</a><a class="nav">▤ &nbsp; Processes</a><a class="nav">◎ &nbsp; Network</a><a class="nav">⬡ &nbsp; Security</a><a class="nav">◷ &nbsp; Timeline</a><a class="nav">▥ &nbsp; Reports</a><a class="nav">⚙ &nbsp; Settings</a></nav>
+ <div class="status"><span class="dot"></span>Monitoring active<br><span style="margin-left:16px">Last updated just now</span></div>
+</aside>
+<main>
+ <header class="top"><div><h1>Workstation Overview</h1><div class="sub">A clear picture of what's happening on this device.</div></div><div class="actions"><button>Last 24 hours ▾</button><button class="primary">＋ New investigation</button></div></header>
+ <section class="grid">
+  <div class="card metrics">
+   <div class="metric"><div class="label">CPU</div><strong>18%</strong><small>↗ 2% from average</small><div class="bar"><i style="width:18%"></i></div></div>
+   <div class="metric"><div class="label">Memory</div><strong>46%</strong><small>Within baseline</small><div class="bar"><i style="width:46%"></i></div></div>
+   <div class="metric"><div class="label">Disk activity</div><strong>32%</strong><small>Normal activity</small><div class="bar"><i style="width:32%"></i></div></div>
+   <div class="metric"><div class="label">Network</div><strong>12.4<span style="font-size:13px"> MB/s</span></strong><small>Typical range</small><div class="bar"><i style="width:38%"></i></div></div>
+  </div>
+  <div class="card security"><h2>Security & behavioral summary</h2><div class="score">98 <span style="font-size:12px;color:#b9b7ae;font-weight:400">/ 100 baseline alignment</span></div><p class="muted" style="font-size:12px">Current activity mostly matches established patterns.</p><div class="alert"><span style="color:#d6a34a">●</span><div><b>New destination observed</b><div class="muted">First seen today · Review connection</div></div><span class="badge">Review</span></div><div class="alert"><span style="color:#8cae72">●</span><div><b>No critical findings</b><div class="muted">No confirmed threats detected</div></div></div></div>
+  <div class="card process"><h2>Active processes <span class="muted">· 126 running</span></h2><table><thead><tr><th>Process</th><th>CPU</th><th>Memory</th><th>Status</th></tr></thead><tbody><tr><td>chrome.exe</td><td>6.8%</td><td>482 MB</td><td><span class="pill">Typical</span></td></tr><tr><td>Code.exe</td><td>4.2%</td><td>320 MB</td><td><span class="pill">Typical</span></td></tr><tr><td>msedge.exe</td><td>3.1%</td><td>298 MB</td><td><span class="pill">Typical</span></td></tr><tr><td>powershell.exe</td><td>0.6%</td><td>76 MB</td><td><span class="badge">Review</span></td></tr></tbody></table></div>
+  <div class="card network"><h2>Network destinations</h2><div class="event"><div style="flex:1"><b>github.com</b><div class="muted">Code.exe · HTTPS</div></div><b>34%</b></div><div class="event"><div style="flex:1"><b>microsoft.com</b><div class="muted">System services · HTTPS</div></div><b>26%</b></div><div class="event"><div style="flex:1"><b>google.com</b><div class="muted">chrome.exe · HTTPS</div></div><b>18%</b></div><div class="event"><div style="flex:1"><b>New destination</b><div class="muted">unknown-process.exe · TCP</div></div><span class="badge">New</span></div></div>
+  <div class="card activity"><h2>Recent activity</h2><div class="event"><div class="time">2:42 PM</div><div><b>Process started</b><span class="muted">Code.exe</span></div></div><div class="event"><div class="time">2:37 PM</div><div><b>Connection opened</b><span class="muted">github.com</span></div></div><div class="event"><div class="time">2:20 PM</div><div><b>PowerShell executed</b><span class="muted">Parent: Code.exe</span></div></div><div class="event"><div class="time">1:56 PM</div><div><b>Service updated</b><span class="muted">Windows Update</span></div></div></div>
+  <div class="card timeline"><h2>Activity throughout the day <span class="muted">· event volume</span></h2><div class="chart"><i style="height:25%"></i><i style="height:42%"></i><i style="height:34%"></i><i style="height:55%"></i><i style="height:72%"></i><i style="height:50%"></i><i style="height:88%"></i><i style="height:68%"></i><i style="height:60%"></i><i style="height:79%"></i><i style="height:48%"></i><i style="height:62%"></i><i style="height:38%"></i><i style="height:30%"></i></div><div class="muted" style="display:flex;justify-content:space-between;font-size:11px;margin-top:8px"><span>6 AM</span><span>9 AM</span><span>12 PM</span><span>3 PM</span><span>6 PM</span></div></div>
+  <div class="card insights"><h2>Behavioral insights</h2><div class="event"><span style="color:#8cae72">✓</span><div><b>Startup pattern is consistent</b><div class="muted">No unexpected startup entries observed.</div></div></div><div class="event"><span style="color:#d6a34a">!</span><div><b>One unfamiliar network destination</b><div class="muted">First observed at 2:37 PM. Linked process is available for review.</div></div></div><div class="event"><span style="color:#8cae72">✓</span><div><b>Resource usage within baseline</b><div class="muted">CPU and memory are within normal ranges.</div></div></div></div>
+ </section>
+</main></div></body></html>

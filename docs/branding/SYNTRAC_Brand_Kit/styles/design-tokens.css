@@ -1,0 +1,21 @@
+:root {
+  color-scheme: dark;
+  --syn-forest: #2E5D4A;
+  --syn-sage: #7A8F7A;
+  --syn-clay: #C89B7A;
+  --syn-sand: #E8DCC6;
+  --syn-cream: #F5F0E7;
+  --syn-charcoal: #282B28;
+  --syn-slate: #4A5568;
+  --syn-panel: #323631;
+  --syn-panel-raised: #393E38;
+  --syn-border: #55594F;
+  --syn-muted: #B9B7AE;
+  --syn-critical: #C96B5B;
+  --syn-warning: #D6A34A;
+  --syn-info: #6C9EAA;
+  --radius-card: 14px;
+  --radius-control: 9px;
+  --shadow-card: 0 12px 28px rgba(0,0,0,.18);
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+}
