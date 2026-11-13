@@ -185,3 +185,22 @@ separates "Windows ETW is stuck" from "our session is the problem".
 
 Not yet run against the real service: the installed binary is still the old one. The new build needs reinstalling
 (elevated) to get the watchdog; the real ETW restart code path has only been compiled and linted, not exercised.
+
+### Root cause of the silent ETW (found 2026-11-12 22:4x local)
+
+An ORPHANED trace session, `SyntracConsole`, was still running although no console collector existed (an ETW session
+outlives its process when it is not stopped). While it existed, every other session on the machine lost all events:
+the independent probe (one provider per session, generous buffers) captured 0 of 64 / 224 / 47 expected process /
+network / DNS events with 66 / 394 / 47 lost. After `logman stop SyntracConsole -ets` and nothing else, the same probe
+captured 64 / 224 / 47 with none lost, and the installed service, WITHOUT a restart, went from 0 received to ~5 events
+per second. The service's own code and session were never at fault, and restarting its session would not have helped,
+so the restart-on-silence watchdog is a safety net, not the fix for this case.
+
+Not understood: the exact kernel mechanism by which one non-draining session starves the others. The cause is
+established by a single-variable before/after test, not by mechanism.
+
+Open: how the orphan came to exist (a console run that was ended abnormally, probably by the shutdown watchdog or a
+kill), and how to stop it recurring. Proposed: at ETW start, look for other `Syntrac*` sessions; when no other
+syntrac-service process is running, a leftover `SyntracConsole` session is certainly an orphan and can be stopped
+(logged), otherwise only warn. `scripts/dev/etw-probe.ps1` now shows buffers and losses for every session and tests
+each provider on its own.
