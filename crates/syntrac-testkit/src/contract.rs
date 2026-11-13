@@ -3,8 +3,8 @@
 //! Each suite takes a factory so every check starts from an empty repository.
 
 use syntrac_core::{
-    Destination, EventCategory, EventQuery, EventRepository, FlowQueries, MetricsRepository, ProcessInstanceId,
-    ProcessRepository, RepoError, Retention, Timestamp,
+    Destination, EventCategory, EventQuery, EventRepository, FlowQueries, MetricsRepository, ProcessFilter,
+    ProcessInstanceId, ProcessQueries, ProcessRecord, ProcessRepository, RepoError, Retention, Timestamp,
 };
 
 use crate::fixtures::{
@@ -21,6 +21,10 @@ pub fn process_repository_contract<R: ProcessRepository>(make: impl Fn() -> R) {
     exit_records_end_time_and_exit_code(make());
     starting_the_same_instance_twice_keeps_one_record(make());
     a_late_start_never_clears_a_recorded_exit(make());
+    reconcile_closes_processes_that_are_no_longer_running(make());
+    reconcile_leaves_live_new_and_ended_processes_alone(make());
+    reconcile_is_idempotent(make());
+    an_exact_exit_replaces_an_approximate_one_flag(make());
 }
 
 fn start_then_get_returns_the_record<R: ProcessRepository>(mut repo: R) {
@@ -402,4 +406,158 @@ where
     let first = repo.purge_before(cutoff).unwrap();
     let second = repo.purge_before(cutoff).unwrap();
     assert_eq!(first, second);
+}
+
+/// After a restart the snapshot lists what is alive NOW. Anything recorded as running that is not in it
+/// exited while the collector was down; its true exit time is unknown, so it is closed at the snapshot time
+/// and flagged approximate. Without this, "running processes" would grow forever across reboots.
+fn reconcile_closes_processes_that_are_no_longer_running<R: ProcessRepository>(mut repo: R) {
+    let gone = running_process(10, at_secs(5));
+    repo.record_start(gone.clone()).unwrap();
+
+    let closed = repo.reconcile_running(&[], at_secs(100)).unwrap();
+
+    assert_eq!(closed, 1);
+    let stored = repo.get(gone.id).unwrap().unwrap();
+    assert_eq!(stored.ended, Some(at_secs(100)));
+    assert!(stored.ended_approximate, "the exit time is a bound, not a measurement");
+    assert_eq!(repo.resolve(10, at_secs(200)).unwrap(), None, "a closed process no longer owns its PID");
+}
+
+fn reconcile_leaves_live_new_and_ended_processes_alone<R: ProcessRepository>(mut repo: R) {
+    let alive = running_process(10, at_secs(5));
+    let started_after = running_process(11, at_secs(150)); // began after the snapshot
+    let already_ended = running_process(12, at_secs(6));
+    for record in [&alive, &started_after, &already_ended] {
+        repo.record_start((*record).clone()).unwrap();
+    }
+    repo.record_exit(already_ended.id, at_secs(50), Some(0)).unwrap();
+
+    let closed = repo.reconcile_running(&[alive.id], at_secs(100)).unwrap();
+
+    assert_eq!(closed, 0);
+    assert_eq!(repo.get(alive.id).unwrap().unwrap().ended, None);
+    assert_eq!(repo.get(started_after.id).unwrap().unwrap().ended, None);
+    let ended = repo.get(already_ended.id).unwrap().unwrap();
+    assert_eq!((ended.ended, ended.ended_approximate), (Some(at_secs(50)), false), "a real exit is never overwritten");
+}
+
+fn reconcile_is_idempotent<R: ProcessRepository>(mut repo: R) {
+    repo.record_start(running_process(10, at_secs(5))).unwrap();
+    assert_eq!(repo.reconcile_running(&[], at_secs(100)).unwrap(), 1);
+    assert_eq!(repo.reconcile_running(&[], at_secs(200)).unwrap(), 0);
+}
+
+fn an_exact_exit_replaces_an_approximate_one_flag<R: ProcessRepository>(mut repo: R) {
+    let record = running_process(10, at_secs(5));
+    repo.record_start(record.clone()).unwrap();
+    repo.reconcile_running(&[], at_secs(100)).unwrap();
+    repo.record_exit(record.id, at_secs(90), Some(1)).unwrap(); // a real exit report arrives after all
+
+    let stored = repo.get(record.id).unwrap().unwrap();
+    assert_eq!((stored.ended, stored.ended_approximate), (Some(at_secs(90)), false));
+}
+
+pub fn process_queries_contract<R: ProcessRepository + ProcessQueries>(make: impl Fn() -> R) {
+    listing_returns_newest_first_and_applies_the_limit(make());
+    running_only_excludes_ended_processes(make());
+    name_search_is_case_insensitive_and_matches_any_part_of_the_path(make());
+    an_empty_store_lists_nothing(make());
+}
+
+fn fill_processes<R: ProcessRepository>(repo: &mut R) -> [ProcessRecord; 3] {
+    let mut chrome = running_process(1, at_secs(10));
+    chrome.image_path = r"C:\Program Files\Google\Chrome\chrome.exe".into();
+    let mut code = running_process(2, at_secs(20));
+    code.image_path = r"C:\Users\me\AppData\Local\Programs\Microsoft VS Code\Code.exe".into();
+    let mut gone = running_process(3, at_secs(30));
+    gone.image_path = r"C:\tools\Gone.exe".into();
+    for record in [&chrome, &code, &gone] {
+        repo.record_start((*record).clone()).unwrap();
+    }
+    repo.record_exit(gone.id, at_secs(40), Some(0)).unwrap();
+    [chrome, code, gone]
+}
+
+fn listing_returns_newest_first_and_applies_the_limit<R: ProcessRepository + ProcessQueries>(mut repo: R) {
+    fill_processes(&mut repo);
+    let all = repo.list_processes(&ProcessFilter { limit: 10, ..ProcessFilter::default() }).unwrap();
+    let pids: Vec<u32> = all.iter().map(|p| p.pid).collect();
+    assert_eq!(pids, vec![3, 2, 1]);
+
+    let limited = repo.list_processes(&ProcessFilter { limit: 2, ..ProcessFilter::default() }).unwrap();
+    assert_eq!(limited.len(), 2);
+}
+
+fn running_only_excludes_ended_processes<R: ProcessRepository + ProcessQueries>(mut repo: R) {
+    fill_processes(&mut repo);
+    let running =
+        repo.list_processes(&ProcessFilter { running_only: true, limit: 10, ..ProcessFilter::default() }).unwrap();
+    let pids: Vec<u32> = running.iter().map(|p| p.pid).collect();
+    assert_eq!(pids, vec![2, 1]);
+}
+
+fn name_search_is_case_insensitive_and_matches_any_part_of_the_path<R: ProcessRepository + ProcessQueries>(
+    mut repo: R,
+) {
+    fill_processes(&mut repo);
+    let find = |text: &str| {
+        repo.list_processes(&ProcessFilter { name_contains: Some(text.into()), limit: 10, ..ProcessFilter::default() })
+            .unwrap()
+            .iter()
+            .map(|p| p.pid)
+            .collect::<Vec<u32>>()
+    };
+    assert_eq!(find("CHROME"), vec![1]);
+    assert_eq!(find("vs code"), vec![2]);
+    assert_eq!(find("tools"), vec![3]);
+    assert!(find("nothing-matches-this").is_empty());
+}
+
+fn an_empty_store_lists_nothing<R: ProcessRepository + ProcessQueries>(repo: R) {
+    assert!(repo.list_processes(&ProcessFilter { limit: 10, ..ProcessFilter::default() }).unwrap().is_empty());
+}
+
+pub fn recent_flows_contract<R: EventRepository + ProcessRepository + FlowQueries>(make: impl Fn() -> R) {
+    flows_are_listed_newest_first_within_the_range_with_the_process_name(make());
+    the_limit_keeps_the_newest_flows(make());
+}
+
+fn flows_are_listed_newest_first_within_the_range_with_the_process_name<
+    R: EventRepository + ProcessRepository + FlowQueries,
+>(
+    mut repo: R,
+) {
+    let mut f = EventFactory::default();
+    let mut browser = running_process(1, at_secs(1));
+    browser.image_path = r"C:\apps\browser.exe".into();
+    repo.record_start(browser.clone()).unwrap();
+    repo.append(&[
+        flow_event(&mut f, 10, Some(browser.id), 1, BEACON_TARGET, 100, 1000),
+        flow_event(&mut f, 20, Some(browser.id), 1, BEACON_TARGET, 5, 5),
+        flow_event(&mut f, 30, None, 99, BEACON_TARGET, 1, 1),
+    ])
+    .unwrap();
+
+    let rows = repo.recent_flows(at_secs(15), at_secs(100), 10).unwrap();
+
+    let starts: Vec<_> = rows.iter().map(|r| r.window_start).collect();
+    assert_eq!(starts, vec![at_secs(30), at_secs(20)], "newest first, and the flow at t=10 is out of range");
+    assert_eq!(rows[0].image_path, None, "unattributed flows have no process name");
+    assert_eq!(rows[0].pid, 99);
+    assert_eq!(rows[1].image_path.as_deref(), Some(r"C:\apps\browser.exe"));
+    assert_eq!((rows[1].bytes_sent, rows[1].bytes_received), (5, 5));
+}
+
+fn the_limit_keeps_the_newest_flows<R: EventRepository + ProcessRepository + FlowQueries>(mut repo: R) {
+    let mut f = EventFactory::default();
+    repo.append(&[
+        flow_event(&mut f, 10, None, 1, BEACON_TARGET, 1, 1),
+        flow_event(&mut f, 20, None, 1, BEACON_TARGET, 1, 1),
+        flow_event(&mut f, 30, None, 1, BEACON_TARGET, 1, 1),
+    ])
+    .unwrap();
+    let rows = repo.recent_flows(at_secs(0), at_secs(100), 2).unwrap();
+    let starts: Vec<_> = rows.iter().map(|r| r.window_start).collect();
+    assert_eq!(starts, vec![at_secs(30), at_secs(20)]);
 }

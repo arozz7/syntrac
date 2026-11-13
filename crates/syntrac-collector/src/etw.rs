@@ -26,7 +26,6 @@ use crate::etw_stats::EtwStats;
 use crate::paths::NtPathConverter;
 use crate::system::SystemClock;
 
-const SESSION_NAME: &str = "SyntracCollector";
 const KERNEL_PROCESS: &str = "22fb2cd6-0e7b-422b-a0c7-2fad1fd0e716";
 const KERNEL_NETWORK: &str = "7dd42a49-5329-4832-8dfd-43d979153a88";
 const DNS_CLIENT: &str = "1c95126e-7eea-49a9-a3fe-a378b03ddb4d";
@@ -72,14 +71,18 @@ pub struct EtwSource {
     receiver: Receiver<EventEnvelope>,
     stats: Arc<EtwStats>,
     trace: Option<UserTrace>,
+    session_name: String,
 }
 
 impl EtwSource {
     /// Starts the trace. Needs an elevated process. A session left behind by a crashed run is stopped first.
-    pub fn start(paths: NtPathConverter) -> Result<Self, SourceError> {
+    ///
+    /// `session_name` must differ between the console and the installed service: starting clears any session
+    /// of the SAME name, so sharing one would let a console run kill the service's live trace.
+    pub fn start(paths: NtPathConverter, session_name: &str) -> Result<Self, SourceError> {
         // Fails harmlessly when no stale session exists.
-        if stop_trace_by_name(SESSION_NAME).is_ok() {
-            warn!(session = SESSION_NAME, "Stopped a trace session left over from a previous run");
+        if stop_trace_by_name(session_name).is_ok() {
+            warn!(session = session_name, "Stopped a trace session left over from a previous run");
         }
 
         let (sender, receiver) = sync_channel(CHANNEL_CAPACITY);
@@ -111,7 +114,7 @@ impl EtwSource {
             .build();
 
         let (trace, handle) = UserTrace::new()
-            .named(SESSION_NAME.to_owned())
+            .named(session_name.to_owned())
             .enable(process_provider)
             .enable(network_provider)
             .enable(dns_provider)
@@ -125,8 +128,8 @@ impl EtwSource {
             info!(?status, "ETW processing thread ended");
         });
 
-        info!(session = SESSION_NAME, "ETW trace started");
-        Ok(Self { receiver, stats, trace: Some(trace) })
+        info!(session = session_name, "ETW trace started");
+        Ok(Self { receiver, stats, trace: Some(trace), session_name: session_name.to_owned() })
     }
 
     pub fn stats(&self) -> Arc<EtwStats> {
@@ -143,11 +146,12 @@ impl EtwSource {
     fn stop_trace(&mut self) {
         let Some(trace) = self.trace.take() else { return };
         let began = Instant::now();
-        info!(session = SESSION_NAME, "Stopping the ETW trace session");
+        info!(session = self.session_name.as_str(), "Stopping the ETW trace session");
 
         let (done, finished) = mpsc::channel();
+        let session_name = self.session_name.clone();
         std::thread::spawn(move || {
-            let _ = done.send(stop_trace_by_name(SESSION_NAME));
+            let _ = done.send(stop_trace_by_name(&session_name));
         });
         match finished.recv_timeout(STOP_TIMEOUT) {
             Ok(Ok(())) => info!(elapsed_ms = began.elapsed().as_millis() as u64, "ETW trace session stopped"),

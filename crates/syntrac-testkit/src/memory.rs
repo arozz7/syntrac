@@ -5,8 +5,8 @@ use std::net::IpAddr;
 
 use syntrac_core::{
     CpuBreakdown, CpuContribution, Destination, EventEnvelope, EventPayload, EventQuery, EventRepository, FlowQueries,
-    MetricsRepository, MetricsSample, ProcessInstanceId, ProcessRecord, ProcessRepository, PurgeCounts, RepoError,
-    Retention, SystemPoint, Timestamp,
+    FlowRow, MetricsRepository, MetricsSample, ProcessFilter, ProcessInstanceId, ProcessQueries, ProcessRecord,
+    ProcessRepository, PurgeCounts, RepoError, Retention, SystemPoint, Timestamp,
 };
 
 #[derive(Debug, Default)]
@@ -20,7 +20,10 @@ impl ProcessRepository for InMemoryRepository {
     fn record_start(&mut self, mut record: ProcessRecord) -> Result<(), RepoError> {
         if let Some(existing) = self.processes.get(&record.id) {
             // Never clear a recorded exit: a late startup snapshot must not resurrect the process.
-            record.ended = record.ended.or(existing.ended);
+            if record.ended.is_none() {
+                record.ended = existing.ended;
+                record.ended_approximate = existing.ended_approximate;
+            }
             record.exit_code = record.exit_code.or(existing.exit_code);
             record.parent_id = record.parent_id.or(existing.parent_id);
             record.command_line = record.command_line.or_else(|| existing.command_line.clone());
@@ -37,8 +40,21 @@ impl ProcessRepository for InMemoryRepository {
     ) -> Result<(), RepoError> {
         let record = self.processes.get_mut(&id).ok_or(RepoError::NotFound)?;
         record.ended = Some(ended);
+        record.ended_approximate = false;
         record.exit_code = exit_code;
         Ok(())
+    }
+
+    fn reconcile_running(&mut self, alive: &[ProcessInstanceId], observed_at: Timestamp) -> Result<u64, RepoError> {
+        let mut closed = 0;
+        for record in self.processes.values_mut() {
+            if record.ended.is_none() && record.started <= observed_at && !alive.contains(&record.id) {
+                record.ended = Some(observed_at);
+                record.ended_approximate = true;
+                closed += 1;
+            }
+        }
+        Ok(closed)
     }
 
     fn get(&self, id: ProcessInstanceId) -> Result<Option<ProcessRecord>, RepoError> {
@@ -53,6 +69,22 @@ impl ProcessRepository for InMemoryRepository {
             .max_by_key(|p| p.started)
             .map(|p| p.id);
         Ok(owner)
+    }
+}
+
+impl ProcessQueries for InMemoryRepository {
+    fn list_processes(&self, filter: &ProcessFilter) -> Result<Vec<ProcessRecord>, RepoError> {
+        let needle = filter.name_contains.as_deref().filter(|t| !t.is_empty()).map(str::to_lowercase);
+        let mut found: Vec<ProcessRecord> = self
+            .processes
+            .values()
+            .filter(|p| !filter.running_only || p.ended.is_none())
+            .filter(|p| needle.as_ref().is_none_or(|n| p.image_path.to_lowercase().contains(n.as_str())))
+            .cloned()
+            .collect();
+        found.sort_by(|a, b| b.started.cmp(&a.started).then(a.pid.cmp(&b.pid)));
+        found.truncate(filter.limit);
+        Ok(found)
     }
 }
 
@@ -205,6 +237,54 @@ impl FlowQueries for InMemoryRepository {
         destinations.sort_by_key(|d| std::cmp::Reverse(d.bytes_sent + d.bytes_received));
         destinations.truncate(limit);
         Ok(destinations)
+    }
+    fn recent_flows(&self, from: Timestamp, to: Timestamp, limit: usize) -> Result<Vec<FlowRow>, RepoError> {
+        let mut rows: Vec<FlowRow> = self
+            .events
+            .iter()
+            .filter_map(|event| {
+                let EventPayload::NetworkFlow {
+                    pid,
+                    protocol,
+                    remote_addr,
+                    remote_port,
+                    bytes_sent,
+                    bytes_received,
+                    opened,
+                    closed,
+                    failed,
+                    window_start,
+                    window_end,
+                } = &event.payload
+                else {
+                    return None;
+                };
+                if *window_start < from || *window_start > to {
+                    return None;
+                }
+                Some(FlowRow {
+                    window_start: *window_start,
+                    window_end: *window_end,
+                    process: event.process_instance_id,
+                    pid: *pid,
+                    image_path: event
+                        .process_instance_id
+                        .and_then(|id| self.processes.get(&id))
+                        .map(|process| process.image_path.clone()),
+                    protocol: *protocol,
+                    remote_addr: *remote_addr,
+                    remote_port: *remote_port,
+                    bytes_sent: *bytes_sent,
+                    bytes_received: *bytes_received,
+                    opened: *opened,
+                    closed: *closed,
+                    failed: *failed,
+                })
+            })
+            .collect();
+        rows.sort_by_key(|row| std::cmp::Reverse(row.window_start));
+        rows.truncate(limit);
+        Ok(rows)
     }
 }
 

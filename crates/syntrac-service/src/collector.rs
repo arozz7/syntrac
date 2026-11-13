@@ -156,7 +156,13 @@ where
         }
 
         match self.pipeline.ingest_events(batch, &mut self.repo) {
-            Ok(stored) => report.events_stored += stored,
+            Ok(stored) => {
+                report.events_stored += stored;
+                let closed = self.pipeline.last_closed_stale();
+                if closed > 0 {
+                    info!(closed, "Closed processes that exited while the collector was not running");
+                }
+            }
             Err(error) => {
                 error!(%error, "Could not store telemetry");
                 report.storage_errors += 1;

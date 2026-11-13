@@ -18,6 +18,8 @@ pub enum ConfigError {
 pub struct ServiceConfig {
     /// Database file. When absent the host chooses a default location.
     pub database_path: Option<PathBuf>,
+    /// Directory for rolling log files (service mode). Must be an absolute path there.
+    pub log_dir: Option<PathBuf>,
     /// Network flows are aggregated into windows of this length.
     pub flow_window_secs: u64,
     /// A flow window is stored this many seconds after it ends, so late-arriving events still join it.
@@ -37,6 +39,7 @@ impl Default for ServiceConfig {
     fn default() -> Self {
         Self {
             database_path: None,
+            log_dir: None,
             flow_window_secs: 10,
             flow_flush_grace_secs: 3,
             drain_interval_ms: 500,

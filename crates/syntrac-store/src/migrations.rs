@@ -75,6 +75,10 @@ pub const MIGRATIONS: &[&str] = &[
     CREATE INDEX idx_process_metrics_ts ON process_metrics (ts);
     CREATE INDEX idx_process_metrics_instance_ts ON process_metrics (instance, ts);
     ",
+    // 3: a process closed by a startup reconciliation has only an upper bound on its exit time
+    "
+    ALTER TABLE processes ADD COLUMN ended_approximate INTEGER NOT NULL DEFAULT 0;
+    ",
 ];
 
 #[cfg(test)]

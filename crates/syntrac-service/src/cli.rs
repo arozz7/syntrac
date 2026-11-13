@@ -24,6 +24,8 @@ pub struct CliArgs {
     pub no_etw: bool,
     /// Also write the run summary to this file, directly (not through a pipe), so it survives a stalled exit.
     pub summary_file: Option<PathBuf>,
+    /// Run as a Windows service. Only the Service Control Manager passes this; it reads the installed config.
+    pub service: bool,
     pub help: bool,
 }
 
@@ -34,10 +36,11 @@ USAGE:
 
 OPTIONS:
     --config <file>    Configuration file (default: config/service.toml if present)
-    --db <file>        Database file (default: %ProgramData%\\Syntrac\\syntrac.db)
+    --db <file>        Database file (default: data/syntrac-console.db)
     --seconds <n>      Stop after n seconds (default: run until Ctrl+C)
     --no-etw           Do not start the ETW trace; no administrator rights needed
     --summary-file <f> Also write the run summary to this file
+    --service          Run as a Windows service (used by the Service Control Manager only)
     -h, --help         Show this help
 
 ETW needs an elevated (Administrator) terminal.";
@@ -60,6 +63,7 @@ impl CliArgs {
                     );
                 }
                 "--no-etw" => parsed.no_etw = true,
+                "--service" => parsed.service = true,
                 "--summary-file" => parsed.summary_file = Some(PathBuf::from(value(&mut args, &arg)?)),
                 "-h" | "--help" => parsed.help = true,
                 _ => return Err(CliError::UnknownOption(arg)),

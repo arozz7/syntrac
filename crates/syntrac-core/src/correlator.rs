@@ -53,6 +53,7 @@ fn register<R: ProcessRepository + ?Sized>(
         command_line: command_line.map(str::to_owned),
         started: created,
         ended: None,
+        ended_approximate: false,
         exit_code: None,
     })?;
     Ok(id)

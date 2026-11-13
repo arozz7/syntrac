@@ -5,6 +5,7 @@ use std::time::Duration;
 use crate::correlator::correlate;
 use crate::event::{EventEnvelope, EventPayload};
 use crate::flow::FlowAggregator;
+use crate::identity::ProcessInstanceId;
 use crate::metrics::MetricsSample;
 use crate::ports::{
     EventRepository, MetricsRepository, MetricsSource, ProcessRepository, RepoError, SourceError, TelemetrySource,
@@ -23,11 +24,12 @@ pub enum IngestError {
 #[derive(Debug)]
 pub struct Pipeline {
     flows: FlowAggregator,
+    last_closed_stale: u64,
 }
 
 impl Pipeline {
     pub fn new(flow_window: Duration) -> Self {
-        Self { flows: FlowAggregator::new(flow_window) }
+        Self { flows: FlowAggregator::new(flow_window), last_closed_stale: 0 }
     }
 
     /// Drains `source`, correlates, and stores. Raw network activity is folded into flows, which are
@@ -49,6 +51,24 @@ impl Pipeline {
         R: ProcessRepository + EventRepository + ?Sized,
     {
         events.sort_by_key(|event| event.ts);
+        self.last_closed_stale = 0;
+
+        // A batch containing ProcessObserved events is a COMPLETE startup snapshot of running processes (only
+        // the snapshot source emits them, all in one batch). Remember who is alive and when it was taken.
+        let snapshot_alive: Vec<ProcessInstanceId> = events
+            .iter()
+            .filter_map(|event| match &event.payload {
+                EventPayload::ProcessObserved { pid, created, .. } => {
+                    Some(ProcessInstanceId::from_pid_and_creation(*pid, *created))
+                }
+                _ => None,
+            })
+            .collect();
+        let snapshot_began = events
+            .iter()
+            .filter(|event| matches!(event.payload, EventPayload::ProcessObserved { .. }))
+            .map(|event| event.ts)
+            .min();
 
         let mut to_store = Vec::with_capacity(events.len());
         for event in events {
@@ -61,7 +81,17 @@ impl Pipeline {
         }
 
         repo.append(&to_store)?;
+
+        // Anything recorded as running that the snapshot did not see exited while we were down.
+        if let Some(began) = snapshot_began {
+            self.last_closed_stale = repo.reconcile_running(&snapshot_alive, began)?;
+        }
         Ok(to_store.len())
+    }
+
+    /// How many stale "running" processes the most recent startup snapshot closed (0 when none, or no snapshot).
+    pub fn last_closed_stale(&self) -> u64 {
+        self.last_closed_stale
     }
 
     /// Stores every flow window that has ended by `now`.

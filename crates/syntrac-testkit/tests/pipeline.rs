@@ -183,6 +183,31 @@ fn a_process_that_exits_after_the_snapshot_began_is_closed_even_if_its_exit_is_d
 }
 
 #[test]
+fn after_a_restart_processes_that_exited_while_the_collector_was_down_are_closed_not_left_running_forever() {
+    // Previous session recorded two running processes; one exited while we were down.
+    let mut repo = InMemoryRepository::default();
+    let survivor = syntrac_testkit::fixtures::running_process(10, at_secs(5));
+    let vanished = syntrac_testkit::fixtures::running_process(11, at_secs(6));
+    repo.record_start(survivor.clone()).unwrap();
+    repo.record_start(vanished.clone()).unwrap();
+
+    // New session: the snapshot (stamped t=100) sees only the survivor; another process starts later.
+    let mut f = EventFactory::default();
+    let mut pipeline = Pipeline::new(WINDOW);
+    let batch = vec![
+        f.make(at_secs(100), process_observed(10, 4, 5, r"C:\test\proc10.exe")),
+        f.make(at_secs(120), process_started(12, 4, 120, r"C:\new.exe")),
+    ];
+    pipeline.ingest(&mut MockTelemetrySource::new(batch), &mut repo).unwrap();
+
+    assert_eq!(repo.get(survivor.id).unwrap().unwrap().ended, None);
+    let closed = repo.get(vanished.id).unwrap().unwrap();
+    assert_eq!((closed.ended, closed.ended_approximate), (Some(at_secs(100)), true));
+    let new = ProcessInstanceId::from_pid_and_creation(12, at_secs(120));
+    assert_eq!(repo.get(new).unwrap().unwrap().ended, None, "started after the snapshot: untouched");
+}
+
+#[test]
 fn events_delivered_out_of_order_are_processed_by_timestamp() {
     let mut f = EventFactory::default();
     let connect = f.make(at_secs(5), net_activity(50, NetAction::Connect, BEACON_TARGET, 0));

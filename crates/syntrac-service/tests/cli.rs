@@ -26,6 +26,12 @@ fn every_option_is_read() {
 }
 
 #[test]
+fn the_service_flag_is_what_the_service_control_manager_passes() {
+    assert!(parse(&["--service"]).unwrap().service);
+    assert!(!parse(&[]).unwrap().service);
+}
+
+#[test]
 fn help_is_recognised() {
     assert!(parse(&["--help"]).unwrap().help);
     assert!(parse(&["-h"]).unwrap().help);

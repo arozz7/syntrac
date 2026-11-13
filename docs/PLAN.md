@@ -1,4 +1,4 @@
-﻿# SYNTRAC: Master Implementation Plan
+# SYNTRAC: Master Implementation Plan
 
 Status: **Approved** (v1.1, 2026-11-12). Phase 0 complete. Phase 1 task plan awaiting approval.
 
@@ -117,7 +117,7 @@ Each phase ends with an `aiChangeLog/phase-XX.md` entry, updated docs and README
 ### Phase 1: Visibility
 **Split into 1a (collection pipeline, console mode) and 1b (service host, named pipe, UI).**
 - 1a: **complete and verified live** (141 Rust tests, two elevated ETW runs, collector overhead 0.03%). See `aiChangeLog/phase-01a.md`.
-- 1b: plan proposed, awaiting approval.
+- 1b: approved (UI reads the database directly; service runs as LocalSystem). Checkpoint 1 built (queries, restart reconciliation, shared host, Windows service, deploy scripts, smoke test); awaiting the owner's smoke run. Then the named pipe, then the UI. See `aiChangeLog/phase-01b.md`.
 Service install and run, ETW process and network sources, metrics sampler, startup process snapshot, parent/child tracking, SQLite schema and migrations, retention job, named-pipe protocol. UI: dashboard, process list, connections list.
 Done when the UI can close and reopen with no data loss, and a connection links to the correct process even after PID reuse.
 Real-world acceptance check (owner's workstation, 2026-11-12): the owner sees sustained ~30% CPU with no obvious cause, and the dashboard's top-consumers view over history must show which processes contribute. Collector overhead is measured with the service running, both idle and under load, against the 2% budget.

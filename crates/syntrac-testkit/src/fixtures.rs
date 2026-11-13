@@ -106,6 +106,7 @@ pub fn running_process(pid: u32, start: Timestamp) -> ProcessRecord {
         command_line: None,
         started: start,
         ended: None,
+        ended_approximate: false,
         exit_code: None,
     }
 }

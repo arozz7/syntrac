@@ -1,4 +1,4 @@
-﻿# SYNTRAC
+# SYNTRAC
 
 **System intelligence and activity tracking** for Windows: a personal workstation intelligence platform that answers
 
@@ -37,7 +37,12 @@ cd app; pnpm tauri dev
 
 # Run the collector in an elevated window (UAC prompt); summary goes to aiChangeLog/console-run-*.txt
 powershell -ExecutionPolicy Bypass -File scripts/dev/run-console.ps1 -Seconds 60
-# ...then review the run's database (read-only):
+# Install as a Windows service and check it end to end as an ordinary user (one UAC prompt)
+powershell -ExecutionPolicy Bypass -File scripts/deploy/smoke-test-service.ps1
+# Uninstall (keeps your data unless you pass -RemoveData)
+powershell -ExecutionPolicy Bypass -File scripts/deploy/uninstall-service.ps1   # run elevated
+
+# ...then review a console run's database (read-only):
 python -I scripts/dev/inspect-run.py data/syntrac-<stamp>.db
 
 # Collector without ETW (no elevation): startup snapshot, metrics, storage

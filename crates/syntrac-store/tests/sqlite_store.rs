@@ -3,8 +3,8 @@ use std::time::Duration;
 use syntrac_core::{EventQuery, EventRepository, MetricsRepository, Pipeline, ProcessRepository};
 use syntrac_store::SqliteStore;
 use syntrac_testkit::contract::{
-    event_repository_contract, flow_queries_contract, metrics_repository_contract, process_repository_contract,
-    retention_contract,
+    event_repository_contract, flow_queries_contract, metrics_repository_contract, process_queries_contract,
+    process_repository_contract, recent_flows_contract, retention_contract,
 };
 use syntrac_testkit::fixtures::{at_secs, beacon_scenario, metrics_sample, process_metric, POWERSHELL_PID};
 use syntrac_testkit::MockTelemetrySource;
@@ -44,6 +44,16 @@ fn sqlite_store_satisfies_the_retention_contract() {
 #[test]
 fn sqlite_store_satisfies_the_flow_queries_contract() {
     flow_queries_contract(in_memory_store);
+}
+
+#[test]
+fn sqlite_store_satisfies_the_process_queries_contract() {
+    process_queries_contract(in_memory_store);
+}
+
+#[test]
+fn sqlite_store_satisfies_the_recent_flows_contract() {
+    recent_flows_contract(in_memory_store);
 }
 
 #[test]

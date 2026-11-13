@@ -1,4 +1,4 @@
-﻿# SYNTRAC Database Schema
+# SYNTRAC Database Schema
 
 SQLite in WAL mode. The service is the only writer; the UI opens the file read-only.
 Migrations are an ordered, append-only list in `crates/syntrac-store/src/migrations.rs`; the applied count is kept in
@@ -76,6 +76,11 @@ Indexes: `(ts)`, `(instance, ts)`.
 the heaviest processes, the long tail, and `unaccounted` = system CPU minus everything measured. A gap is expected:
 interrupt/driver time belongs to no process, and unelevated runs cannot read many system processes.
 
+## Version 3
+
+`processes.ended_approximate` (INTEGER, default 0): 1 when `ended` is only an upper bound. Set when a startup snapshot
+finds a process recorded as running that is no longer alive (it exited while the collector was down); closed at the
+snapshot time. A later real exit report replaces the bound and clears the flag.
 ## Retention
 
 `Retention::purge_before(cutoff)` removes events, flows, metrics older than the cutoff, and ended processes that ended

@@ -25,6 +25,25 @@ pub struct Destination {
     pub process_count: u32,
 }
 
+/// One stored flow, as the UI lists it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FlowRow {
+    pub window_start: Timestamp,
+    pub window_end: Timestamp,
+    pub process: Option<ProcessInstanceId>,
+    pub pid: u32,
+    /// Image path of the owning process, when it is known.
+    pub image_path: Option<String>,
+    pub protocol: NetProtocol,
+    pub remote_addr: IpAddr,
+    pub remote_port: u16,
+    pub bytes_sent: u64,
+    pub bytes_received: u64,
+    pub opened: u32,
+    pub closed: u32,
+    pub failed: u32,
+}
+
 /// Who a flow belongs to. Unattributed activity falls back to the PID the source reported.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Owner {

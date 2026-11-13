@@ -1,4 +1,4 @@
-﻿# Builds the collector and runs it in console mode in an ELEVATED window (a UAC prompt will appear).
+# Builds the collector and runs it in console mode in an ELEVATED window (a UAC prompt will appear).
 # Each run writes its own files, named with the same timestamp, and nothing is ever deleted:
 #   aiChangeLog/console-run-<stamp>.txt   the run summary (includes the startup snapshot's skipped count)
 #   data/syntrac-<stamp>.db               the database (git-ignored)
@@ -11,6 +11,7 @@ param(
 $root = Resolve-Path (Join-Path $PSScriptRoot '../..')
 Set-Location $root
 
+. (Join-Path $PSScriptRoot 'use-cargo.ps1')
 cargo build -p syntrac-service
 if ($LASTEXITCODE -ne 0) { Write-Host 'Build failed' -ForegroundColor Red; exit 1 }
 

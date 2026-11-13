@@ -7,8 +7,8 @@ use std::net::IpAddr;
 
 use rusqlite::{params, params_from_iter, Row, Transaction};
 use syntrac_core::{
-    Destination, EventEnvelope, EventPayload, EventQuery, EventRepository, FlowQueries, NetProtocol, RepoError,
-    Timestamp,
+    Destination, EventEnvelope, EventPayload, EventQuery, EventRepository, FlowQueries, FlowRow, NetProtocol,
+    RepoError, Timestamp,
 };
 use uuid::Uuid;
 
@@ -193,5 +193,44 @@ impl FlowQueries for SqliteStore {
             });
         }
         Ok(destinations)
+    }
+    fn recent_flows(&self, from: Timestamp, to: Timestamp, limit: usize) -> Result<Vec<FlowRow>, RepoError> {
+        let mut statement = self
+            .conn
+            .prepare(
+                "SELECT f.window_start, f.window_end, f.process_instance_id, f.pid, p.image_path, f.protocol,
+                        f.remote_addr, f.remote_port, f.bytes_sent, f.bytes_received, f.opened, f.closed, f.failed
+                 FROM flows f LEFT JOIN processes p ON p.id = f.process_instance_id
+                 WHERE f.window_start >= ?1 AND f.window_start <= ?2
+                 ORDER BY f.window_start DESC, f.rowid DESC
+                 LIMIT ?3",
+            )
+            .map_err(backend)?;
+        let mut rows = statement
+            .query(params![from.as_micros(), to.as_micros(), i64::try_from(limit).unwrap_or(i64::MAX)])
+            .map_err(backend)?;
+
+        let mut flows = Vec::new();
+        while let Some(row) = rows.next().map_err(backend)? {
+            let owner: Option<String> = row.get(2).map_err(backend)?;
+            let protocol: String = row.get(5).map_err(backend)?;
+            let addr: String = row.get(6).map_err(backend)?;
+            flows.push(FlowRow {
+                window_start: Timestamp::from_micros(row.get(0).map_err(backend)?),
+                window_end: Timestamp::from_micros(row.get(1).map_err(backend)?),
+                process: owner.as_deref().map(instance_from_text).transpose()?,
+                pid: row.get(3).map_err(backend)?,
+                image_path: row.get(4).map_err(backend)?,
+                protocol: if protocol == "udp" { NetProtocol::Udp } else { NetProtocol::Tcp },
+                remote_addr: addr.parse::<IpAddr>().map_err(backend)?,
+                remote_port: row.get(7).map_err(backend)?,
+                bytes_sent: to_u64(row.get(8).map_err(backend)?),
+                bytes_received: to_u64(row.get(9).map_err(backend)?),
+                opened: row.get(10).map_err(backend)?,
+                closed: row.get(11).map_err(backend)?,
+                failed: row.get(12).map_err(backend)?,
+            });
+        }
+        Ok(flows)
     }
 }

@@ -11,6 +11,7 @@ $ErrorActionPreference = 'Continue'
 $root = Resolve-Path (Join-Path $PSScriptRoot '../..')
 Set-Location $root
 
+. (Join-Path $PSScriptRoot 'use-cargo.ps1')
 function Invoke-Step {
     param([string]$Name, [scriptblock]$Command)
     Write-Host ""
@@ -38,6 +39,8 @@ Invoke-Step 'rust: format check' { cargo fmt --all -- --check }
 Invoke-Step 'rust: clippy (warnings are errors)' { cargo clippy --workspace --all-targets -- -D warnings }
 Invoke-Step 'rust: build' { cargo build --workspace }
 Invoke-Step 'rust: test' { cargo test --workspace }
+
+Invoke-Step 'deploy scripts: config helper self-test' { & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot '../deploy/config-helpers.tests.ps1') }
 
 Invoke-Step 'file size check' { & (Join-Path $PSScriptRoot 'check-file-size.ps1') }
 

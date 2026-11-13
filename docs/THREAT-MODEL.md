@@ -30,6 +30,9 @@ lines, network destinations, activity history) and runs a privileged component, 
 | Prompt injection via a crafted process name or domain | Telemetry passed as data; LLM limited to read-only tools; no tool can modify config or the DB |
 | Blind spots: processes the collector cannot open (protected or other-user) get no identity, and CPU used by interrupts/drivers belongs to no process | Skipped processes are counted and logged; the CPU breakdown reports "unaccounted" explicitly; the service runs elevated to shrink the gap |
 | Restricted database ACL breaks read-only readers (SQLite must create the WAL `-shm` file) | Phase 1b installer sets the ACL deliberately and tests the unelevated UI reading it; until then the folder inherits normal ProgramData permissions |
+| The SYSTEM service runs a user-writable binary or reads a user-writable config (privilege escalation) | Binary and config live under Program Files (administrators only); the data folder is the only place the user can write. The smoke test proves the user CANNOT write to either folder |
+| Any program running as the installing user can read or modify the database (it has Modify on `data\`, which SQLite needs for the WAL `-shm` file) | Accepted for a personal tool (owner decision: the UI reads the database directly). Hardening path: route all reads through the service over the named pipe |
+| A stalled service stop looks like a crash and triggers an immediate restart loop | The stop watchdog reports the service Stopped (timeout code) before ending the process; failure actions restart after 5 s then 30 s only |
 | Event flood exhausts disk or CPU | Provider filtering, batching, retention, measured CPU budget (ETW spike) |
 | Supply-chain compromise of dependencies | Lockfiles committed (`Cargo.lock`, `pnpm-lock.yaml`), `--frozen-lockfile`, minimal dependency set |
 | False positives erode trust | Tiered severities, explanation per alert, allowlists |

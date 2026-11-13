@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::event::{EventCategory, EventEnvelope};
-use crate::flow::Destination;
+use crate::flow::{Destination, FlowRow};
 use crate::identity::ProcessInstanceId;
 use crate::metrics::{CpuBreakdown, MetricsSample, PurgeCounts, SystemPoint};
 use crate::time::Timestamp;
@@ -38,6 +38,9 @@ pub struct ProcessRecord {
     pub command_line: Option<String>,
     pub started: Timestamp,
     pub ended: Option<Timestamp>,
+    /// True when `ended` is a bound rather than a measurement: the process exited while the collector was
+    /// down, and was closed at the next startup snapshot.
+    pub ended_approximate: bool,
     pub exit_code: Option<u32>,
 }
 
@@ -64,8 +67,29 @@ pub trait ProcessRepository {
 
     fn get(&self, id: ProcessInstanceId) -> Result<Option<ProcessRecord>, RepoError>;
 
+    /// Called with the full list of processes alive at `observed_at` (a startup snapshot). Every process
+    /// recorded as running that started at or before `observed_at` and is NOT in `alive` exited while the
+    /// collector was down: it is closed at `observed_at` and flagged approximate. Returns how many were closed.
+    /// Processes already ended, or started later, are untouched.
+    fn reconcile_running(&mut self, alive: &[ProcessInstanceId], observed_at: Timestamp) -> Result<u64, RepoError>;
+
     /// Which instance owned `pid` at time `at`? This is the PID-reuse safeguard.
     fn resolve(&self, pid: u32, at: Timestamp) -> Result<Option<ProcessInstanceId>, RepoError>;
+}
+
+/// Which processes to list. Ordered newest start first.
+#[derive(Debug, Clone, Default)]
+pub struct ProcessFilter {
+    /// Only processes that have not ended.
+    pub running_only: bool,
+    /// Case-insensitive match against any part of the image path.
+    pub name_contains: Option<String>,
+    pub limit: usize,
+}
+
+/// Read-side listing of processes for the UI.
+pub trait ProcessQueries {
+    fn list_processes(&self, filter: &ProcessFilter) -> Result<Vec<ProcessRecord>, RepoError>;
 }
 
 pub trait EventRepository {
@@ -90,6 +114,10 @@ pub trait FlowQueries {
     /// Remote endpoints by total bytes (sent + received), busiest first. A flow counts when its
     /// window starts within the inclusive range.
     fn top_destinations(&self, from: Timestamp, to: Timestamp, limit: usize) -> Result<Vec<Destination>, RepoError>;
+
+    /// The most recent flows whose window starts within the inclusive range, newest first, each with the name
+    /// of the process that made it when that process is known.
+    fn recent_flows(&self, from: Timestamp, to: Timestamp, limit: usize) -> Result<Vec<FlowRow>, RepoError>;
 }
 
 /// Removes data older than a cutoff so the database stays bounded.
