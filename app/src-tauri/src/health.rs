@@ -4,7 +4,7 @@
 use serde::Serialize;
 use syntrac_core::Timestamp;
 use syntrac_ipc::pipe::ClientError;
-use syntrac_ipc::protocol::StatusReport;
+use syntrac_ipc::protocol::{StatusReport, StorageLevel, StorageStatus};
 
 /// Data older than this, from a collector that answers, is called stale.
 pub const STALE_AFTER_SECS: u64 = 60;
@@ -39,6 +39,8 @@ pub struct HealthView {
     pub etw_dropped: Option<u64>,
     pub etw_silent_secs: Option<u64>,
     pub data_age_secs: Option<u64>,
+    /// The database and its drive, when the collector reports them.
+    pub storage: Option<StorageView>,
 }
 
 impl HealthView {
@@ -52,6 +54,7 @@ impl HealthView {
             etw_dropped: None,
             etw_silent_secs: None,
             data_age_secs,
+            storage: None,
         }
     }
 
@@ -75,18 +78,31 @@ pub fn assess_health(
         Ok(report) => {
             let dropped = report.etw.map(|etw| etw.dropped);
             let silent = report.etw.map(|etw| etw.silent_secs);
-            let (state, message) = match (data_age_secs, silent, dropped) {
-                (Some(age), _, _) if age > STALE_AFTER_SECS => {
+            let storage_level = report.storage.map(|storage| storage.level);
+            let (state, message) = match (data_age_secs, storage_level, silent, dropped) {
+                (Some(age), _, _, _) if age > STALE_AFTER_SECS => {
                     (HealthState::Stale, format!("The collector is running but its newest data is {age} s old."))
                 }
-                (_, Some(silent), _) if silent >= ETW_SILENT_DEGRADED_AFTER_SECS => (
+                (_, Some(StorageLevel::Paused), _, _) => (
+                    HealthState::Degraded,
+                    "Detail collection is paused because the data drive is nearly full. Process starts are still noted and \
+                     the hourly summaries continue, but network, DNS and per-process detail is not being recorded."
+                        .to_owned(),
+                ),
+                (_, _, Some(silent), _) if silent >= ETW_SILENT_DEGRADED_AFTER_SECS => (
                     HealthState::Degraded,
                     format!(
                         "ETW has delivered no events for {silent} s, so process and network activity is not being \
                          recorded. System metrics are still collected."
                     ),
                 ),
-                (_, _, Some(dropped)) if dropped > 0 => (
+                (_, Some(StorageLevel::Trimming), _, _) => (
+                    HealthState::Degraded,
+                    "The database or its drive is getting full, so the oldest detail is being trimmed early. It is already \
+                     summarised in the hourly rollups, which are kept."
+                        .to_owned(),
+                ),
+                (_, _, _, Some(dropped)) if dropped > 0 => (
                     HealthState::Running,
                     format!("The collector is running, but {dropped} ETW events were dropped because it fell behind."),
                 ),
@@ -101,6 +117,7 @@ pub fn assess_health(
                 etw_dropped: dropped,
                 etw_silent_secs: silent,
                 data_age_secs,
+                storage: report.storage.map(StorageView::from),
             }
         }
         Err(ClientError::NotRunning) => {
@@ -116,5 +133,45 @@ pub fn assess_health(
             format!("Could not ask the collector how it is doing ({other}). {age_note}"),
             data_age_secs,
         ),
+    }
+}
+
+/// How full the database and its drive are, for the UI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageView {
+    pub level: StorageLevelView,
+    pub database_live_bytes: u64,
+    pub database_file_bytes: u64,
+    pub drive_free_bytes: u64,
+    /// Milliseconds since the Unix epoch.
+    pub oldest_detail_ms: Option<i64>,
+    pub oldest_rollup_ms: Option<i64>,
+    pub trimmed_hours_total: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StorageLevelView {
+    Ok,
+    Trimming,
+    Paused,
+}
+
+impl From<StorageStatus> for StorageView {
+    fn from(storage: StorageStatus) -> Self {
+        Self {
+            level: match storage.level {
+                StorageLevel::Ok => StorageLevelView::Ok,
+                StorageLevel::Trimming => StorageLevelView::Trimming,
+                StorageLevel::Paused => StorageLevelView::Paused,
+            },
+            database_live_bytes: storage.database_live_bytes,
+            database_file_bytes: storage.database_file_bytes,
+            drive_free_bytes: storage.drive_free_bytes,
+            oldest_detail_ms: storage.oldest_detail_micros.map(|micros| micros / 1_000),
+            oldest_rollup_ms: storage.oldest_rollup_micros.map(|micros| micros / 1_000),
+            trimmed_hours_total: storage.trimmed_hours_total,
+        }
     }
 }

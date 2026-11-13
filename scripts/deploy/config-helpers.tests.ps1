@@ -56,6 +56,19 @@ Assert-That 'a commented-out database path gives no data root' ($null -eq (Get-D
 Assert-That 'a database that is not in <root>\data\syntrac.db gives no data root (the installer then uses its default)' ($null -eq (Get-DataRootFromConfig 'database_path = "O:/somewhere/else.db"'))
 Assert-That 'the root recovered from a generated config is the one it was generated for' ((Get-DataRootFromConfig (New-ConfigText -Template '' -Database 'D:/Telemetry/data/syntrac.db' -Logs 'D:/Telemetry/logs' -UserSid $sid)) -eq 'D:\Telemetry')
 
+# --- the old default retention becomes the approved 14 days; nothing else the user set changes
+$oldConfig = "# Generated`r`ndatabase_path = `"C:/ProgramData/Syntrac/data/syntrac.db`"`r`n`r`n# Retention: raw data older than this is removed`r`nretention_days = 30`r`npurge_interval_minutes = 60`r`n"
+$updatedConfig = Update-RetentionDefault $oldConfig
+Assert-That 'the old default retention_days = 30 becomes detail_retention_days = 14' ($updatedConfig.Contains('detail_retention_days = 14') -and -not $updatedConfig.Contains('retention_days = 30'))
+Assert-That 'the rewrite keeps every other line, the comments and the line endings' ($updatedConfig.Contains('purge_interval_minutes = 60') -and $updatedConfig.Contains('# Retention: raw data') -and $updatedConfig.Contains("database_path") -and -not ($updatedConfig -match "[^`r]`n"))
+Assert-That 'rewriting twice changes nothing more' ((Update-RetentionDefault $updatedConfig) -eq $updatedConfig)
+Assert-That 'a retention the user chose (7 days) is left alone' ((Update-RetentionDefault "retention_days = 7`r`n") -eq "retention_days = 7`r`n")
+Assert-That 'a retention of 300 is not mistaken for 30' ((Update-RetentionDefault "retention_days = 300`r`n") -eq "retention_days = 300`r`n")
+Assert-That 'a commented-out old line is left alone' ((Update-RetentionDefault "# retention_days = 30`r`n") -eq "# retention_days = 30`r`n")
+Assert-That 'a config that already has the new name is left alone (both names together would be an error)' ((Update-RetentionDefault "detail_retention_days = 21`r`nretention_days = 30`r`n") -eq "detail_retention_days = 21`r`nretention_days = 30`r`n")
+Assert-That 'a trailing comment on the old line does not stop the rewrite' ((Update-RetentionDefault "retention_days = 30  # a month`r`n").StartsWith('detail_retention_days = 14'))
+Assert-That 'a config without any retention line is untouched' ((Update-RetentionDefault "flow_window_secs = 10`r`n") -eq "flow_window_secs = 10`r`n")
+
 if ($script:failures -gt 0) { Write-Host "$($script:failures) failed" -ForegroundColor Red; exit 1 }
 Write-Host 'config helpers: all passed'
 exit 0

@@ -4,6 +4,7 @@
 //! and `snapshot_map`. Thin adapters that talk to Windows (`system`, `volumes`, `snapshot`, `etw`,
 //! `sysmetrics`) only move raw values into those functions.
 
+pub mod drive_space;
 pub mod etw;
 pub mod etw_map;
 pub mod etw_stats;

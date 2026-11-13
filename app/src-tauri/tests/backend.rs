@@ -114,6 +114,7 @@ impl Handler for FixedStatus {
                 last_tick_at_micros: None,
                 totals: CollectorTotals::default(),
                 etw: None,
+                storage: None,
             }),
         }
     }
@@ -162,6 +163,7 @@ impl Handler for ReportsDatabase {
                 last_tick_at_micros: None,
                 totals: CollectorTotals::default(),
                 etw: None,
+                storage: None,
             }),
         }
     }

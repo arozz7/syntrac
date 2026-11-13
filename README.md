@@ -46,6 +46,9 @@ target/release/syntrac-service.exe --status
 #   [Security.Principal.WindowsIdentity]::GetCurrent().User.Value        (your SID, from a normal PowerShell)
 powershell -ExecutionPolicy Bypass -File scripts/deploy/move-data.ps1 -UserSid <sid> -NewDataDir D:\Syntrac -DryRun
 powershell -ExecutionPolicy Bypass -File scripts/deploy/move-data.ps1 -UserSid <sid> -NewDataDir D:\Syntrac
+# How long detail is kept, and how full the data drive may get, are in service.toml (the installer keeps your edits):
+#   detail_retention_days = 14   max_database_gb = 10   min_free_space_gb = 20   hard_floor_free_gb = 5
+# Detail is deleted only once it is rolled up into the permanent hourly summaries; --status shows size and free space.
 # Check any database file (read-only): schema, integrity, rows per table
 target/release/syntrac-service.exe --check-db D:\Syntrac\data\syntrac.db
 # Uninstall (keeps your data unless you pass -RemoveData)

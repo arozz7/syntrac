@@ -2,6 +2,8 @@
 
 use std::time::Duration;
 
+use syntrac_core::retention::{GuardLevel, GuardLimits};
+use syntrac_core::storage_guard::FreeSpace;
 use syntrac_core::{
     EventEnvelope, EventQuery, EventRepository, MetricsRepository, NetAction, RollupRepository, RollupSettings,
     TelemetrySource, Timestamp,
@@ -24,6 +26,7 @@ fn settings() -> CollectorSettings {
         retention: Duration::from_secs(24 * 3600),
         purge_interval: Duration::from_secs(3600),
         rollup_interval: Duration::from_secs(600),
+        guard_interval: Duration::from_secs(60),
         rollup: RollupSettings { settle: Duration::from_secs(300), max_hours_per_pass: 1 },
     }
 }
@@ -396,4 +399,174 @@ fn rollups_wait_for_their_interval_unless_a_backlog_is_waiting() {
     assert_eq!(collector.tick().rollup_hours, 0, "settled, but the interval since the last pass has not elapsed");
     clock.set(at_secs(5 * 3600 + 9 * 60));
     assert_eq!(collector.tick().rollup_hours, 1, "hour 4 on the next scheduled pass");
+}
+
+// ---- retention gate and storage guard
+
+#[test]
+fn detail_that_is_not_rolled_up_is_not_purged_however_old_it_is() {
+    let day = 24 * 3600;
+    let now = 10 * day;
+    let mut repo = InMemoryRepository::default();
+    let mut f = EventFactory::default();
+    repo.append(&[
+        f.make(at_secs(100), dns_query(1, "rolled-up.example", &[])),
+        f.make(at_secs(5 * 3600 + 100), dns_query(1, "old-but-not-rolled-up.example", &[])),
+        f.make(at_secs(now - 60), dns_query(1, "recent.example", &[])),
+    ])
+    .unwrap();
+    // A pass rolls up one hour at most, so after the first tick only hour 0 is summarised.
+    let (mut collector, _) = collector_at(now, vec![], None, repo);
+
+    let report = collector.tick();
+
+    assert_eq!(report.rollup_hours, 1);
+    assert_eq!(report.purged.expect("purge ran").events, 1, "only the event in the rolled-up hour went");
+    assert_eq!(stored(&collector).len(), 2, "the older event that was not summarised yet stays");
+}
+
+/// A drive whose free space the test can change.
+#[derive(Clone)]
+struct Drive(std::rc::Rc<std::cell::Cell<u64>>);
+
+impl FreeSpace for Drive {
+    fn free_bytes(&self) -> Result<u64, String> {
+        Ok(self.0.get())
+    }
+}
+
+const GB: u64 = 1_000_000_000;
+
+fn guard_limits() -> GuardLimits {
+    GuardLimits { max_db_bytes: 10 * GB, min_free_bytes: 20 * GB, hard_floor_bytes: 5 * GB }
+}
+
+fn guarded(
+    start_secs: i64,
+    sources: Vec<Box<dyn TelemetrySource>>,
+    metrics: Option<MockMetricsSource>,
+    repo: InMemoryRepository,
+    free_gb: u64,
+) -> (Collector<InMemoryRepository, ManualClock>, ManualClock, Drive) {
+    let drive = Drive(std::rc::Rc::new(std::cell::Cell::new(free_gb * GB)));
+    let (collector, clock) = collector_at(start_secs, sources, metrics, repo);
+    (collector.with_storage_guard(guard_limits(), Box::new(drive.clone())), clock, drive)
+}
+
+#[test]
+fn a_collector_without_a_guard_reports_no_storage_state() {
+    let (mut collector, _) = collector_at(100, vec![], None, InMemoryRepository::default());
+    collector.tick();
+    assert!(collector.storage().is_none());
+}
+
+#[test]
+fn with_room_to_spare_the_guard_reports_ok_and_the_database_state() {
+    let (mut collector, _, _) = guarded(100, vec![], None, InMemoryRepository::default(), 200);
+    let report = collector.tick();
+    assert_eq!(report.guard_level, GuardLevel::Ok);
+    let storage = collector.storage().expect("the guard has measured");
+    assert_eq!((storage.level, storage.drive_free_bytes), (GuardLevel::Ok, 200 * GB));
+}
+
+#[test]
+fn below_the_hard_floor_detail_is_discarded_except_process_events_and_nothing_is_sampled() {
+    let mut f = EventFactory::default();
+    let source = MockTelemetrySource::new(vec![
+        f.make(at_secs(1), process_started(10, 4, 1, r"C:\a.exe")),
+        f.make(at_secs(2), dns_query(10, "dropped.example", &[])),
+        f.make(at_secs(3), net_activity(10, NetAction::Send, BEACON_TARGET, 100)),
+    ]);
+    let metrics = MockMetricsSource::new(vec![metrics_sample(5, 10.0, vec![], 0.0, 0)]);
+    let (mut collector, clock, _) = guarded(5, vec![Box::new(source)], Some(metrics), InMemoryRepository::default(), 2);
+
+    clock.set(at_secs(10)); // the metrics interval has passed
+    let report = collector.tick();
+
+    assert_eq!(report.guard_level, GuardLevel::Paused);
+    assert_eq!(
+        kinds(&stored(&collector)),
+        vec!["process_started"],
+        "process starts are kept so traffic after the pause is attributed"
+    );
+    assert_eq!(report.events_discarded, 2);
+    assert!(!report.metrics_sampled, "no samples while paused");
+}
+
+#[test]
+fn collection_resumes_by_itself_when_free_space_is_back_above_the_minimum() {
+    let mut f = EventFactory::default();
+    let first = MockTelemetrySource::new(vec![f.make(at_secs(2), dns_query(10, "dropped.example", &[]))]);
+    let (mut collector, clock, drive) = guarded(5, vec![Box::new(first)], None, InMemoryRepository::default(), 2);
+
+    assert_eq!(collector.tick().guard_level, GuardLevel::Paused);
+    assert!(stored(&collector).is_empty());
+
+    drive.0.set(50 * GB);
+    clock.set(at_secs(5 + 60)); // the next guard check
+    assert_eq!(collector.tick().guard_level, GuardLevel::Ok, "back above the minimum plus its margin");
+}
+
+#[test]
+fn an_oversize_database_is_trimmed_by_the_guard_but_never_past_what_is_rolled_up() {
+    // One event per hour for 40 hours: 8 KB at the in-memory estimate, against a cap of 1 KB, so the guard always wants to trim.
+    let mut repo = InMemoryRepository::default();
+    let mut f = EventFactory::default();
+    let events: Vec<_> = (0..40).map(|i| f.make(at_secs(i * 3600 + 100), dns_query(1, "x.example", &[]))).collect();
+    repo.append(&events).unwrap();
+    let now = 40 * 3600 + 600;
+    let drive = Drive(std::rc::Rc::new(std::cell::Cell::new(200 * GB)));
+    let (collector, clock) = collector_at(now, vec![], None, repo);
+    let limits = GuardLimits { max_db_bytes: 1_000, min_free_bytes: 20 * GB, hard_floor_bytes: 5 * GB };
+    let mut collector = collector.with_storage_guard(limits, Box::new(drive));
+
+    // A pass rolls up one hour, so the watermark grows by one hour per tick; a guard check follows every minute.
+    let mut trimmed = 0;
+    for minute in 0..4 {
+        clock.set(at_secs(now + minute * 60));
+        trimmed += collector.tick().guard_trimmed_steps;
+    }
+
+    let remaining = stored(&collector);
+    assert!(trimmed >= 1, "the guard trimmed something");
+    assert!(remaining.len() < 40, "and some detail went");
+    assert!(
+        remaining.len() >= 36,
+        "the watermark is at hour 4 after four passes, so nothing from hour 4 on may be deleted: {} left",
+        remaining.len()
+    );
+}
+
+#[test]
+fn a_long_backlog_of_old_detail_is_purged_an_hour_at_a_time_one_second_apart() {
+    let day = 24 * 3600;
+    let now = 10 * day;
+    let mut repo = InMemoryRepository::default();
+    let mut f = EventFactory::default();
+    // One event an hour for 30 hours, all far older than the one-day retention.
+    let events: Vec<_> = (0..30).map(|h| f.make(at_secs(h * 3600 + 100), dns_query(1, "old.example", &[]))).collect();
+    repo.append(&events).unwrap();
+    // Everything is rolled up in the first pass, so only the retention window and the pass size limit the purge.
+    let wide = CollectorSettings {
+        rollup: RollupSettings { settle: Duration::from_secs(300), max_hours_per_pass: 500 },
+        ..settings()
+    };
+    let clock = ManualClock::new(at_secs(now));
+    let mut collector = Collector::new(wide, vec![], None, repo, clock.clone());
+
+    let first = collector.tick();
+    assert_eq!(first.purged.expect("the first pass").events, 1, "a pass removes an hour, not the whole backlog");
+    assert_eq!(stored(&collector).len(), 29);
+
+    assert!(collector.tick().purged.is_none(), "the same instant: the short pause between passes has not passed");
+
+    let mut passes = 1;
+    for second in 1..=40 {
+        clock.set(at_secs(now + second));
+        if collector.tick().purged.is_some_and(|counts| counts.events > 0) {
+            passes += 1;
+        }
+    }
+    assert_eq!(stored(&collector).len(), 0, "the backlog is gone");
+    assert_eq!(passes, 30, "30 hours at an hour a pass (a final pass that finds nothing left removes nothing)");
 }

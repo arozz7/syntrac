@@ -148,17 +148,47 @@ hour), idempotent re-run, the watermark never moving back, a backlog advancing i
 simulated crash not double-counting, PID reuse attributed by instance, ledgers surviving a purge of the detail, and the
 in-memory and SQLite implementations passing the same contract suite.
 
-### S4: Retention and the storage guard
+### S4: Retention and the storage guard (S1-S3 are live; S4 is implemented, not yet live)
 
 Tasks
 1. Purge detail only older than `detail_retention_days` AND already rolled up (never one without the other).
-2. Downsample per-process samples older than 24 hours (5-second to 1-minute) before they are purged.
+2. ~~Downsample per-process samples older than 24 hours.~~ **Dropped 2026-11-13 (to be confirmed by the user):** measured, the
+   per-process samples are about 8% of the database (17 of 151 MB for 16 hours); downsampling them would save roughly 9% of
+   a 14-day window, and it would need a weight column and a change to the CPU breakdown maths so that old windows are not
+   under-counted. Not worth the risk now; the storage guard bounds the size anyway. (Confirmed by the user 2026-11-13.)
 3. Storage guard: a configurable cap on database size and a minimum free space on the data drive. When either is reached, the
    oldest rolled-up detail is purged early and the status banner says so; below a hard floor, detail collection pauses (rollups
    and status continue) rather than filling the drive.
 4. Status and the UI show database size, free space on the data drive, oldest detail and oldest rollup, so growth is visible.
 
-Tests first: purge refuses un-rolled data, cap and free-space behaviour on a fake volume, downsampling keeps min/avg/max.
+Design (added when S4 started)
+- **Gate:** the purge cutoff is `min(now - detail_retention_days, rolled_up_before)`. With no watermark yet, nothing is purged.
+  A pure function with tests; the collector rolls up before it purges, as today. The cutoff for the guard's early purges is
+  bounded by the same watermark, so detail that has not been summarised is never deleted, whatever the disk looks like.
+- **Config:** `detail_retention_days` (default **14**; the old key `retention_days` is accepted as an alias so an installed
+  config keeps working). NOTE: an installed config that still says `retention_days = 30` keeps 30 until it is edited.
+  New keys: `max_database_gb` (default 10, the live data in the file), `min_free_space_gb` (default 20, free space on the data
+  drive, the same floor the installer uses for a new drive), `hard_floor_free_gb` (default 5, below it detail collection pauses).
+  Validation: the hard floor must be below the minimum.
+- **Levels (pure):** `Ok`; `Trimming` when live data exceeds the cap or free space is below the minimum; `Paused` when free
+  space is below the hard floor. Checked every minute. While `Trimming`, each check purges the oldest rolled-up detail in
+  steps of one hour (never past the watermark) until the level is `Ok` or nothing eligible is left. While `Paused`, the
+  collector drains and discards events and skips metric sampling (so nothing accumulates in memory); rollups, purging and
+  status continue. Collection resumes by itself once free space is back above the minimum, and the gap is logged.
+- **Space actually returns:** deleting rows only creates free pages inside the file. The database is switched to incremental
+  auto-vacuum (a one-time `VACUUM` the first time the upgraded service opens it, about 10 s at this size, no data change), and
+  each purge afterwards reclaims freed pages in bounded steps, so the file (and the drive's free space) follows the data.
+- **Status:** the pipe's status reports file size, live data size, free space on the data drive, oldest detail, oldest rollup
+  and the guard level (all optional fields, so an older client keeps working). The UI shows them and turns the banner to
+  "Degraded" while trimming and to "Paused" state text when collection is paused.
+- **Not in S4:** UI views of the trends; downsampling (above).
+- **Measured while building (see aiChangeLog/phase-S4.md):** deleting costs about a second per hour of detail, so purge passes and
+  trimming steps are one hour each, a second apart, and a guard check trims one hour at most; the installer rewrites the old
+  `retention_days = 30` default to `detail_retention_days = 14` (user chose this).
+
+Tests first: the purge gate (no watermark, watermark behind retention, retention behind watermark), guard levels and the early
+trim step on a fake volume, a paused collector discards and resumes, free pages are reclaimed after a purge, config
+validation and the alias, status fields round-trip, the banner states.
 
 ### Later (not in this plan)
 

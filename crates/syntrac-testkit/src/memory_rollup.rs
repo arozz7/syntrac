@@ -178,3 +178,22 @@ impl RollupRepository for InMemoryRepository {
         Ok(executable_key(path).and_then(|key| self.rollups.pairs.get(&(key, addr)).copied()))
     }
 }
+
+impl syntrac_core::storage_guard::StorageStats for InMemoryRepository {
+    /// Sizes are rough per-row estimates: enough for the guard's logic, which only needs them to rise and fall with the data.
+    fn usage(&self) -> Result<syntrac_core::storage_guard::DatabaseUsage, RepoError> {
+        let bytes =
+            (self.events.len() as u64) * 200 + (self.metrics.len() as u64) * 100 + (self.processes.len() as u64) * 200;
+        Ok(syntrac_core::storage_guard::DatabaseUsage {
+            file_bytes: bytes,
+            live_bytes: bytes,
+            reclaimable_bytes: 0,
+            oldest_detail: self.earliest_detail()?,
+            oldest_rollup: self.rollups.system.keys().next().copied(),
+        })
+    }
+
+    fn reclaim_space(&mut self) -> Result<(), RepoError> {
+        Ok(())
+    }
+}

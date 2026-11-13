@@ -32,8 +32,18 @@ pub struct ServiceConfig {
     pub metrics_interval_secs: u64,
     /// How many of the heaviest processes are recorded individually per metrics sample.
     pub top_processes: usize,
-    pub retention_days: u32,
+    /// How long detail (events, flows, per-process samples) is kept, in days. Detail is deleted only once it is also rolled up.
+    /// The old name `retention_days` is still accepted.
+    #[serde(alias = "retention_days")]
+    pub detail_retention_days: u32,
     pub purge_interval_minutes: u64,
+    /// Storage guard: the most live data the database may hold, in GB. Over it, the oldest rolled-up detail is trimmed early.
+    pub max_database_gb: u64,
+    /// Storage guard: free space on the data drive, in GB, below which the oldest rolled-up detail is trimmed early.
+    pub min_free_space_gb: u64,
+    /// Storage guard: free space in GB below which detail collection pauses (rollups and status continue). Must be less than
+    /// `min_free_space_gb`.
+    pub hard_floor_free_gb: u64,
     /// How often completed hours are rolled up into the permanent summaries (a backlog is worked off sooner).
     pub rollup_interval_minutes: u64,
     /// How often a status line (events stored, drops, own CPU) is logged.
@@ -56,8 +66,11 @@ impl Default for ServiceConfig {
             drain_interval_ms: 500,
             metrics_interval_secs: 5,
             top_processes: 25,
-            retention_days: 30,
+            detail_retention_days: 14,
             purge_interval_minutes: 60,
+            max_database_gb: 10,
+            min_free_space_gb: 20,
+            hard_floor_free_gb: 5,
             rollup_interval_minutes: 5,
             status_interval_secs: 30,
             etw_silent_restart_secs: 180,
@@ -79,7 +92,10 @@ impl ServiceConfig {
             (self.flow_flush_grace_secs, "flow_flush_grace_secs"),
             (self.drain_interval_ms, "drain_interval_ms"),
             (self.metrics_interval_secs, "metrics_interval_secs"),
-            (u64::from(self.retention_days), "retention_days"),
+            (u64::from(self.detail_retention_days), "detail_retention_days"),
+            (self.max_database_gb, "max_database_gb"),
+            (self.min_free_space_gb, "min_free_space_gb"),
+            (self.hard_floor_free_gb, "hard_floor_free_gb"),
             (self.purge_interval_minutes, "purge_interval_minutes"),
             (self.rollup_interval_minutes, "rollup_interval_minutes"),
             (self.top_processes as u64, "top_processes"),
@@ -89,9 +105,15 @@ impl ServiceConfig {
         if let Some(sid) = &self.pipe_allowed_sid {
             syntrac_ipc::sddl::validate_sid(sid).map_err(|e| ConfigError::Invalid(format!("pipe_allowed_sid: {e}")))?;
         }
-        match checks.iter().find(|(value, _)| *value == 0) {
-            Some((_, name)) => Err(ConfigError::Invalid(format!("{name} must be greater than zero"))),
-            None => Ok(()),
+        if let Some((_, name)) = checks.iter().find(|(value, _)| *value == 0) {
+            return Err(ConfigError::Invalid(format!("{name} must be greater than zero")));
         }
+        if self.hard_floor_free_gb >= self.min_free_space_gb {
+            return Err(ConfigError::Invalid(format!(
+                "hard_floor_free_gb ({}) must be less than min_free_space_gb ({})",
+                self.hard_floor_free_gb, self.min_free_space_gb
+            )));
+        }
+        Ok(())
     }
 }

@@ -203,3 +203,8 @@ fn a_schema_mismatch_is_a_typed_error_so_the_ui_never_has_to_parse_text() {
 fn sqlite_store_satisfies_the_rollup_contract() {
     syntrac_testkit::rollup_contract::rollup_contract(in_memory_store);
 }
+
+#[test]
+fn sqlite_store_satisfies_the_storage_stats_contract() {
+    syntrac_testkit::storage_contract::storage_stats_contract(in_memory_store);
+}

@@ -13,6 +13,9 @@ mod migration_v5_tests;
 mod migrations;
 mod processes;
 mod rollups;
+mod storage;
+#[cfg(test)]
+mod storage_tests;
 
 pub use connection::SqliteStore;
 pub use inspect::{inspect_database, DatabaseReport};

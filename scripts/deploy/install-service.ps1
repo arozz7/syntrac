@@ -84,6 +84,15 @@ if (Test-Path $configFile) {
     if (Test-ConfigPaths $existingText $expectedPaths.Database $expectedPaths.Logs $UserSid) {
         $writeConfig = $false
         Write-Host "Kept the existing $configFile"
+        # The old default retention (30 days) becomes the approved 14 days under its new name. Only that exact default line
+        # changes; the config is copied aside first and nothing else in it is touched.
+        $migrated = Update-RetentionDefault $existingText
+        if ($migrated -ne $existingText) {
+            $retentionBackup = "$configFile.bak-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+            Copy-Item -Path $configFile -Destination $retentionBackup
+            [IO.File]::WriteAllText($configFile, $migrated, (New-Object Text.UTF8Encoding $false))
+            Write-Host "Set detail_retention_days = 14 (the config said the old default, retention_days = 30). Previous config: $retentionBackup"
+        }
     } else {
         $backup = "$configFile.bak-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
         Move-Item -Path $configFile -Destination $backup

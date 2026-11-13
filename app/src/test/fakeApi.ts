@@ -14,6 +14,7 @@ export function health(overrides: Partial<HealthView> = {}): HealthView {
     etwDropped: 0,
     etwSilentSecs: 0,
     dataAgeSecs: 3,
+    storage: null,
     ...overrides,
   };
 }

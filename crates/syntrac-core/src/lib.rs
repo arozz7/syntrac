@@ -7,10 +7,12 @@ pub mod identity;
 pub mod metrics;
 pub mod pipeline;
 pub mod ports;
+pub mod retention;
 pub mod rollup;
 pub mod rollup_ledger;
 pub mod rollup_run;
 pub mod silence;
+pub mod storage_guard;
 pub mod time;
 
 pub use correlator::correlate;

@@ -78,3 +78,13 @@ function New-ConfigText {
         "database_path = `"$Database`"`r`nlog_dir = `"$Logs`"`r`npipe_allowed_sid = `"$UserSid`"`r`n`r`n"
     return $header + $Template
 }
+# The config of an earlier version says `retention_days = 30`: the old DEFAULT for how long detail is kept. The approved default is
+# now 14 days under the name `detail_retention_days`. Only that exact default line is rewritten; any other value (7, 60, ...) is the
+# user's own choice and is left alone, and so is a config that already uses the new name (both names together would be an error).
+function Update-RetentionDefault {
+    param([string]$ConfigText)
+    if ([regex]::IsMatch($ConfigText, '(?m)^[ \t]*detail_retention_days[ \t]*=')) { return $ConfigText }
+    $pattern = '(?m)^([ \t]*)retention_days[ \t]*=[ \t]*30(?=[ \t]*(?:#.*)?\r?$)'
+    $evaluator = [System.Text.RegularExpressions.MatchEvaluator]{ param($match) $match.Groups[1].Value + 'detail_retention_days = 14' }
+    return [regex]::Replace($ConfigText, $pattern, $evaluator)
+}

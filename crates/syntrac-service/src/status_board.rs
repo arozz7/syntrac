@@ -6,11 +6,12 @@
 use std::sync::RwLock;
 
 use syntrac_collector::etw_stats::EtwReport;
+use syntrac_core::retention::GuardLevel;
 use syntrac_core::{Clock, Timestamp};
-use syntrac_ipc::protocol::{CollectorTotals, EtwStatus, Request, Response, StatusReport};
+use syntrac_ipc::protocol::{CollectorTotals, EtwStatus, Request, Response, StatusReport, StorageLevel, StorageStatus};
 use syntrac_ipc::serve::Handler;
 
-use crate::Totals;
+use crate::{StorageSnapshot, Totals};
 
 /// Quiet for this long is worth saying out loud in the text status. (A few quiet seconds are normal.)
 pub const ETW_SILENT_WARNING_SECS: u64 = 60;
@@ -29,6 +30,7 @@ struct Latest {
     totals: CollectorTotals,
     etw: Option<EtwStatus>,
     last_tick: Option<Timestamp>,
+    storage: Option<StorageStatus>,
 }
 
 pub struct StatusBoard<C> {
@@ -66,12 +68,32 @@ impl<C: Clock> StatusBoard<C> {
         }
     }
 
+    /// Records what the storage guard last measured (`None` clears it). Separate from `publish` because the guard checks once
+    /// a minute, not once a pass.
+    pub fn publish_storage(&self, snapshot: Option<StorageSnapshot>) {
+        if let Ok(mut latest) = self.latest.write() {
+            latest.storage = snapshot.map(|s| StorageStatus {
+                level: match s.level {
+                    GuardLevel::Ok => StorageLevel::Ok,
+                    GuardLevel::Trimming => StorageLevel::Trimming,
+                    GuardLevel::Paused => StorageLevel::Paused,
+                },
+                database_file_bytes: s.usage.file_bytes,
+                database_live_bytes: s.usage.live_bytes,
+                drive_free_bytes: s.drive_free_bytes,
+                oldest_detail_micros: s.usage.oldest_detail.map(Timestamp::as_micros),
+                oldest_rollup_micros: s.usage.oldest_rollup.map(Timestamp::as_micros),
+                trimmed_hours_total: s.trimmed_steps_total,
+            });
+        }
+    }
+
     fn report(&self) -> StatusReport {
         let now = self.clock.now();
         let uptime_micros = now.as_micros().saturating_sub(self.info.started_at.as_micros()).max(0);
-        let (totals, etw, last_tick) = match self.latest.read() {
-            Ok(latest) => (latest.totals, latest.etw, latest.last_tick),
-            Err(_) => (CollectorTotals::default(), None, None),
+        let (totals, etw, last_tick, storage) = match self.latest.read() {
+            Ok(latest) => (latest.totals, latest.etw, latest.last_tick, latest.storage),
+            Err(_) => (CollectorTotals::default(), None, None, None),
         };
         StatusReport {
             version: self.info.version.clone(),
@@ -83,6 +105,7 @@ impl<C: Clock> StatusBoard<C> {
             last_tick_at_micros: last_tick.map(Timestamp::as_micros),
             totals,
             etw,
+            storage,
         }
     }
 }
@@ -113,6 +136,31 @@ pub fn format_status(report: &StatusReport) -> String {
         "errors:           {} source, {} metrics, {} storage",
         report.totals.source_errors, report.totals.metrics_errors, report.totals.storage_errors
     );
+    if let Some(storage) = &report.storage {
+        let _ = writeln!(
+            out,
+            "database size:    {} live ({} file), drive free {}",
+            gigabytes(storage.database_live_bytes),
+            gigabytes(storage.database_file_bytes),
+            gigabytes(storage.drive_free_bytes)
+        );
+        match storage.level {
+            StorageLevel::Ok => {}
+            StorageLevel::Trimming => {
+                let _ = writeln!(
+                    out,
+                    "                  storage guard is TRIMMING the oldest rolled-up detail ({} hours so far)",
+                    storage.trimmed_hours_total
+                );
+            }
+            StorageLevel::Paused => {
+                let _ = writeln!(
+                    out,
+                    "                  detail collection is PAUSED: the data drive is nearly full (rollups and status continue)"
+                );
+            }
+        }
+    }
     match &report.etw {
         Some(etw) => {
             let _ = writeln!(
@@ -133,4 +181,8 @@ pub fn format_status(report: &StatusReport) -> String {
         }
     }
     out
+}
+
+fn gigabytes(bytes: u64) -> String {
+    format!("{:.1} GB", bytes as f64 / 1_000_000_000.0)
 }

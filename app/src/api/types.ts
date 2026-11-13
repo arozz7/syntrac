@@ -20,6 +20,8 @@ export interface HealthView {
   /** Seconds since ETW last delivered an event (null when ETW is not running). */
   etwSilentSecs: number | null;
   dataAgeSecs: number | null;
+  /** The database and its drive, as the collector last measured them (null when it does not say). */
+  storage: StorageView | null;
 }
 
 export interface SystemPointView {
@@ -102,4 +104,19 @@ export interface ConnectionRowView {
   opened: number;
   closed: number;
   failed: number;
+}
+
+export type StorageLevel = 'ok' | 'trimming' | 'paused';
+
+export interface StorageView {
+  level: StorageLevel;
+  /** Bytes of live data in the database file. */
+  databaseLiveBytes: number;
+  databaseFileBytes: number;
+  driveFreeBytes: number;
+  /** Milliseconds since the Unix epoch; null when there is none yet. */
+  oldestDetailMs: number | null;
+  oldestRollupMs: number | null;
+  /** Hours of detail the storage guard has trimmed early since the service started. */
+  trimmedHoursTotal: number;
 }

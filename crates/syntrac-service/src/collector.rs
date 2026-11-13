@@ -7,6 +7,9 @@
 
 use std::time::Duration;
 
+use syntrac_core::retention::{purge_cutoff, purge_step, GuardLevel, GuardLimits};
+use syntrac_core::storage_guard::{FreeSpace, StorageStats};
+use syntrac_core::EventCategory;
 use syntrac_core::{
     ingest_metrics, roll_up_due, Clock, EventRepository, IngestError, MetricsRepository, MetricsSource, Pipeline,
     ProcessRepository, PurgeCounts, Retention, RollupRepository, RollupSettings, SourceError, TelemetrySource,
@@ -14,8 +17,13 @@ use syntrac_core::{
 };
 use tracing::{error, info, warn};
 
+use crate::guard::{GuardRuntime, StorageSnapshot};
+
 /// Between two rollup passes while more hours are already due: long enough for the loop to keep draining ETW in between.
 const BACKLOG_PAUSE: Duration = Duration::from_secs(1);
+
+/// One purge pass removes at most this much detail (about a second of work), so a long backlog never holds up the loop.
+const PURGE_SPAN: Duration = Duration::from_secs(3600);
 
 #[derive(Debug, Clone, Copy)]
 pub struct CollectorSettings {
@@ -29,6 +37,8 @@ pub struct CollectorSettings {
     /// How often completed hours are rolled up into the permanent summaries.
     pub rollup_interval: Duration,
     pub rollup: RollupSettings,
+    /// How often the storage guard measures the database and the drive (when a guard is installed).
+    pub guard_interval: Duration,
 }
 
 /// What one tick did.
@@ -43,6 +53,12 @@ pub struct TickReport {
     pub purged: Option<PurgeCounts>,
     /// Hours rolled up by this tick.
     pub rollup_hours: usize,
+    /// The storage guard's level after this tick (`Ok` when no guard is installed).
+    pub guard_level: GuardLevel,
+    /// One-hour steps of detail the guard trimmed early in this tick.
+    pub guard_trimmed_steps: u32,
+    /// Events thrown away because collection is paused (process events are kept).
+    pub events_discarded: usize,
 }
 
 /// Running totals since start.
@@ -67,6 +83,7 @@ pub struct Collector<R, C> {
     next_metrics_at: Timestamp,
     next_purge_at: Timestamp,
     next_rollup_at: Timestamp,
+    guard: Option<GuardRuntime>,
     totals: Totals,
 }
 
@@ -82,7 +99,7 @@ fn before(base: Timestamp, span: Duration) -> Timestamp {
 
 impl<R, C> Collector<R, C>
 where
-    R: ProcessRepository + EventRepository + MetricsRepository + Retention + RollupRepository,
+    R: ProcessRepository + EventRepository + MetricsRepository + Retention + RollupRepository + StorageStats,
     C: Clock,
 {
     pub fn new(
@@ -105,8 +122,25 @@ where
             next_metrics_at: after(now, settings.metrics_interval),
             next_purge_at: now,
             next_rollup_at: now,
+            guard: None,
             totals: Totals::default(),
         }
+    }
+
+    /// Installs the storage guard: from now on the collector measures the database and the drive on its interval, trims the
+    /// oldest rolled-up detail early when either is too full, and pauses detail collection below the hard floor.
+    pub fn with_storage_guard(mut self, limits: GuardLimits, volume: Box<dyn FreeSpace>) -> Self {
+        self.guard = Some(GuardRuntime::new(limits, volume, self.settings.guard_interval, self.clock.now()));
+        self
+    }
+
+    /// What the last guard check found. `None` without a guard, or before its first check.
+    pub fn storage(&self) -> Option<StorageSnapshot> {
+        self.guard.as_ref().and_then(GuardRuntime::snapshot)
+    }
+
+    fn is_paused(&self) -> bool {
+        self.guard.as_ref().is_some_and(|guard| guard.level() == GuardLevel::Paused)
     }
 
     pub fn repository(&self) -> &R {
@@ -129,6 +163,12 @@ where
     pub fn tick(&mut self) -> TickReport {
         let now = self.clock.now();
         let mut report = TickReport::default();
+
+        // The guard first, so a pause takes effect before this tick drains anything.
+        if let Some(guard) = self.guard.as_mut() {
+            report.guard_trimmed_steps = guard.check_if_due(&mut self.repo, now);
+        }
+        report.guard_level = self.guard.as_ref().map_or(GuardLevel::Ok, GuardRuntime::level);
 
         self.drain_sources(&mut report);
         self.flush_finished_flows(now, &mut report);
@@ -175,6 +215,14 @@ where
             }
         }
 
+        if self.is_paused() {
+            // The disk is nearly full: keep only process starts and exits (small, and they keep traffic after the pause
+            // attributed to the right program); drop everything else.
+            let total = batch.len();
+            batch.retain(|event| event.payload.category() == EventCategory::Process);
+            report.events_discarded += total - batch.len();
+        }
+
         match self.pipeline.ingest_events(batch, &mut self.repo) {
             Ok(stored) => {
                 report.events_stored += stored;
@@ -202,12 +250,16 @@ where
     }
 
     fn sample_metrics_if_due(&mut self, now: Timestamp, report: &mut TickReport) {
+        let paused = self.is_paused();
         let Some(source) = self.metrics.as_mut() else { return };
         if now < self.next_metrics_at {
             return;
         }
         // Schedule first, so a failing sampler cannot turn into a hot loop.
         self.next_metrics_at = after(now, self.settings.metrics_interval);
+        if paused {
+            return; // no samples while detail collection is paused
+        }
 
         match ingest_metrics(source.as_mut(), now, &mut self.repo) {
             Ok(()) => report.metrics_sampled = true,
@@ -254,7 +306,35 @@ where
         }
         self.next_purge_at = after(now, self.settings.purge_interval);
 
-        match self.repo.purge_before(before(now, self.settings.retention)) {
+        // Detail goes only when it is older than the retention window AND already summarised. Before the first rollup nothing
+        // may be deleted at all.
+        let rolled_up = match self.repo.rolled_up_before() {
+            Ok(rolled_up) => rolled_up,
+            Err(error) => {
+                error!(%error, "Could not read the rollup watermark; not purging");
+                report.storage_errors += 1;
+                return;
+            }
+        };
+        let Some(cutoff) = purge_cutoff(now, self.settings.retention, rolled_up) else {
+            return;
+        };
+
+        // A long backlog goes in short passes (a second of work each) with a pause between them. If the oldest detail cannot be
+        // read, the pass runs to the cutoff in one go, as before.
+        let oldest = match StorageStats::usage(&self.repo) {
+            Ok(usage) => usage.oldest_detail,
+            Err(error) => {
+                warn!(%error, "Could not read the oldest detail; purging in one pass");
+                None
+            }
+        };
+        let step = purge_step(cutoff, oldest, PURGE_SPAN);
+        if step.more_remains {
+            self.next_purge_at = after(now, BACKLOG_PAUSE);
+        }
+
+        match self.repo.purge_before(step.cutoff) {
             Ok(counts) => {
                 info!(
                     events = counts.events,
@@ -263,6 +343,10 @@ where
                     "Old data purged"
                 );
                 report.purged = Some(counts);
+                // Hand the freed pages back to the drive. Not fatal: the next purge tries again.
+                if let Err(error) = StorageStats::reclaim_space(&mut self.repo) {
+                    warn!(%error, "Could not return freed database space to the drive");
+                }
             }
             Err(error) => {
                 error!(%error, "Could not purge old data");

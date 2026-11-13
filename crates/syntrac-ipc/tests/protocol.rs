@@ -31,6 +31,7 @@ fn sample_status() -> StatusReport {
             future_events: 0,
             silent_secs: 240,
         }),
+        storage: None,
     }
 }
 
@@ -114,4 +115,39 @@ fn a_request_over_the_size_cap_is_rejected_before_parsing() {
 #[test]
 fn extra_fields_in_a_request_are_ignored_so_newer_clients_still_work_with_older_services() {
     assert_eq!(decode_request(b"{\"request\":\"ping\",\"client\":\"ui\"}").unwrap(), Request::Ping);
+}
+
+#[test]
+fn storage_state_round_trips_and_an_older_reply_without_it_still_decodes() {
+    use syntrac_ipc::protocol::{StorageLevel, StorageStatus};
+
+    let mut report = sample_status();
+    report.storage = Some(StorageStatus {
+        level: StorageLevel::Trimming,
+        database_file_bytes: 3_000_000_000,
+        database_live_bytes: 2_900_000_000,
+        drive_free_bytes: 18_000_000_000,
+        oldest_detail_micros: Some(1_000),
+        oldest_rollup_micros: Some(500),
+        trimmed_hours_total: 7,
+    });
+    let line = encode_response(&Response::Status(report.clone()));
+    assert_eq!(decode_response(line.trim_end().as_bytes()).unwrap(), Response::Status(report));
+
+    // A reply from a service that predates the storage guard has no "storage" key at all.
+    let mut value: serde_json::Value =
+        serde_json::from_str(encode_response(&Response::Status(sample_status())).trim_end()).unwrap();
+    value.as_object_mut().unwrap().remove("storage");
+    match decode_response(value.to_string().as_bytes()).unwrap() {
+        Response::Status(status) => assert_eq!(status.storage, None),
+        other => panic!("expected a status, got {other:?}"),
+    }
+}
+
+#[test]
+fn the_storage_level_uses_stable_lowercase_names() {
+    use syntrac_ipc::protocol::StorageLevel;
+    assert_eq!(serde_json::to_string(&StorageLevel::Ok).unwrap(), "\"ok\"");
+    assert_eq!(serde_json::to_string(&StorageLevel::Trimming).unwrap(), "\"trimming\"");
+    assert_eq!(serde_json::to_string(&StorageLevel::Paused).unwrap(), "\"paused\"");
 }

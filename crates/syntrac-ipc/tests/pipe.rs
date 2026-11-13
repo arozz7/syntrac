@@ -35,6 +35,7 @@ impl Handler for Fixed {
                 last_tick_at_micros: None,
                 totals: CollectorTotals { ticks: 3, ..CollectorTotals::default() },
                 etw: None,
+                storage: None,
             }),
         }
     }

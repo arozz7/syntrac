@@ -6,6 +6,7 @@ pub mod memory;
 mod memory_rollup;
 pub mod mocks;
 pub mod rollup_contract;
+pub mod storage_contract;
 
 pub use memory::InMemoryRepository;
 pub use mocks::{

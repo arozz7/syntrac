@@ -62,6 +62,7 @@ Client: `syntrac-service --status` / `--ping` (`--pipe <name>`), exit codes 0 ok
 | `FlowQueries` | Memory | Implemented: `top_destinations` and `recent_flows` (with the process name) from the indexed `flows` table |
 | `ProcessQueries` | Memory | Implemented: `list_processes` (running only, name search, newest first) for the UI |
 | `Retention` | Memory | Implemented: `purge_before(cutoff)` (detail only; rollups and ledgers are never purged by it) |
+| `StorageStats` / `FreeSpace` / `DetailStore` | Memory + Tool | Implemented (SQLite, in-memory; Windows `GetDiskFreeSpaceExW`): size accounting, space recovery and the narrow view the storage guard works on |
 | `RollupRepository` | Memory | Implemented (SQLite, in-memory; shared contract suite): loads one hour of detail, stores its rollup + ledgers + watermark atomically, reads history and ledgers. The maths is the pure `syntrac_core::rollup::roll_up_hour` |
 | `TelemetrySource` | Tool | Implemented: `EtwSource`, `SnapshotSource` (Windows), `MockTelemetrySource` |
 | `MetricsSource` | Tool | Implemented: `SysinfoMetricsSource`, `MockMetricsSource` |
@@ -106,6 +107,20 @@ and per pair) are permanent and widened with MIN/MAX, so updating them is idempo
 forward in the same transaction that stores an hour; an hour at or below it is refused, so a re-roll can never overwrite
 good rows with thinner ones after detail has been purged. The collector rolls up before it purges and works a backlog off a
 couple of hours per pass.
+
+
+## Retention and the storage guard
+
+Detail is deleted only when it is older than `detail_retention_days` (default 14) AND already rolled up: the purge cutoff is
+`min(now - retention, rollup watermark)` (`retention::purge_cutoff`), and the early-trim cutoff is bounded by the same
+watermark, so nothing that has not been summarised is ever deleted. Purging and trimming work an hour at a time (deleting costs
+about a second per hour of detail) with a pause between passes, so the loop keeps draining ETW. The guard measures the database
+(live bytes, free pages) and the data drive (`GetDiskFreeSpaceExW`) every minute: `Trimming` when live data exceeds
+`max_database_gb` or free space (counting pages the database has freed but not yet returned) is below `min_free_space_gb`;
+`Paused` below `hard_floor_free_gb`, when the collector keeps only process events and skips sampling until free space is back above
+the minimum. Levels change with a 10% margin so they do not flap. The database uses incremental auto-vacuum, switched on once
+at start (a failure is a logged notice and a retry at the next start, never a crash loop); each purge returns freed pages to the
+drive. The pipe's status carries the result (`storage`), and the UI shows it.
 
 ## Collector adapters (`syntrac-collector`)
 

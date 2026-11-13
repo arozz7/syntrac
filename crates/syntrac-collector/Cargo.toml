@@ -17,4 +17,5 @@ workspace = true
 
 [dev-dependencies]
 syntrac-testkit = { path = "../syntrac-testkit" }
+tempfile = "3.27.0"
 

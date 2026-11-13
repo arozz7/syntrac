@@ -132,3 +132,59 @@ fn the_text_rendering_says_when_etw_has_gone_quiet_and_stays_calm_when_it_has_no
     let quiet = syntrac_service::format_status(&status(&board));
     assert!(quiet.contains("SILENT for 600 s"), "{quiet}");
 }
+
+fn snapshot(level: syntrac_core::retention::GuardLevel) -> syntrac_service::StorageSnapshot {
+    syntrac_service::StorageSnapshot {
+        level,
+        usage: syntrac_core::storage_guard::DatabaseUsage {
+            file_bytes: 3_000_000_000,
+            live_bytes: 2_900_000_000,
+            reclaimable_bytes: 100_000_000,
+            oldest_detail: Some(Timestamp::from_micros(1_000)),
+            oldest_rollup: Some(Timestamp::from_micros(500)),
+        },
+        drive_free_bytes: 18_000_000_000,
+        trimmed_steps_total: 7,
+    }
+}
+
+#[test]
+fn storage_is_absent_until_the_guard_has_measured() {
+    let clock = ManualClock::new(Timestamp::from_micros(100 * SEC));
+    assert_eq!(status(&board(&clock, false)).storage, None);
+}
+
+#[test]
+fn the_guards_measurements_appear_in_the_status() {
+    use syntrac_core::retention::GuardLevel;
+    use syntrac_ipc::protocol::StorageLevel;
+
+    let clock = ManualClock::new(Timestamp::from_micros(100 * SEC));
+    let board = board(&clock, false);
+    board.publish_storage(Some(snapshot(GuardLevel::Trimming)));
+
+    let storage = status(&board).storage.expect("published");
+    assert_eq!(storage.level, StorageLevel::Trimming);
+    assert_eq!((storage.database_file_bytes, storage.database_live_bytes), (3_000_000_000, 2_900_000_000));
+    assert_eq!(storage.drive_free_bytes, 18_000_000_000);
+    assert_eq!((storage.oldest_detail_micros, storage.oldest_rollup_micros), (Some(1_000), Some(500)));
+    assert_eq!(storage.trimmed_hours_total, 7);
+}
+
+#[test]
+fn the_text_status_says_so_when_the_guard_is_trimming_or_collection_is_paused() {
+    use syntrac_core::retention::GuardLevel;
+    let clock = ManualClock::new(Timestamp::from_micros(100 * SEC));
+    let board = board(&clock, false);
+
+    board.publish_storage(Some(snapshot(GuardLevel::Ok)));
+    let ok = syntrac_service::format_status(&status(&board));
+    assert!(ok.contains("database size:") && ok.contains("2.9 GB"), "{ok}");
+    assert!(!ok.contains("TRIMMING") && !ok.contains("PAUSED"), "{ok}");
+
+    board.publish_storage(Some(snapshot(GuardLevel::Trimming)));
+    assert!(syntrac_service::format_status(&status(&board)).contains("TRIMMING"));
+
+    board.publish_storage(Some(snapshot(GuardLevel::Paused)));
+    assert!(syntrac_service::format_status(&status(&board)).contains("PAUSED"));
+}

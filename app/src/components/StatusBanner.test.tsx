@@ -61,3 +61,65 @@ describe('StatusBanner: a silent ETW trace', () => {
     expect(screen.getByRole('status').textContent).not.toContain('silent');
   });
 });
+
+describe('StatusBanner: storage', () => {
+  const GB = 1024 ** 3;
+  const NOW_MS = 1_800_000_000_000;
+  const storage = {
+    level: 'ok' as const,
+    databaseLiveBytes: 3 * GB,
+    databaseFileBytes: 3.2 * GB,
+    driveFreeBytes: 120 * GB,
+    oldestDetailMs: NOW_MS - 13 * 86_400_000,
+    oldestRollupMs: NOW_MS - 40 * 86_400_000,
+    trimmedHoursTotal: 0,
+  };
+
+  it('shows how big the database is, how much room the drive has, and how far back the detail and summaries go', () => {
+    render(<StatusBanner health={health({ storage })} nowMs={NOW_MS} />);
+    const text = screen.getByRole('status').textContent ?? '';
+    expect(text).toContain('Database 3.0 GB');
+    expect(text).toContain('Drive free 120.0 GB');
+    expect(text).toContain('Detail back 13 d ago');
+    expect(text).toContain('Summaries back 40 d ago');
+  });
+
+  it('says nothing about storage when the collector does not report it', () => {
+    render(<StatusBanner health={health({ storage: null })} nowMs={NOW_MS} />);
+    const text = screen.getByRole('status').textContent ?? '';
+    expect(text).not.toContain('Database');
+    expect(text).not.toContain('Drive free');
+  });
+
+  it('leaves out the ages that are not known yet (nothing is rolled up on a new database)', () => {
+    render(
+      <StatusBanner
+        health={health({ storage: { ...storage, oldestDetailMs: null, oldestRollupMs: null } })}
+        nowMs={NOW_MS}
+      />,
+    );
+    const text = screen.getByRole('status').textContent ?? '';
+    expect(text).toContain('Database');
+    expect(text).not.toContain('Detail back');
+    expect(text).not.toContain('Summaries back');
+  });
+
+  it('says how much has been trimmed early while the guard is trimming', () => {
+    render(
+      <StatusBanner
+        health={health({
+          state: 'degraded',
+          message: 'getting full',
+          storage: { ...storage, level: 'trimming', trimmedHoursTotal: 9 },
+        })}
+        nowMs={NOW_MS}
+      />,
+    );
+    expect(screen.getByRole('status').textContent).toContain('9 h trimmed early');
+  });
+
+  it('does not mention trimming when none has happened', () => {
+    render(<StatusBanner health={health({ storage })} nowMs={NOW_MS} />);
+    expect(screen.getByRole('status').textContent).not.toContain('trimmed');
+  });
+});

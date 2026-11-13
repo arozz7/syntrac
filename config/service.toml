@@ -17,8 +17,9 @@ drain_interval_ms = 500
 metrics_interval_secs = 5
 top_processes = 25            # heaviest processes recorded individually per sample; the rest are summed
 
-# Retention: raw data older than this is removed, checked every purge_interval_minutes.
-retention_days = 30
+# Retention: detail (events, flows, per-process samples) older than this is removed, checked every purge_interval_minutes,
+# but ONLY once it has been rolled up into the permanent hourly summaries. (The old name retention_days still works.)
+detail_retention_days = 14
 purge_interval_minutes = 60
 
 # Completed hours are summarised into permanent hourly rollups and ledgers this often (a backlog is worked off sooner).
@@ -31,3 +32,12 @@ status_interval_secs = 30
 # 0 means watch and report only). The health banner reports a silent trace either way.
 etw_silent_restart_secs = 180
 etw_max_restarts = 3
+
+# Storage guard (checked every minute). The database lives on the data drive; these keep it from filling it.
+#   max_database_gb      live data above this: the oldest rolled-up detail is trimmed early
+#   min_free_space_gb    free space on the data drive below this: the same trimming
+#   hard_floor_free_gb   free space below this: detail collection PAUSES (rollups, purging and status continue) until
+#                        free space is back above min_free_space_gb. Must be less than min_free_space_gb.
+max_database_gb = 10
+min_free_space_gb = 20
+hard_floor_free_gb = 5

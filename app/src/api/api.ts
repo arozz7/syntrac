@@ -37,6 +37,7 @@ export const tauriApi: Api = {
         etwDropped: null,
         etwSilentSecs: null,
         dataAgeSecs: null,
+        storage: null,
       };
     }
   },

@@ -31,7 +31,12 @@ function CurrentView({ view }: { view: ViewId }) {
 export function App() {
   const api = useApi();
   const [view, setView] = useState<ViewId>('overview');
-  const health = usePolled(() => api.health(), HEALTH_REFRESH_MS, 'health');
+  const polled = usePolled(
+    async () => ({ health: await api.health(), fetchedAtMs: Date.now() }),
+    HEALTH_REFRESH_MS,
+    'health',
+  );
+  const health = polled?.health;
   const current = VIEWS.find((v) => v.id === view) ?? VIEWS[0];
 
   return (
@@ -60,7 +65,7 @@ export function App() {
       <main className="main">
         <header className="main__header">
           <h1>{current?.title}</h1>
-          <StatusBanner health={health} />
+          <StatusBanner health={health} nowMs={polled?.fetchedAtMs} />
         </header>
         <CurrentView view={view} />
       </main>

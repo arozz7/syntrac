@@ -14,6 +14,8 @@ const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub struct SqliteStore {
     pub(crate) conn: Connection,
+    /// Things `open` did or could not do, for the host to log (see `take_notices`).
+    pub(crate) notices: Vec<String>,
 }
 
 pub(crate) fn backend(error: impl Display) -> RepoError {
@@ -61,10 +63,13 @@ impl SqliteStore {
         if will_be_rewritten {
             write_backup(&conn, path, existing_version)?;
         }
-        let store = Self::migrated(conn)?;
+        let mut store = Self::migrated(conn)?;
         if will_be_rewritten {
+            // The same rewrite also switches the file to incremental auto-vacuum (see `ensure_incremental_auto_vacuum`).
+            let _ = store.conn.pragma_update(None, "auto_vacuum", crate::storage::AUTO_VACUUM_INCREMENTAL);
             store.compact()?;
         }
+        store.ensure_incremental_auto_vacuum();
         Ok(store)
     }
 
@@ -88,7 +93,7 @@ impl SqliteStore {
         let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX;
         let conn = Connection::open_with_flags(path, flags).map_err(backend)?;
         conn.busy_timeout(BUSY_TIMEOUT).map_err(backend)?;
-        let store = Self { conn };
+        let store = Self { conn, notices: Vec::new() };
 
         let version = store.schema_version()?;
         if version != Self::LATEST_SCHEMA_VERSION {
@@ -102,7 +107,7 @@ impl SqliteStore {
     }
 
     fn migrated(conn: Connection) -> Result<Self, RepoError> {
-        let mut store = Self { conn };
+        let mut store = Self { conn, notices: Vec::new() };
         store.migrate()?;
         Ok(store)
     }

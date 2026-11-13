@@ -26,6 +26,7 @@ fn report_silent(dropped: u64, silent_secs: u64) -> StatusReport {
         last_tick_at_micros: Some(10_000 * SEC),
         totals: CollectorTotals::default(),
         etw: Some(EtwStatus { received: 100, dropped, parse_errors: 0, max_lag_ms: 5, future_events: 0, silent_secs }),
+        storage: None,
     }
 }
 
@@ -128,4 +129,69 @@ fn a_collector_running_without_etw_is_not_called_degraded() {
     no_etw.etw = None;
     no_etw.etw_enabled = false;
     assert_eq!(assess_health(Ok(no_etw), data_age(2), now()).state, HealthState::Running);
+}
+
+fn report_with_storage(level: syntrac_ipc::protocol::StorageLevel) -> StatusReport {
+    use syntrac_ipc::protocol::StorageStatus;
+    let mut report = report(0);
+    report.storage = Some(StorageStatus {
+        level,
+        database_file_bytes: 3_000_000_000,
+        database_live_bytes: 2_900_000_000,
+        drive_free_bytes: 18_000_000_000,
+        oldest_detail_micros: Some(9_000 * SEC),
+        oldest_rollup_micros: Some(5_000 * SEC),
+        trimmed_hours_total: 4,
+    });
+    report
+}
+
+#[test]
+fn a_database_within_its_limits_is_running_and_its_size_is_reported() {
+    use syntrac_ipc::protocol::StorageLevel;
+    let health = assess_health(Ok(report_with_storage(StorageLevel::Ok)), data_age(2), now());
+    assert_eq!(health.state, HealthState::Running);
+    let storage = health.storage.expect("storage view");
+    assert_eq!((storage.database_live_bytes, storage.database_file_bytes), (2_900_000_000, 3_000_000_000));
+    assert_eq!(storage.drive_free_bytes, 18_000_000_000);
+    assert_eq!((storage.oldest_detail_ms, storage.oldest_rollup_ms), (Some(9_000_000), Some(5_000_000)));
+    assert_eq!(storage.trimmed_hours_total, 4);
+}
+
+#[test]
+fn a_collector_without_storage_information_reports_none() {
+    assert!(assess_health(Ok(report(0)), data_age(2), now()).storage.is_none());
+}
+
+#[test]
+fn trimming_is_degraded_and_says_so_in_plain_words() {
+    use syntrac_ipc::protocol::StorageLevel;
+    let health = assess_health(Ok(report_with_storage(StorageLevel::Trimming)), data_age(2), now());
+    assert_eq!(health.state, HealthState::Degraded);
+    assert!(health.message.to_lowercase().contains("trimmed early"), "{}", health.message);
+}
+
+#[test]
+fn paused_collection_is_degraded_and_says_detail_is_not_being_recorded() {
+    use syntrac_ipc::protocol::StorageLevel;
+    let health = assess_health(Ok(report_with_storage(StorageLevel::Paused)), data_age(2), now());
+    assert_eq!(health.state, HealthState::Degraded);
+    assert!(health.message.to_lowercase().contains("paused"), "{}", health.message);
+}
+
+#[test]
+fn a_paused_collector_outranks_a_silent_etw_in_the_message() {
+    use syntrac_ipc::protocol::StorageLevel;
+    let mut report = report_with_storage(StorageLevel::Paused);
+    report.etw =
+        Some(EtwStatus { received: 1, dropped: 0, parse_errors: 0, max_lag_ms: 0, future_events: 0, silent_secs: 600 });
+    let health = assess_health(Ok(report), data_age(2), now());
+    assert!(health.message.to_lowercase().contains("paused"), "{}", health.message);
+}
+
+#[test]
+fn stale_data_still_comes_first() {
+    use syntrac_ipc::protocol::StorageLevel;
+    let health = assess_health(Ok(report_with_storage(StorageLevel::Paused)), data_age(300), now());
+    assert_eq!(health.state, HealthState::Stale);
 }

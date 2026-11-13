@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use syntrac_collector::drive_space::DriveFreeSpace;
 use syntrac_collector::etw::EtwSource;
 use syntrac_collector::etw_stats::{EtwReport, EtwStats};
 use syntrac_collector::orphan_guard::clean_up_orphans;
@@ -16,7 +17,9 @@ use syntrac_collector::sysmetrics::SysinfoMetricsSource;
 use syntrac_collector::system::{is_elevated, own_cpu_time, SystemClock};
 use syntrac_collector::trace_sessions::WindowsSessions;
 use syntrac_collector::volumes::system_path_converter;
+use syntrac_core::retention::GuardLimits;
 use syntrac_core::silence::{SilenceAction, SilencePolicy, SilenceVerdict, SilenceWatchdog};
+use syntrac_core::storage_guard::StorageStats;
 use syntrac_core::{
     Clock, EventRepository, MetricsRepository, MetricsSource, ProcessRepository, Retention, RollupRepository,
     RollupSettings, TelemetrySource,
@@ -98,10 +101,13 @@ pub fn run_host(
         std::fs::create_dir_all(parent)
             .map_err(|e| HostError::failed(format!("could not create {}: {e}", parent.display())))?;
     }
-    let store = SqliteStore::open(&options.database_path).map_err(|e| {
+    let mut store = SqliteStore::open(&options.database_path).map_err(|e| {
         HostError::failed(format!("could not open the database {}: {e}", options.database_path.display()))
     })?;
     info!(database = %options.database_path.display(), "Database ready");
+    for notice in store.take_notices() {
+        warn!(notice = notice.as_str(), "Database");
+    }
 
     // ETW first, so nothing is missed while the snapshot is taken.
     let mut sources: Vec<Box<dyn TelemetrySource>> = Vec::new();
@@ -125,12 +131,22 @@ pub fn run_host(
         flow_window: Duration::from_secs(config.flow_window_secs),
         flow_flush_grace: Duration::from_secs(config.flow_flush_grace_secs),
         metrics_interval: Duration::from_secs(config.metrics_interval_secs),
-        retention: Duration::from_secs(u64::from(config.retention_days) * 24 * 3600),
+        retention: Duration::from_secs(u64::from(config.detail_retention_days) * 24 * 3600),
         purge_interval: Duration::from_secs(config.purge_interval_minutes * 60),
         rollup_interval: Duration::from_secs(config.rollup_interval_minutes * 60),
         rollup: RollupSettings::default(),
+        guard_interval: Duration::from_secs(60),
     };
-    let mut collector = Collector::new(settings, sources, Some(metrics), store, SystemClock);
+    let gb = 1_000_000_000_u64;
+    let limits = GuardLimits {
+        max_db_bytes: config.max_database_gb.saturating_mul(gb),
+        min_free_bytes: config.min_free_space_gb.saturating_mul(gb),
+        hard_floor_bytes: config.hard_floor_free_gb.saturating_mul(gb),
+    };
+    let data_folder =
+        options.database_path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(std::path::Path::new("."));
+    let mut collector = Collector::new(settings, sources, Some(metrics), store, SystemClock)
+        .with_storage_guard(limits, Box::new(DriveFreeSpace::new(data_folder.to_path_buf())));
 
     let board = Arc::new(StatusBoard::new(
         BoardInfo {
@@ -171,6 +187,7 @@ pub fn run_host(
             _ => 0,
         };
         board.publish(collector.totals(), etw_report.as_ref(), etw_silent_secs, SystemClock.now());
+        board.publish_storage(collector.storage());
         if last_status.elapsed() >= status_interval {
             let cpu_now = own_cpu_time();
             let totals = collector.totals();
@@ -208,7 +225,7 @@ const ETW_SOURCE_NAME: &str = "etw";
 /// number still looks healthy, so each step is logged loudly.
 fn act_on_silence<R, C>(collector: &mut Collector<R, C>, verdict: SilenceVerdict)
 where
-    R: ProcessRepository + EventRepository + MetricsRepository + Retention + RollupRepository,
+    R: ProcessRepository + EventRepository + MetricsRepository + Retention + RollupRepository + StorageStats,
     C: Clock,
 {
     match verdict.action {

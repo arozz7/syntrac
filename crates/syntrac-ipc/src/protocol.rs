@@ -30,6 +30,8 @@ pub enum Request {
     Status,
 }
 
+// A status reply is one small message every few seconds; boxing the report would only add noise at every use.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "response", rename_all = "snake_case")]
 pub enum Response {
@@ -78,6 +80,38 @@ pub struct StatusReport {
     pub totals: CollectorTotals,
     /// Absent when the collector runs without ETW.
     pub etw: Option<EtwStatus>,
+    /// The database and its drive, as last measured by the storage guard. Absent in replies from older services, and
+    /// before the guard's first check.
+    #[serde(default)]
+    pub storage: Option<StorageStatus>,
+}
+
+/// How the storage guard is coping with the data drive.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StorageLevel {
+    /// Within every limit.
+    Ok,
+    /// Over the size cap or short of free space: the oldest rolled-up detail is being trimmed early.
+    Trimming,
+    /// Free space is below the hard floor: detail collection is paused (rollups and status continue).
+    Paused,
+}
+
+/// The database and its drive, as the collector last measured them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StorageStatus {
+    pub level: StorageLevel,
+    pub database_file_bytes: u64,
+    /// Bytes of live data in the file (the rest is free pages not yet returned to the drive).
+    pub database_live_bytes: u64,
+    pub drive_free_bytes: u64,
+    /// The oldest row of detail still stored, microseconds since the Unix epoch.
+    pub oldest_detail_micros: Option<i64>,
+    /// The oldest hourly rollup, microseconds since the Unix epoch.
+    pub oldest_rollup_micros: Option<i64>,
+    /// One-hour steps of detail the guard has trimmed early since the service started.
+    pub trimmed_hours_total: u64,
 }
 
 fn check_size(bytes: &[u8], limit: usize) -> Result<(), ProtocolError> {

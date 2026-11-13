@@ -21,6 +21,7 @@ impl Handler for FixedHandler {
                 last_tick_at_micros: None,
                 totals: CollectorTotals::default(),
                 etw: None,
+                storage: None,
             }),
         }
     }
