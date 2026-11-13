@@ -89,19 +89,64 @@ their events). A migration test builds a real v3 database with text ids and chec
 migration is rehearsed on a COPY of the real database (on O:, outside the live folder) with before/after sizes (before and
 after VACUUM), per-table row counts, timing, a sample of rows compared value by value, and the query plans.
 
-### S3: Rollups and ledgers (migration v5). Runs AFTER S2
+### S3: Rollups and ledgers (migration v5). Runs AFTER S2 (S2 is done and live)
+
+Status: **APPROVED 2026-11-13** (user chose: no port in the key with `top_port` and `distinct_ports`; hourly for everything, UTC). A rollup key cannot be
+rebuilt once detail has aged out, which is why it was the user's call.
 
 Tasks
-1. Pure core module `rollup`: given detail rows for a completed hour or day, produce rollup rows. Only COMPLETED periods are
-   rolled up. Re-running a period gives the same result (idempotent).
-2. A watermark table records how far rolling up has got, so a restart or a crash cannot skip or double-count a period.
-3. Repository trait `RollupRepository` with in-memory and SQLite implementations and a contract suite.
-4. The collector loop rolls up what is due (like it samples metrics and purges today).
-5. Ledgers (`first_seen` / `last_seen` for executables and destinations) updated as part of the same step.
+1. Pure core module `rollup`: given detail rows for a completed hour, produce rollup rows. ALL aggregation maths lives here,
+   so the in-memory and SQLite repositories cannot disagree. Only COMPLETED hours are rolled up. Re-running gives the same
+   result (idempotent).
+2. A watermark records how far rolling up has got, so a restart or a crash cannot skip or double-count an hour.
+3. Repository trait `RollupRepository` (load raw rows for one hour; store the result and advance the watermark in ONE
+   transaction; read history) with in-memory and SQLite implementations and a contract suite.
+4. The collector loop rolls up what is due, a few hours per pass so a backlog never stalls draining ETW.
+5. Ledgers (`first_seen` / `last_seen` for executables, destinations, and each executable-destination pair), permanent.
 6. Queries for trends: per-hour system curves, per-executable history, "when was this destination first seen".
 
-Tests first: hourly and daily aggregation maths (empty periods, partial hours, a process spanning an hour boundary, pid reuse),
-idempotent re-run, watermark recovery after a simulated crash, ledger first/last seen.
+Findings that shaped the design (measured 2026-11-13 on 15.7 hours of real data, 300,740 flows):
+- Keying traffic by (executable, destination, **port**) is far too big: 89,103 rows for one day, about 1.6 GB a year, against
+  the 100 MB a year this plan promised. The cause is ephemeral ports (svchost: 182 addresses but 62,754 address-port pairs;
+  loopback traffic of one Intel service uses 11,404 different ports). Without the port the same day is 1,393 rows.
+- Keyed by (hour, executable, destination): 4,308 rows in 15.7 hours, about 6,600 a day, roughly 150 MB a year.
+- Every stored image path is a drive-letter path (no `\Device\HarddiskVolume` forms), so a lower-cased path is a safe
+  executable key. An empty path (12 records) and any process whose path is unknown count as "unattributed".
+
+Design (proposed)
+- **One cadence: hourly, UTC.** One watermark, one completeness rule (an hour is rolled up once it ended more than 5 minutes ago,
+  after the flow grace), ledgers at most about an hour behind, and a few thousand rows to load per pass instead of a day's
+  hundreds of thousands. Hourly rows can be regrouped into local-time days by the UI later; UTC daily rows could not be.
+  (A separate daily traffic table would be about 36 MB a year instead of 150 MB, but needs a second watermark, a second gate
+  for retention, and ledgers up to a day late.)
+- **No port in the key.** Traffic rows are keyed (hour, executable, destination address) and carry bytes sent and received,
+  flow count, first and last seen, `distinct_ports` and `top_port` (by bytes, lowest port on a tie). Distinct-port counts
+  are per hour and cannot be added up across hours. Limitation, recorded: for loopback or inbound traffic the port that is
+  stored is the PEER's, often ephemeral, and the meaningful local port is not collected.
+- **Tables (migration v5, additive, no rewrite):** `executables(id, path_key UNIQUE, path, first_seen, last_seen)` with id 1
+  reserved for "unattributed"; `destinations(addr PK, first_seen, last_seen)`; `exe_destinations(exe_id, addr, first_seen,
+  last_seen)`; `rollup_system_hour(hour_start PK, samples, cpu_avg, cpu_max, memory_used_avg, memory_used_max,
+  memory_total, disk_read, disk_write, net_received, net_sent, others_cpu_avg)`; `rollup_process_hour(hour_start, exe_id,
+  samples_present, cpu_avg, cpu_peak, memory_peak, starts)`; `rollup_traffic_hour(hour_start, exe_id, addr, bytes_sent,
+  bytes_received, flows, first_seen, last_seen, distinct_ports, top_port)`; `rollup_progress(hours_done_before)`.
+- **Process rows:** `cpu_avg` is the executable's CPU summed over its instances, averaged over ALL of the hour's samples
+  (absent counts as zero, the same rule as `cpu_breakdown`); `cpu_peak` is the highest per-sample sum. Samples record only
+  the heaviest N processes (default 25), so an executable is described while it is among them. `starts` counts
+  `process_started` EVENTS in the hour (not `processes.started`), so the number does not depend on when a restart snapshot ran.
+  Samples are attributed by process INSTANCE, never by PID, so a reused PID cannot inherit another program's history.
+- **Never re-roll below the watermark.** Replay protection is REPLACE inside the same transaction as the watermark advance;
+  the watermark never moves backwards. Once S4 purges detail, a re-roll would overwrite good rows with thinner ones, so it is
+  refused (tested).
+- **Backlog:** the first pass starts at the hour of the earliest detail and advances a few hours per pass (a short pause
+  between passes while behind). A gap (collector down) yields no rows for those hours but the watermark still passes them.
+- **Not in S3:** deleting anything (S4), UI views of the trends (later). Until S4, the existing 30-day purge is unchanged;
+  rolling up keeps well ahead of it.
+
+Tests first: the aggregation maths (empty hours, partial hours, a process spanning an hour boundary, several instances of one
+executable in one sample, unattributed rows, top-port ties), hour boundaries (a timestamp on the boundary belongs to the NEW
+hour), idempotent re-run, the watermark never moving back, a backlog advancing in capped passes, a replay of an hour after a
+simulated crash not double-counting, PID reuse attributed by instance, ledgers surviving a purge of the detail, and the
+in-memory and SQLite implementations passing the same contract suite.
 
 ### S4: Retention and the storage guard
 
