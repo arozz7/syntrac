@@ -215,3 +215,25 @@ Windows access is in `trace_sessions` (QueryAllTracesW, stop by name with a time
 `cargo run -p syntrac-collector --example list_trace_sessions` shows what it sees and would do, without stopping anything.
 Unelevated it sees 0 sessions (no error), so the name-parsing path is verified only by an elevated run. The smoke test now
 checks that the guard ran and could list sessions under SYSTEM.
+
+## Overhead and storage (2026-11-12 22:5x, installed service, new build)
+
+`scripts/dev/measure-overhead.ps1` (no elevation; performance counters + the collector's own status). Full run, 30 s idle
+then 60 s of synthetic load (20 processes/s + 50 loopback connections/s), results in `aiChangeLog/overhead-20261112-225434.txt`:
+
+| | collector CPU (share of whole machine) | memory | ETW events/s | dropped |
+|---|---|---|---|---|
+| idle | 0.01% avg, 0.18% max | 34 MB | 60 | 0 |
+| load | 0.05% avg, 0.18% max | 34 MB | 409 | 0 |
+
+The collector's cost is negligible and it keeps up with ~7x the idle event rate with zero drops. (A first short run
+exposed a bug in the load generator itself, fixed: an unaccepted listener backlog made Windows refuse connections.)
+
+**Storage is the real cost, and a risk.** Idle growth measured at ~52 MB/hour, and the real database independently implies
+~50 MB/hour (55 MB for ~1 h of live data: 83k events, 30k flow rows, 39k process-metric rows). That is ~1.2 GB/day and
+~37 GB at the default 30-day retention. Only ~15 MB of the 55 MB is event payload. The rest: the `flows` table duplicates
+every network flow already stored as JSON in `events`; 36-character text UUIDs are repeated in every row and in three
+indexes; one `process_exited` row carries a 78-byte payload but full row and index overhead. Options for a plan (none
+applied; a schema change needs a migration and your approval): shorter default retention (7-14 days), UUIDs as 16-byte
+blobs, drop the duplicated flow payload from `events`, roll old detail up into hourly aggregates (Phase 2), measure per-table
+size with a real analyser before choosing.

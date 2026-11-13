@@ -154,6 +154,8 @@ Sysmon adapter, DuckDB analytics, installer and signing, file/registry ETW.
 |---|---|
 | ETW volume and CPU overhead | Provider filtering, batched writes, measured budget (target under 2% CPU idle), checked in the Phase 0 spike |
 | Network ETW gaps (no DNS names, pre-existing connections) | DNS-Client events plus IP Helper reconciliation |
+| Database growth (measured ~50 MB/hour on a busy workstation, ~37 GB at 30 days) | Decide retention and storage layout before relying on 30 days: shorter default, 16-byte ids, no duplicated flow payload, hourly roll-ups of old detail (Phase 2). See aiChangeLog/phase-01b.md |
+| A leftover trace session starves ETW for everyone (seen once, silent for over an hour) | Orphan guard at start, silence watchdog and Degraded banner, smoke-test checks that ETW delivers |
 | Service crash or data loss | Batched transactional writes, WAL, watchdog recovery |
 | Sensitive command lines in storage | Redaction rules, retention limits, restricted ACLs |
 | False positives eroding trust | Tiered severities, explanation on every alert, allowlist |
