@@ -89,7 +89,7 @@ their events). A migration test builds a real v3 database with text ids and chec
 migration is rehearsed on a COPY of the real database (on O:, outside the live folder) with before/after sizes (before and
 after VACUUM), per-table row counts, timing, a sample of rows compared value by value, and the query plans.
 
-### S3: Rollups and ledgers (migration v5). Runs AFTER S2 (S2 is done and live)
+### S3: Rollups and ledgers (migration v5). Runs AFTER S2 (S2 is done and live; S3 is implemented, not yet live)
 
 Status: **APPROVED 2026-11-13** (user chose: no port in the key with `top_port` and `distinct_ports`; hourly for everything, UTC). A rollup key cannot be
 rebuilt once detail has aged out, which is why it was the user's call.
@@ -109,7 +109,7 @@ Findings that shaped the design (measured 2026-11-13 on 15.7 hours of real data,
 - Keying traffic by (executable, destination, **port**) is far too big: 89,103 rows for one day, about 1.6 GB a year, against
   the 100 MB a year this plan promised. The cause is ephemeral ports (svchost: 182 addresses but 62,754 address-port pairs;
   loopback traffic of one Intel service uses 11,404 different ports). Without the port the same day is 1,393 rows.
-- Keyed by (hour, executable, destination): 4,308 rows in 15.7 hours, about 6,600 a day, roughly 150 MB a year.
+- Keyed by (hour, executable, destination): 4,308 rows in 15.7 hours, about 6,600 a day. Measured after building it: about 1.2 MB a day in total, roughly 430 MB a year (about 100 bytes a traffic row with its index).
 - Every stored image path is a drive-letter path (no `\Device\HarddiskVolume` forms), so a lower-cased path is a safe
   executable key. An empty path (12 records) and any process whose path is unknown count as "unattributed".
 

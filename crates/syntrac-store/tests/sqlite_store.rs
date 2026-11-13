@@ -198,3 +198,8 @@ fn a_schema_mismatch_is_a_typed_error_so_the_ui_never_has_to_parse_text() {
     }
     assert!(matches!(SqliteStore::open(&path), Err(RepoError::SchemaMismatch { found: 999, .. })));
 }
+
+#[test]
+fn sqlite_store_satisfies_the_rollup_contract() {
+    syntrac_testkit::rollup_contract::rollup_contract(in_memory_store);
+}

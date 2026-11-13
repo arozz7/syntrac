@@ -14,6 +14,7 @@ fn an_empty_file_gives_the_documented_defaults() {
     assert_eq!(config.top_processes, 25);
     assert_eq!(config.retention_days, 30);
     assert_eq!(config.purge_interval_minutes, 60);
+    assert_eq!(config.rollup_interval_minutes, 5);
     assert_eq!(config.status_interval_secs, 30);
     assert_eq!(config.etw_silent_restart_secs, 180);
     assert_eq!(config.etw_max_restarts, 3);
@@ -49,6 +50,7 @@ fn values_that_would_break_the_loop_are_rejected() {
         "metrics_interval_secs = 0",
         "retention_days = 0",
         "purge_interval_minutes = 0",
+        "rollup_interval_minutes = 0",
         "top_processes = 0",
         "etw_silent_restart_secs = 0",
     ] {

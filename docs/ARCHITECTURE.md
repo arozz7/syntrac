@@ -61,7 +61,8 @@ Client: `syntrac-service --status` / `--ping` (`--pipe <name>`), exit codes 0 ok
 | `MetricsRepository` | Memory | Implemented: system series and `cpu_breakdown` (which processes used the CPU, plus the long tail and the unaccounted share) |
 | `FlowQueries` | Memory | Implemented: `top_destinations` and `recent_flows` (with the process name) from the indexed `flows` table |
 | `ProcessQueries` | Memory | Implemented: `list_processes` (running only, name search, newest first) for the UI |
-| `Retention` | Memory | Implemented: `purge_before(cutoff)` |
+| `Retention` | Memory | Implemented: `purge_before(cutoff)` (detail only; rollups and ledgers are never purged by it) |
+| `RollupRepository` | Memory | Implemented (SQLite, in-memory; shared contract suite): loads one hour of detail, stores its rollup + ledgers + watermark atomically, reads history and ledgers. The maths is the pure `syntrac_core::rollup::roll_up_hour` |
 | `TelemetrySource` | Tool | Implemented: `EtwSource`, `SnapshotSource` (Windows), `MockTelemetrySource` |
 | `MetricsSource` | Tool | Implemented: `SysinfoMetricsSource`, `MockMetricsSource` |
 | `Clock` | Tool | Implemented: `SystemClock`, `ManualClock` |
@@ -90,6 +91,21 @@ MetricsSource --> resolve each PID to its instance --> system_metrics + process_
   for one. It is proven offline in `syntrac-service/tests/collector_loop.rs`.
 
 Later phases add `Detector` and `RiskScorer` after the correlator, each pure and injected.
+
+
+## Rollups and ledgers (schema v5)
+
+Detail (events, flows, per-process samples) is kept for a short window; what survives for trends is a set of small hourly
+summaries (UTC) written by the collector once an hour has ended and settled (5 minutes after the hour, so late flow events
+are in). `roll_up_hour` (pure) turns one hour of raw rows into: one system row (CPU average and peak, memory, disk and network
+totals), one row per executable (samples present, CPU average over ALL the hour's samples, CPU peak, memory peak, starts), and
+one row per executable and destination address (bytes, flows, first and last seen, distinct ports, busiest port). The port is
+deliberately not part of the key (most ports are ephemeral). Executables are identified by their lower-cased image path;
+owners are resolved from the process INSTANCE, never the PID. Ledgers (first and last seen per executable, per destination
+and per pair) are permanent and widened with MIN/MAX, so updating them is idempotent. A watermark (`rollup_progress`) moves
+forward in the same transaction that stores an hour; an hour at or below it is refused, so a re-roll can never overwrite
+good rows with thinner ones after detail has been purged. The collector rolls up before it purges and works a backlog off a
+couple of hours per pass.
 
 ## Collector adapters (`syntrac-collector`)
 

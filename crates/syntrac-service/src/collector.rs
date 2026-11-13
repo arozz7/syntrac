@@ -8,10 +8,14 @@
 use std::time::Duration;
 
 use syntrac_core::{
-    ingest_metrics, Clock, EventRepository, IngestError, MetricsRepository, MetricsSource, Pipeline, ProcessRepository,
-    PurgeCounts, Retention, SourceError, TelemetrySource, Timestamp,
+    ingest_metrics, roll_up_due, Clock, EventRepository, IngestError, MetricsRepository, MetricsSource, Pipeline,
+    ProcessRepository, PurgeCounts, Retention, RollupRepository, RollupSettings, SourceError, TelemetrySource,
+    Timestamp,
 };
 use tracing::{error, info, warn};
+
+/// Between two rollup passes while more hours are already due: long enough for the loop to keep draining ETW in between.
+const BACKLOG_PAUSE: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Clone, Copy)]
 pub struct CollectorSettings {
@@ -22,6 +26,9 @@ pub struct CollectorSettings {
     pub metrics_interval: Duration,
     pub retention: Duration,
     pub purge_interval: Duration,
+    /// How often completed hours are rolled up into the permanent summaries.
+    pub rollup_interval: Duration,
+    pub rollup: RollupSettings,
 }
 
 /// What one tick did.
@@ -34,6 +41,8 @@ pub struct TickReport {
     pub source_errors: usize,
     pub storage_errors: usize,
     pub purged: Option<PurgeCounts>,
+    /// Hours rolled up by this tick.
+    pub rollup_hours: usize,
 }
 
 /// Running totals since start.
@@ -57,6 +66,7 @@ pub struct Collector<R, C> {
     clock: C,
     next_metrics_at: Timestamp,
     next_purge_at: Timestamp,
+    next_rollup_at: Timestamp,
     totals: Totals,
 }
 
@@ -72,7 +82,7 @@ fn before(base: Timestamp, span: Duration) -> Timestamp {
 
 impl<R, C> Collector<R, C>
 where
-    R: ProcessRepository + EventRepository + MetricsRepository + Retention,
+    R: ProcessRepository + EventRepository + MetricsRepository + Retention + RollupRepository,
     C: Clock,
 {
     pub fn new(
@@ -94,6 +104,7 @@ where
             // meaningless (all zeros). The first sample waits one interval.
             next_metrics_at: after(now, settings.metrics_interval),
             next_purge_at: now,
+            next_rollup_at: now,
             totals: Totals::default(),
         }
     }
@@ -122,6 +133,7 @@ where
         self.drain_sources(&mut report);
         self.flush_finished_flows(now, &mut report);
         self.sample_metrics_if_due(now, &mut report);
+        self.roll_up_if_due(now, &mut report);
         self.purge_if_due(now, &mut report);
 
         self.totals.ticks += 1;
@@ -205,6 +217,32 @@ where
             }
             Err(IngestError::Repo(error)) => {
                 error!(%error, "Could not store a metrics sample");
+                report.storage_errors += 1;
+            }
+        }
+    }
+
+    /// Rolls completed hours up into the permanent summaries. Done BEFORE the purge, so detail is summarised before it can
+    /// age out. A pass does a few hours at most; while more are waiting the next pass follows almost at once, otherwise it
+    /// waits for the usual interval. A failure is counted and retried at the usual interval (never a hot loop).
+    fn roll_up_if_due(&mut self, now: Timestamp, report: &mut TickReport) {
+        if now < self.next_rollup_at {
+            return;
+        }
+        self.next_rollup_at = after(now, self.settings.rollup_interval);
+
+        match roll_up_due(&mut self.repo, now, &self.settings.rollup) {
+            Ok(pass) => {
+                report.rollup_hours = pass.hours_rolled;
+                if pass.hours_rolled > 0 {
+                    info!(hours = pass.hours_rolled, backlog = pass.backlog, "Rolled up completed hours");
+                }
+                if pass.backlog {
+                    self.next_rollup_at = after(now, BACKLOG_PAUSE);
+                }
+            }
+            Err(error) => {
+                error!(%error, "Could not roll up completed hours");
                 report.storage_errors += 1;
             }
         }

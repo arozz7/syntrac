@@ -7,6 +7,9 @@ pub mod identity;
 pub mod metrics;
 pub mod pipeline;
 pub mod ports;
+pub mod rollup;
+pub mod rollup_ledger;
+pub mod rollup_run;
 pub mod silence;
 pub mod time;
 
@@ -23,4 +26,7 @@ pub use ports::{
     EventQuery, EventRepository, FlowQueries, MetricsRepository, MetricsSource, ProcessFilter, ProcessQueries,
     ProcessRecord, ProcessRepository, RepoError, Retention, SourceError, TelemetrySource,
 };
+pub use rollup::{Executable, HourInput, HourRollup, LedgerEntry, ProcessHour, SystemHour, TrafficHour};
+pub use rollup_ledger::LedgerObservations;
+pub use rollup_run::{roll_up_due, RollupPass, RollupRepository, RollupSettings};
 pub use time::{Clock, SystemClock, Timestamp};

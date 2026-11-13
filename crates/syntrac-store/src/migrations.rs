@@ -166,6 +166,83 @@ pub const MIGRATIONS: &[&str] = &[
     CREATE INDEX idx_processes_pid_started ON processes (pid, started);
     CREATE INDEX idx_process_metrics_ts ON process_metrics (ts);
     ",
+    // 5: hourly rollups and permanent ledgers (docs/STORAGE-PLAN.md, S3). Additive: nothing existing is touched. Hours are
+    // UTC. The traffic key has no port (most ports are ephemeral); `top_port` and `distinct_ports` summarise them.
+    // `executables` is both the dimension table (its id is used by the rollup rows) and the executable ledger; row 1 stands
+    // for 'unattributed' (owner or path unknown) and has no sightings.
+    "
+    CREATE TABLE executables (
+        id          INTEGER PRIMARY KEY,
+        path_key    TEXT NOT NULL UNIQUE,
+        path        TEXT NOT NULL,
+        first_seen  INTEGER,
+        last_seen   INTEGER
+    );
+    INSERT INTO executables (id, path_key, path) VALUES (1, '', '(unattributed)');
+
+    CREATE TABLE destinations (
+        addr        TEXT PRIMARY KEY,
+        first_seen  INTEGER NOT NULL,
+        last_seen   INTEGER NOT NULL
+    ) WITHOUT ROWID;
+
+    CREATE TABLE exe_destinations (
+        exe_id      INTEGER NOT NULL,
+        addr        TEXT NOT NULL,
+        first_seen  INTEGER NOT NULL,
+        last_seen   INTEGER NOT NULL,
+        PRIMARY KEY (exe_id, addr)
+    ) WITHOUT ROWID;
+
+    CREATE TABLE rollup_system_hour (
+        hour_start  INTEGER PRIMARY KEY,
+        samples     INTEGER NOT NULL,
+        cpu_avg     REAL NOT NULL,
+        cpu_max     REAL NOT NULL,
+        memory_used_avg INTEGER NOT NULL,
+        memory_used_max INTEGER NOT NULL,
+        memory_total INTEGER NOT NULL,
+        disk_read   INTEGER NOT NULL,
+        disk_write  INTEGER NOT NULL,
+        net_received INTEGER NOT NULL,
+        net_sent    INTEGER NOT NULL,
+        others_cpu_avg REAL NOT NULL
+    );
+
+    CREATE TABLE rollup_process_hour (
+        hour_start  INTEGER NOT NULL,
+        exe_id      INTEGER NOT NULL,
+        samples_present INTEGER NOT NULL,
+        cpu_avg     REAL NOT NULL,
+        cpu_peak    REAL NOT NULL,
+        memory_peak INTEGER NOT NULL,
+        starts      INTEGER NOT NULL,
+        first_seen  INTEGER NOT NULL,
+        last_seen   INTEGER NOT NULL,
+        PRIMARY KEY (hour_start, exe_id)
+    ) WITHOUT ROWID;
+    CREATE INDEX idx_rollup_process_exe ON rollup_process_hour (exe_id, hour_start);
+
+    CREATE TABLE rollup_traffic_hour (
+        hour_start  INTEGER NOT NULL,
+        exe_id      INTEGER NOT NULL,
+        addr        TEXT NOT NULL,
+        bytes_sent  INTEGER NOT NULL,
+        bytes_received INTEGER NOT NULL,
+        flows       INTEGER NOT NULL,
+        first_seen  INTEGER NOT NULL,
+        last_seen   INTEGER NOT NULL,
+        distinct_ports INTEGER NOT NULL,
+        top_port    INTEGER NOT NULL,
+        PRIMARY KEY (hour_start, exe_id, addr)
+    ) WITHOUT ROWID;
+    CREATE INDEX idx_rollup_traffic_addr ON rollup_traffic_hour (addr, hour_start);
+
+    CREATE TABLE rollup_progress (
+        id          INTEGER PRIMARY KEY CHECK (id = 1),
+        hours_done_before INTEGER NOT NULL
+    );
+    ",
 ];
 
 /// The migration (1-based number) that rewrites every table. An existing database gets a backup copy before it is applied

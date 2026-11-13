@@ -11,9 +11,10 @@ use syntrac_core::{
 
 #[derive(Debug, Default)]
 pub struct InMemoryRepository {
-    processes: HashMap<ProcessInstanceId, ProcessRecord>,
-    events: Vec<EventEnvelope>,
-    metrics: Vec<MetricsSample>,
+    pub(crate) processes: HashMap<ProcessInstanceId, ProcessRecord>,
+    pub(crate) events: Vec<EventEnvelope>,
+    pub(crate) metrics: Vec<MetricsSample>,
+    pub(crate) rollups: crate::memory_rollup::RollupState,
 }
 
 impl ProcessRepository for InMemoryRepository {

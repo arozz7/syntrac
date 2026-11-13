@@ -8,8 +8,11 @@ mod inspect;
 mod metrics;
 #[cfg(test)]
 mod migration_v4_tests;
+#[cfg(test)]
+mod migration_v5_tests;
 mod migrations;
 mod processes;
+mod rollups;
 
 pub use connection::SqliteStore;
 pub use inspect::{inspect_database, DatabaseReport};

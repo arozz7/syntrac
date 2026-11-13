@@ -3,7 +3,8 @@
 use std::time::Duration;
 
 use syntrac_core::{
-    EventEnvelope, EventQuery, EventRepository, MetricsRepository, NetAction, TelemetrySource, Timestamp,
+    EventEnvelope, EventQuery, EventRepository, MetricsRepository, NetAction, RollupRepository, RollupSettings,
+    TelemetrySource, Timestamp,
 };
 use syntrac_service::{Collector, CollectorSettings};
 use syntrac_testkit::fixtures::{
@@ -22,6 +23,8 @@ fn settings() -> CollectorSettings {
         metrics_interval: Duration::from_secs(5),
         retention: Duration::from_secs(24 * 3600),
         purge_interval: Duration::from_secs(3600),
+        rollup_interval: Duration::from_secs(600),
+        rollup: RollupSettings { settle: Duration::from_secs(300), max_hours_per_pass: 1 },
     }
 }
 
@@ -344,4 +347,53 @@ fn a_failed_restart_is_reported_to_the_caller() {
     let (mut collector, _clock) = collector_at(1_000, vec![Box::new(flaky)], None, InMemoryRepository::default());
     assert!(collector.restart_source("etw").is_err());
     assert_eq!(restarts.count(), 1, "it was attempted");
+}
+
+fn repo_with_samples_in_hours(hours: &[i64]) -> InMemoryRepository {
+    let mut repo = InMemoryRepository::default();
+    for hour in hours {
+        repo.append_metrics(&metrics_sample(hour * 3600 + 60, 10.0, vec![], 0.0, 0)).unwrap();
+    }
+    repo
+}
+
+#[test]
+fn a_completed_hour_is_rolled_up_when_the_rollup_is_due() {
+    let repo = repo_with_samples_in_hours(&[0]);
+    let (mut collector, _) = collector_at(3600 + 10 * 60, vec![], None, repo);
+
+    let report = collector.tick();
+
+    assert_eq!(report.rollup_hours, 1);
+    let rolled = collector.repository().system_hours(at_secs(0), at_secs(7200)).unwrap();
+    assert_eq!(rolled.len(), 1);
+}
+
+#[test]
+fn the_hour_still_in_progress_is_not_rolled_up() {
+    let repo = repo_with_samples_in_hours(&[0]);
+    let (mut collector, _) = collector_at(30 * 60, vec![], None, repo);
+    assert_eq!(collector.tick().rollup_hours, 0);
+    assert_eq!(collector.repository().rolled_up_before().unwrap(), None);
+}
+
+#[test]
+fn rollups_wait_for_their_interval_unless_a_backlog_is_waiting() {
+    // Hours 0-3 are complete and a pass does one hour at most: the backlog is worked off quickly. Hour 4 only completes at 5:00.
+    let repo = repo_with_samples_in_hours(&[0, 1, 2, 3, 4]);
+    let start = 4 * 3600 + 58 * 60;
+    let (mut collector, clock) = collector_at(start, vec![], None, repo);
+
+    assert_eq!(collector.tick().rollup_hours, 1, "pass 1: hour 0");
+    assert_eq!(collector.tick().rollup_hours, 0, "the same instant: the short backlog pause has not passed");
+    for (seconds, hour) in [(2, 1), (4, 2), (6, 3)] {
+        clock.set(at_secs(start + seconds));
+        assert_eq!(collector.tick().rollup_hours, 1, "a backlog does not wait for the 10-minute interval: hour {hour}");
+    }
+
+    // Hour 4 is settled by 5:05, but the last pass ran at 4:58 and the interval is 10 minutes.
+    clock.set(at_secs(5 * 3600 + 6 * 60));
+    assert_eq!(collector.tick().rollup_hours, 0, "settled, but the interval since the last pass has not elapsed");
+    clock.set(at_secs(5 * 3600 + 9 * 60));
+    assert_eq!(collector.tick().rollup_hours, 1, "hour 4 on the next scheduled pass");
 }

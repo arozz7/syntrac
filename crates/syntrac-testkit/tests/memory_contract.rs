@@ -38,3 +38,8 @@ fn in_memory_repository_satisfies_the_process_queries_contract() {
 fn in_memory_repository_satisfies_the_recent_flows_contract() {
     recent_flows_contract(InMemoryRepository::default);
 }
+
+#[test]
+fn in_memory_repository_satisfies_the_rollup_contract() {
+    syntrac_testkit::rollup_contract::rollup_contract(InMemoryRepository::default);
+}

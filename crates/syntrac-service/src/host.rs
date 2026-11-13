@@ -18,7 +18,8 @@ use syntrac_collector::trace_sessions::WindowsSessions;
 use syntrac_collector::volumes::system_path_converter;
 use syntrac_core::silence::{SilenceAction, SilencePolicy, SilenceVerdict, SilenceWatchdog};
 use syntrac_core::{
-    Clock, EventRepository, MetricsRepository, MetricsSource, ProcessRepository, Retention, TelemetrySource,
+    Clock, EventRepository, MetricsRepository, MetricsSource, ProcessRepository, Retention, RollupRepository,
+    RollupSettings, TelemetrySource,
 };
 use syntrac_ipc::pipe::{PipeServer, PipeServerConfig};
 use syntrac_store::SqliteStore;
@@ -126,6 +127,8 @@ pub fn run_host(
         metrics_interval: Duration::from_secs(config.metrics_interval_secs),
         retention: Duration::from_secs(u64::from(config.retention_days) * 24 * 3600),
         purge_interval: Duration::from_secs(config.purge_interval_minutes * 60),
+        rollup_interval: Duration::from_secs(config.rollup_interval_minutes * 60),
+        rollup: RollupSettings::default(),
     };
     let mut collector = Collector::new(settings, sources, Some(metrics), store, SystemClock);
 
@@ -205,7 +208,7 @@ const ETW_SOURCE_NAME: &str = "etw";
 /// number still looks healthy, so each step is logged loudly.
 fn act_on_silence<R, C>(collector: &mut Collector<R, C>, verdict: SilenceVerdict)
 where
-    R: ProcessRepository + EventRepository + MetricsRepository + Retention,
+    R: ProcessRepository + EventRepository + MetricsRepository + Retention + RollupRepository,
     C: Clock,
 {
     match verdict.action {

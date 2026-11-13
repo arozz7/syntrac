@@ -21,6 +21,9 @@ top_processes = 25            # heaviest processes recorded individually per sam
 retention_days = 30
 purge_interval_minutes = 60
 
+# Completed hours are summarised into permanent hourly rollups and ledgers this often (a backlog is worked off sooner).
+rollup_interval_minutes = 5
+
 # How often a status line is logged (events stored, drops, own CPU).
 status_interval_secs = 30
 
