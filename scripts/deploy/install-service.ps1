@@ -88,18 +88,18 @@ Copy-Item -Path $Executable -Destination $installedExe -Force
 $writeConfig = $true
 if (Test-Path $configFile) {
     $existingText = Get-Content -Path $configFile -Raw
-    if (Test-ConfigPaths $existingText $expectedPaths.Database $expectedPaths.Logs) {
+    if (Test-ConfigPaths $existingText $expectedPaths.Database $expectedPaths.Logs $UserSid) {
         $writeConfig = $false
         Write-Host "Kept the existing $configFile"
     } else {
         $backup = "$configFile.bak-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
         Move-Item -Path $configFile -Destination $backup
-        Write-Host "The existing config had wrong database/log paths; renamed it to $backup and regenerating"
+        Write-Host "The existing config had wrong database/log/pipe settings; renamed it to $backup and regenerating"
     }
 }
 if ($writeConfig) {
     $template = Get-Content -Path (Join-Path $repoRoot 'config/service.toml') -Raw
-    $text = New-ConfigText -Template $template -Database $expectedPaths.Database -Logs $expectedPaths.Logs
+    $text = New-ConfigText -Template $template -Database $expectedPaths.Database -Logs $expectedPaths.Logs -UserSid $UserSid
     [IO.File]::WriteAllText($configFile, $text, (New-Object Text.UTF8Encoding $false))
     Write-Host "Wrote $configFile"
 }

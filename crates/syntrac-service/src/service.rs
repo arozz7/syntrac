@@ -12,7 +12,8 @@ use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use syntrac_service::{
-    run_host, service_config_path, validate_service_paths, HostOptions, ServiceConfig, DEFAULT_SHUTDOWN_LIMIT,
+    run_host, service_config_path, validate_service_paths, HostOptions, PipeOptions, ServiceConfig,
+    DEFAULT_SHUTDOWN_LIMIT, SERVICE_PIPE_NAME,
 };
 use tracing::{error, info};
 use tracing_appender::non_blocking::WorkerGuard;
@@ -115,7 +116,12 @@ fn start_and_run(stop: &Arc<AtomicBool>, handle: ServiceStatusHandle) -> Result<
     let _log_guard = init_logging(&paths.log_dir)?;
     info!(config = %config_path.display(), database = %paths.database_path.display(), "Service starting");
 
+    let pipe = PipeOptions {
+        name: SERVICE_PIPE_NAME.to_owned(),
+        allowed_sids: config.pipe_allowed_sid.clone().into_iter().collect(),
+    };
     let options = HostOptions {
+        pipe: Some(pipe),
         config,
         database_path: paths.database_path,
         use_etw: true,

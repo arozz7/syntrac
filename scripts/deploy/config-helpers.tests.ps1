@@ -7,22 +7,28 @@ function Assert-That {
     if ($Condition) { Write-Host "  ok   $Name" } else { Write-Host "  FAIL $Name" -ForegroundColor Red; $script:failures++ }
 }
 
+$sid = 'S-1-5-21-1-2-3-1001'
 $expected = Get-ExpectedConfigPaths -DataRoot 'C:\ProgramData\Syntrac'
 Assert-That 'database lives in data\' ($expected.Database -eq 'C:/ProgramData/Syntrac/data/syntrac.db')
 Assert-That 'logs are a SIBLING of data\, not inside it (the original bug)' ($expected.Logs -eq 'C:/ProgramData/Syntrac/logs')
 Assert-That 'logs path is not under the user-writable data folder' (-not $expected.Logs.StartsWith('C:/ProgramData/Syntrac/data'))
 
 $template = "flow_window_secs = 10`r`n"
-$generated = New-ConfigText -Template $template -Database $expected.Database -Logs $expected.Logs
-Assert-That 'a generated config matches its own expected paths' (Test-ConfigPaths $generated $expected.Database $expected.Logs)
+$generated = New-ConfigText -Template $template -Database $expected.Database -Logs $expected.Logs -UserSid $sid
+Assert-That 'a generated config matches its own expected paths' (Test-ConfigPaths $generated $expected.Database $expected.Logs $sid)
 Assert-That 'the template is carried over' ($generated.Contains('flow_window_secs = 10'))
 
 $buggy = "database_path = `"C:/ProgramData/Syntrac/data/syntrac.db`"`r`nlog_dir = `"C:/ProgramData/Syntrac/data/logs`"`r`n"
-Assert-That 'the config written by the buggy installer is detected as wrong' (-not (Test-ConfigPaths $buggy $expected.Database $expected.Logs))
+Assert-That 'the config written by the buggy installer is detected as wrong' (-not (Test-ConfigPaths $buggy $expected.Database $expected.Logs $sid))
 
-Assert-That 'a config without the keys is detected as wrong' (-not (Test-ConfigPaths 'flow_window_secs = 10' $expected.Database $expected.Logs))
+Assert-That 'a config without the keys is detected as wrong' (-not (Test-ConfigPaths 'flow_window_secs = 10' $expected.Database $expected.Logs $sid))
 Assert-That 'a commented-out key does not count' (-not (Test-ConfigPaths "# database_path = `"$($expected.Database)`"`r`n# log_dir = `"$($expected.Logs)`"" $expected.Database $expected.Logs))
 Assert-That 'a custom data root is honoured' ((Get-ExpectedConfigPaths -DataRoot 'D:\Telemetry').Logs -eq 'D:/Telemetry/logs')
+
+$noPipeUser = "database_path = `"$($expected.Database)`"`r`nlog_dir = `"$($expected.Logs)`"`r`n"
+Assert-That 'a config from before the pipe existed (no pipe_allowed_sid) is detected as wrong' (-not (Test-ConfigPaths $noPipeUser $expected.Database $expected.Logs $sid))
+Assert-That 'a config naming a different pipe user is detected as wrong' (-not (Test-ConfigPaths $generated $expected.Database $expected.Logs 'S-1-5-21-9-9-9-1001'))
+Assert-That 'the pipe user is written into the generated config' ($generated.Contains("pipe_allowed_sid = `"$sid`""))
 
 if ($script:failures -gt 0) { Write-Host "$($script:failures) failed" -ForegroundColor Red; exit 1 }
 Write-Host 'config helpers: all passed'

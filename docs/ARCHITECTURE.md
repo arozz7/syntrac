@@ -38,7 +38,21 @@ database directly" decision: any program running as that user can read or change
 
 Console and service use different ETW session names (`SyntracConsole`, `SyntracCollector`) and different default
 databases, so a console run can never clear the installed service's trace or write into its database.
-## Interfaces (defined in `syntrac-core::ports`)
+## Status pipe (Phase 1b)
+
+`\\.\pipe\syntrac-collector` (console mode: `syntrac-console`). One JSON object per line, one request per connection:
+`{"request":"ping"}` and `{"request":"status"}`; answers are `pong`, a `status` report (version, pid, uptime, database
+path, totals, ETW health, last pass time) or an `error`. Both requests are read-only. Code: crate `syntrac-ipc`
+(`protocol`, `serve`, `sddl` are pure and tested; `pipe` is the thin Win32 layer). The collector publishes to a
+`StatusBoard` after each pass; connection threads only read it, so a slow client can never slow collection.
+
+Controls, each tested: an explicit access list (SYSTEM, Administrators and the installing user's SID, validated so it
+cannot inject entries; nobody else, nothing inherited); `FILE_FLAG_FIRST_PIPE_INSTANCE` (starting FAILS if the name is
+taken, so it cannot be squatted); remote clients rejected; 4 KiB request cap; a total deadline per connection (default
+3 s); at most 8 connections at once. If the pipe cannot start, collection carries on without it.
+
+Client: `syntrac-service --status` / `--ping` (`--pipe <name>`), exit codes 0 ok, 4 not running, 5 access denied.
+ `syntrac-core::ports`)
 
 | Interface | Kind | Status |
 |---|---|---|

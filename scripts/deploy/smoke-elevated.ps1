@@ -52,6 +52,10 @@ try {
     Set-Marker 'phase2.done' ("stopSeconds=" + [math]::Round($timer.Elapsed.TotalSeconds, 1) + ";processesLeft=" + $left)
     Write-Log "Stopped in $([math]::Round($timer.Elapsed.TotalSeconds, 1)) s; processes left: $left"
 
+    # Do NOT restart yet: the unelevated side must first inspect the STOPPED state (for example that the pipe is
+    # gone). Restarting straight away raced those checks and made them see the new instance.
+    if (-not (Wait-Marker 'phase2.ack' 180)) { throw 'Timed out waiting for the checks of the stopped state.' }
+
     Write-Log 'Starting the service again (restart check)'
     Start-Service -Name $ServiceName
     $service = Get-Service -Name $ServiceName

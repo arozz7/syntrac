@@ -1,0 +1,117 @@
+//! The wire protocol between the collector service and its clients (the UI, `--status`).
+//!
+//! One JSON object per line, one request per connection. Deliberately tiny and stable: the UI is written against
+//! these exact field names (see `tests/protocol.rs`). Unknown fields in a request are ignored, so a newer client
+//! can still talk to an older service.
+
+use serde::{Deserialize, Serialize};
+
+/// A request longer than this is refused before it is parsed.
+pub const MAX_REQUEST_BYTES: usize = 4096;
+/// A response longer than this is refused by the client.
+pub const MAX_RESPONSE_BYTES: usize = 64 * 1024;
+
+#[derive(Debug, thiserror::Error)]
+pub enum ProtocolError {
+    #[error("empty message")]
+    Empty,
+    #[error("malformed message: {0}")]
+    Malformed(String),
+    #[error("message too large ({size} bytes, limit {limit})")]
+    TooLarge { size: usize, limit: usize },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "request", rename_all = "snake_case")]
+pub enum Request {
+    /// Is the service alive? Answered with its version.
+    Ping,
+    /// A snapshot of what the collector is doing.
+    Status,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "response", rename_all = "snake_case")]
+pub enum Response {
+    Pong { version: String },
+    Status(StatusReport),
+    Error { message: String },
+}
+
+/// Counters since the collector started. Plain data, independent of the collector's own types.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CollectorTotals {
+    pub ticks: u64,
+    pub events_stored: u64,
+    pub flows_stored: u64,
+    pub metrics_samples: u64,
+    pub source_errors: u64,
+    pub metrics_errors: u64,
+    pub storage_errors: u64,
+}
+
+/// Health of the live ETW trace.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EtwStatus {
+    pub received: u64,
+    /// Events lost because the collector fell behind. Anything above zero deserves attention.
+    pub dropped: u64,
+    pub parse_errors: u64,
+    pub max_lag_ms: i64,
+    pub future_events: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StatusReport {
+    pub version: String,
+    pub pid: u32,
+    pub started_at_micros: i64,
+    pub uptime_secs: u64,
+    pub database_path: String,
+    pub etw_enabled: bool,
+    /// When the collector last finished a pass; the UI uses this for "data freshness".
+    pub last_tick_at_micros: Option<i64>,
+    pub totals: CollectorTotals,
+    /// Absent when the collector runs without ETW.
+    pub etw: Option<EtwStatus>,
+}
+
+fn check_size(bytes: &[u8], limit: usize) -> Result<(), ProtocolError> {
+    if bytes.len() > limit {
+        return Err(ProtocolError::TooLarge { size: bytes.len(), limit });
+    }
+    Ok(())
+}
+
+fn trimmed(bytes: &[u8]) -> Result<&[u8], ProtocolError> {
+    let trimmed = bytes.trim_ascii();
+    if trimmed.is_empty() {
+        return Err(ProtocolError::Empty);
+    }
+    Ok(trimmed)
+}
+
+pub fn decode_request(bytes: &[u8]) -> Result<Request, ProtocolError> {
+    check_size(bytes, MAX_REQUEST_BYTES)?;
+    serde_json::from_slice(trimmed(bytes)?).map_err(|e| ProtocolError::Malformed(e.to_string()))
+}
+
+pub fn decode_response(bytes: &[u8]) -> Result<Response, ProtocolError> {
+    check_size(bytes, MAX_RESPONSE_BYTES)?;
+    serde_json::from_slice(trimmed(bytes)?).map_err(|e| ProtocolError::Malformed(e.to_string()))
+}
+
+pub fn encode_request(request: &Request) -> String {
+    line(serde_json::to_string(request))
+}
+
+pub fn encode_response(response: &Response) -> String {
+    line(serde_json::to_string(response))
+}
+
+/// These types always serialize; the fallback only exists so no code path can panic.
+fn line(json: Result<String, serde_json::Error>) -> String {
+    let mut text = json.unwrap_or_else(|_| "{\"response\":\"error\",\"message\":\"internal error\"}".to_owned());
+    text.push('\n');
+    text
+}

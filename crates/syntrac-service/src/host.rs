@@ -14,14 +14,28 @@ use syntrac_collector::snapshot::SnapshotSource;
 use syntrac_collector::sysmetrics::SysinfoMetricsSource;
 use syntrac_collector::system::{is_elevated, own_cpu_time, SystemClock};
 use syntrac_collector::volumes::system_path_converter;
-use syntrac_core::{MetricsSource, TelemetrySource};
+use syntrac_core::{Clock, MetricsSource, TelemetrySource};
+use syntrac_ipc::pipe::{PipeServer, PipeServerConfig};
 use syntrac_store::SqliteStore;
 use tracing::{error, info, warn};
 
-use crate::{Collector, CollectorSettings, ServiceConfig};
+use crate::{BoardInfo, Collector, CollectorSettings, ServiceConfig, StatusBoard};
 
 /// Teardown (stopping sources, final drain, summary) must finish within this long, or `on_stall` runs.
 pub const DEFAULT_SHUTDOWN_LIMIT: Duration = Duration::from_secs(20);
+
+/// The status pipe. Optional: if it cannot start (for example the name is already taken) collection carries on
+/// without it, because losing telemetry is worse than losing the status endpoint.
+#[derive(Debug, Clone)]
+pub struct PipeOptions {
+    /// Name only, not the full path.
+    pub name: String,
+    /// Users (SID strings) allowed to connect in addition to SYSTEM, Administrators and this process's own user.
+    pub allowed_sids: Vec<String>,
+}
+
+pub const SERVICE_PIPE_NAME: &str = "syntrac-collector";
+pub const CONSOLE_PIPE_NAME: &str = "syntrac-console";
 
 pub struct HostOptions {
     pub config: ServiceConfig,
@@ -32,6 +46,8 @@ pub struct HostOptions {
     /// Name of the ETW session. Console and service MUST use different names, because starting a session
     /// clears any existing one with the same name.
     pub etw_session_name: String,
+    /// Serve status over a named pipe, or not at all.
+    pub pipe: Option<PipeOptions>,
     /// Stop on its own after this long; otherwise run until `stop` is set.
     pub run_for: Option<Duration>,
     pub shutdown_limit: Duration,
@@ -105,6 +121,18 @@ pub fn run_host(
     };
     let mut collector = Collector::new(settings, sources, Some(metrics), store, SystemClock);
 
+    let board = Arc::new(StatusBoard::new(
+        BoardInfo {
+            version: env!("CARGO_PKG_VERSION").to_owned(),
+            pid: std::process::id(),
+            started_at: SystemClock.now(),
+            database_path: options.database_path.display().to_string(),
+            etw_enabled: options.use_etw,
+        },
+        SystemClock,
+    ));
+    let pipe = options.pipe.as_ref().and_then(|pipe| start_pipe(pipe, Arc::clone(&board)));
+
     let started = Instant::now();
     let cpu_at_start = own_cpu_time();
     let deadline = options.run_for.map(|span| started + span);
@@ -116,7 +144,7 @@ pub fn run_host(
     info!("Collecting");
     while !stop.load(Ordering::SeqCst) && deadline.is_none_or(|end| Instant::now() < end) {
         collector.tick();
-
+        board.publish(collector.totals(), etw_stats.as_ref().map(|s| s.report()).as_ref(), SystemClock.now());
         if last_status.elapsed() >= status_interval {
             let cpu_now = own_cpu_time();
             let totals = collector.totals();
@@ -139,11 +167,27 @@ pub fn run_host(
         std::thread::sleep(drain_interval);
     }
 
+    drop(pipe); // stop answering status requests first; they are not worth delaying shutdown for
     info!("Stopping: stopping sources, draining them and flushing open flow windows");
     spawn_shutdown_watchdog(on_stall, options.shutdown_limit);
     collector.shutdown();
     let summary = render_summary(&collector, etw_stats.as_deref(), started.elapsed(), own_cpu_time() - cpu_at_start);
     Ok(HostOutcome { summary })
+}
+
+fn start_pipe(options: &PipeOptions, board: Arc<StatusBoard<SystemClock>>) -> Option<PipeServer> {
+    let mut config = PipeServerConfig::new(&options.name);
+    config.allowed_sids = options.allowed_sids.clone();
+    match PipeServer::start(config, board) {
+        Ok(server) => {
+            info!(pipe = options.name.as_str(), "Status pipe listening");
+            Some(server)
+        }
+        Err(error) => {
+            warn!(pipe = options.name.as_str(), %error, "The status pipe could not start; collecting without it");
+            None
+        }
+    }
 }
 
 /// Calls `on_stall` if teardown takes longer than `limit`. A detached thread: when shutdown finishes

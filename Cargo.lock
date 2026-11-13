@@ -3456,6 +3456,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "syntrac-ipc"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tracing",
+ "windows 0.57.0",
+]
+
+[[package]]
 name = "syntrac-service"
 version = "0.1.0"
 dependencies = [
@@ -3463,6 +3474,7 @@ dependencies = [
  "serde",
  "syntrac-collector",
  "syntrac-core",
+ "syntrac-ipc",
  "syntrac-store",
  "syntrac-testkit",
  "tempfile",

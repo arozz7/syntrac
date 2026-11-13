@@ -6,9 +6,14 @@ mod collector;
 mod config;
 mod host;
 mod service_paths;
+mod status_board;
 
 pub use cli::{CliArgs, CliError, USAGE};
 pub use collector::{Collector, CollectorSettings, TickReport, Totals};
 pub use config::{ConfigError, ServiceConfig};
-pub use host::{run_host, HostError, HostOptions, HostOutcome, DEFAULT_SHUTDOWN_LIMIT};
+pub use host::{
+    run_host, HostError, HostOptions, HostOutcome, PipeOptions, CONSOLE_PIPE_NAME, DEFAULT_SHUTDOWN_LIMIT,
+    SERVICE_PIPE_NAME,
+};
 pub use service_paths::{service_config_path, validate_service_paths, ServicePathError, ServicePaths};
+pub use status_board::{format_status, BoardInfo, StatusBoard};

@@ -8,13 +8,24 @@ use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use syntrac_service::{run_host, CliArgs, HostError, HostOptions, ServiceConfig, DEFAULT_SHUTDOWN_LIMIT, USAGE};
+use std::time::Duration;
+
+use syntrac_ipc::pipe::{request, ClientError};
+use syntrac_ipc::protocol::{Request, Response};
+use syntrac_service::{
+    format_status, run_host, CliArgs, HostError, HostOptions, PipeOptions, ServiceConfig, CONSOLE_PIPE_NAME,
+    DEFAULT_SHUTDOWN_LIMIT, SERVICE_PIPE_NAME, USAGE,
+};
 use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 const EXIT_FAILURE: u8 = 1;
 const EXIT_NOT_ELEVATED: u8 = 2;
 const EXIT_SHUTDOWN_STALLED: i32 = 3;
+/// `--status` / `--ping` exit codes, so scripts can tell the cases apart.
+const EXIT_NOT_RUNNING: u8 = 4;
+const EXIT_ACCESS_DENIED: u8 = 5;
+const CLIENT_TIMEOUT: Duration = Duration::from_secs(5);
 const DEFAULT_CONFIG_PATH: &str = "config/service.toml";
 /// Console runs keep their own database, separate from the installed service's.
 const DEFAULT_CONSOLE_DATABASE: &str = "data/syntrac-console.db";
@@ -32,6 +43,9 @@ fn main() -> ExitCode {
     if args.help {
         println!("{USAGE}");
         return ExitCode::SUCCESS;
+    }
+    if args.status || args.ping {
+        return run_client(&args);
     }
     if args.service {
         // The Service Control Manager launched us: it sets up its own logging and reports its own status.
@@ -62,6 +76,39 @@ fn main() -> ExitCode {
     }
 }
 
+/// `--status` / `--ping`: ask a running collector over its pipe. Used by people and by the smoke test, which runs it
+/// as an ordinary user to prove the pipe''s access list lets that user in.
+fn run_client(args: &CliArgs) -> ExitCode {
+    let pipe = args.pipe.as_deref().unwrap_or(SERVICE_PIPE_NAME);
+    let wanted = if args.status { Request::Status } else { Request::Ping };
+    match request(pipe, &wanted, CLIENT_TIMEOUT) {
+        Ok(Response::Status(report)) => {
+            print!("{}", format_status(&report));
+            ExitCode::SUCCESS
+        }
+        Ok(Response::Pong { version }) => {
+            println!("pong (collector {version})");
+            ExitCode::SUCCESS
+        }
+        Ok(Response::Error { message }) => {
+            eprintln!("error: the collector refused the request: {message}");
+            ExitCode::from(EXIT_FAILURE)
+        }
+        Err(ClientError::NotRunning) => {
+            eprintln!("The collector is not running (no pipe named {pipe}).");
+            ExitCode::from(EXIT_NOT_RUNNING)
+        }
+        Err(ClientError::AccessDenied) => {
+            eprintln!("Access to the collector (pipe {pipe}) was denied for this user.");
+            ExitCode::from(EXIT_ACCESS_DENIED)
+        }
+        Err(other) => {
+            eprintln!("error: {other}");
+            ExitCode::from(EXIT_FAILURE)
+        }
+    }
+}
+
 fn run(args: &CliArgs) -> Result<(), HostError> {
     let config = load_config(args)?;
     let options = HostOptions {
@@ -72,6 +119,7 @@ fn run(args: &CliArgs) -> Result<(), HostError> {
             .unwrap_or_else(|| PathBuf::from(DEFAULT_CONSOLE_DATABASE)),
         use_etw: !args.no_etw,
         etw_session_name: CONSOLE_ETW_SESSION.to_owned(),
+        pipe: Some(PipeOptions { name: CONSOLE_PIPE_NAME.to_owned(), allowed_sids: Vec::new() }),
         run_for: args.seconds.map(std::time::Duration::from_secs),
         shutdown_limit: DEFAULT_SHUTDOWN_LIMIT,
         config,

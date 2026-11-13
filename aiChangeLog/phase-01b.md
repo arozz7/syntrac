@@ -1,7 +1,6 @@
 # Phase 01b: Service, permissions and UI
 
-Date: 2026-11-13. Status: **checkpoint 1 built and offline-verified; waiting for the owner's service smoke run. The
-named pipe and the UI come after it.**
+Date: 2026-11-13. Status: **checkpoint 1 passed (smoke test 14/14, committed). Named pipe built; UI next.**
 
 ## Decisions (owner, 2026-11-13)
 
@@ -85,8 +84,46 @@ test also probes that the user cannot write into the logs folder.
 
 Leftover from the buggy install, not touched (no deletions without asking): `C:\ProgramData\Syntrac\data\logs\` and the
 one log file in it.
+## Named pipe (built after checkpoint 1)
+
+New crate `syntrac-ipc`. Pure and tested: the JSON-lines protocol (stable wire format, size caps), serving one
+connection over any `Read + Write`, and the access-list builder (SID validation; injection attempts rejected). The
+Win32 layer (overlapped I/O with timeouts, `FIRST_PIPE_INSTANCE`, remote clients rejected, explicit DACL) is thin and
+every `unsafe` block states why it is sound. 31 tests, 10 of them on real pipes in-process.
+
+Integrated into the shared host: a `StatusBoard` the loop publishes to and the pipe reads; optional (a pipe that cannot
+start never stops collection); `--status` / `--ping` client with distinct exit codes. The installer writes
+`pipe_allowed_sid` (the user's SID, captured before elevation) and treats a config without it as wrong, so the next
+install regenerates it (backing the old one up). The smoke test now also checks, as an ordinary user, that the pipe
+answers, that it disappears when the service stops, and that it answers again after the restart.
+
+Live (unelevated): a real collector in one process answered `--ping` and `--status` from a second process; a wrong pipe
+name and a stopped collector both exited with code 4.
+
+Two process notes from this step: (1) a test hung because it used one synchronous Windows handle from a reader and a
+writer thread at once, which serializes and deadlocks; that was a test bug, and the fix is a client that writes then
+reads like any real one. (2) A malformed PowerShell here-string in one of my own edit commands pasted script text into
+`service.rs`; it failed to compile at once, and was repaired by hand.
+
+Still NOT verified: the pipe under the installed service. SYSTEM creates it, so only the smoke test as an ordinary user
+proves the access list lets that user in.
+
+## Smoke runs with the pipe (2026-11-12 21:0x)
+
+- **Run 1:** the new check "ordinary user can read the collector status over the pipe" PASSED (the pipe created by
+  SYSTEM lets the unelevated user in). The script then died: Windows PowerShell 5.1 turns any stderr text from a native
+  program into a terminating error under `$ErrorActionPreference = 'Stop'`, and `--ping` reports "not running" on
+  stderr on purpose. Fixed with an `Invoke-Collector` wrapper (exit code and message text captured safely; tested
+  under strict mode for both the failure and success paths).
+- **Run 2** (`aiChangeLog/service-smoke-20261112-210712.txt`): all checks passed except one,
+  "pipe is gone once the service has stopped" (`--ping` answered). The service log shows why it was a test race, not a
+  product defect: the service stopped at 02:07:18.35 and the elevated half restarted it 0.3 s later (pipe listening
+  again at 02:07:18.82), before the unelevated side pinged, so the ping reached the NEW instance. The old process was
+  gone (process-left check passed). Fix: the elevated half now waits for an acknowledgement (`phase2.ack`) from the
+  unelevated side before restarting, so the stopped state is actually inspected.
+- Also seen on run 2: 20 processes were closed as "exited while down" across the quick restart, and the pipe came back
+  up with the service within 0.2 s of its start.
 ## Next
 
-After the smoke run: the named pipe (status/ping, explicit DACL, first-instance flag, remote clients rejected, request size
-cap, per-connection timeout), then the UI (dashboard, process list, connection list, collector status), then the
-overhead-under-load script.
+Rerun the smoke test to prove the pipe under the installed service, then the UI (dashboard, process list, connection list,
+collector status), then the overhead-under-load script.

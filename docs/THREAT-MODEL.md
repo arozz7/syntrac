@@ -24,7 +24,7 @@ lines, network destinations, activity history) and runs a privileged component, 
 |---|---|
 | Malware reads the database for activity history | DB under `%ProgramData%\Syntrac` with restricted ACLs; retention limits |
 | Secrets appear in command lines | Redaction patterns applied before storage; per-collector switches |
-| Local user abuses the elevated service via the pipe | Pipe ACL; minimal command set; input validation; no arbitrary file or shell operations |
+| Local user abuses the elevated service via the pipe | Explicit access list (SYSTEM, Administrators, the installing user only); first-instance flag so the name cannot be squatted; remote clients rejected; 4 KiB request cap, per-connection deadline and connection cap; only read-only commands (ping, status); the user SID in the config is validated before it reaches the access list. All tested |
 | Malware tampers with the DB or kills the service to hide | Service recovery policy; tamper-evidence and "collector offline" alerts (Phase 3) |
 | LLM backend persists prompts: the local model server's `log_conversations = true` setting writes every prompt and response to `logs/conversations.<date>.jsonl` in plaintext (7-day retention) | Owner decision: keep it a setting and test both ways. SYNTRAC's `llm.context_detail` defaults to `summary` (redacted aggregates); `full` is a deliberate opt-in. Treat that log directory as sensitive as the SYNTRAC database |
 | Prompt injection via a crafted process name or domain | Telemetry passed as data; LLM limited to read-only tools; no tool can modify config or the DB |

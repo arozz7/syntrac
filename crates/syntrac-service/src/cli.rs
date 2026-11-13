@@ -26,6 +26,12 @@ pub struct CliArgs {
     pub summary_file: Option<PathBuf>,
     /// Run as a Windows service. Only the Service Control Manager passes this; it reads the installed config.
     pub service: bool,
+    /// Ask a running collector for its status (over the pipe) and print it.
+    pub status: bool,
+    /// Ask a running collector whether it is alive.
+    pub ping: bool,
+    /// Pipe to query for `--status` / `--ping` (default: the installed service's).
+    pub pipe: Option<String>,
     pub help: bool,
 }
 
@@ -41,6 +47,9 @@ OPTIONS:
     --no-etw           Do not start the ETW trace; no administrator rights needed
     --summary-file <f> Also write the run summary to this file
     --service          Run as a Windows service (used by the Service Control Manager only)
+    --status           Print the status of a running collector (asks it over the pipe) and exit
+    --ping             Check that a running collector answers and exit
+    --pipe <name>      Pipe for --status / --ping (default: syntrac-collector, the installed service)
     -h, --help         Show this help
 
 ETW needs an elevated (Administrator) terminal.";
@@ -64,6 +73,9 @@ impl CliArgs {
                 }
                 "--no-etw" => parsed.no_etw = true,
                 "--service" => parsed.service = true,
+                "--status" => parsed.status = true,
+                "--ping" => parsed.ping = true,
+                "--pipe" => parsed.pipe = Some(value(&mut args, &arg)?),
                 "--summary-file" => parsed.summary_file = Some(PathBuf::from(value(&mut args, &arg)?)),
                 "-h" | "--help" => parsed.help = true,
                 _ => return Err(CliError::UnknownOption(arg)),

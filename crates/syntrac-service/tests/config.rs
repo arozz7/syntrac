@@ -58,3 +58,18 @@ fn the_shipped_example_config_parses() {
     let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../config/service.toml")).unwrap();
     ServiceConfig::from_toml_str(&text).expect("config/service.toml must stay valid");
 }
+
+#[test]
+fn the_pipe_user_is_optional_and_a_valid_sid_is_accepted() {
+    assert_eq!(ServiceConfig::from_toml_str("").unwrap().pipe_allowed_sid, None);
+    let config = ServiceConfig::from_toml_str("pipe_allowed_sid = \"S-1-5-21-1-2-3-1001\"").unwrap();
+    assert_eq!(config.pipe_allowed_sid.as_deref(), Some("S-1-5-21-1-2-3-1001"));
+}
+
+#[test]
+fn a_malformed_pipe_sid_is_refused_at_load_time_so_it_can_never_reach_the_access_list() {
+    for bad in ["x", "S-1-5-21-1)(A;;GA;;;WD", ""] {
+        let text = format!("pipe_allowed_sid = \"{bad}\"");
+        assert!(ServiceConfig::from_toml_str(&text).is_err(), "{bad:?} must be rejected");
+    }
+}

@@ -7,7 +7,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use syntrac_core::{EventCategory, EventQuery, EventRepository};
-use syntrac_service::{run_host, HostOptions, ServiceConfig, DEFAULT_SHUTDOWN_LIMIT};
+use syntrac_ipc::pipe::{request, ClientError};
+use syntrac_ipc::protocol::{Request, Response};
+use syntrac_service::{run_host, HostOptions, PipeOptions, ServiceConfig, DEFAULT_SHUTDOWN_LIMIT};
 use syntrac_store::SqliteStore;
 
 fn options(database: &Path, run_for: Option<Duration>) -> HostOptions {
@@ -16,6 +18,7 @@ fn options(database: &Path, run_for: Option<Duration>) -> HostOptions {
         database_path: database.to_path_buf(),
         use_etw: false,
         etw_session_name: "SyntracTest".into(),
+        pipe: None,
         run_for,
         shutdown_limit: DEFAULT_SHUTDOWN_LIMIT,
     }
@@ -77,4 +80,37 @@ fn two_runs_on_one_database_do_not_leave_the_first_runs_processes_marked_running
     )
     .unwrap();
     assert!(running.iter().any(|p| p.pid == me), "the live test process must still be listed as running");
+}
+
+#[test]
+fn a_running_host_answers_status_over_its_pipe_and_stops_answering_when_it_exits() {
+    let dir = tempfile::tempdir().unwrap();
+    let database = dir.path().join("host.db");
+    let pipe = format!("syntrac-host-test-{}", std::process::id());
+
+    let mut host_options = options(&database, Some(Duration::from_secs(5)));
+    host_options.pipe = Some(PipeOptions { name: pipe.clone(), allowed_sids: Vec::new() });
+    let host = std::thread::spawn(move || {
+        run_host(&host_options, &AtomicBool::new(false), never_stalls()).map(|outcome| outcome.summary)
+    });
+
+    // The pipe comes up shortly after the host starts.
+    let deadline = Instant::now() + Duration::from_secs(4);
+    let report = loop {
+        match request(&pipe, &Request::Status, Duration::from_secs(2)) {
+            Ok(Response::Status(report)) => break report,
+            Ok(other) => panic!("unexpected {other:?}"),
+            Err(ClientError::NotRunning) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(100)),
+            Err(error) => panic!("no status from the running host: {error}"),
+        }
+    };
+    assert_eq!(report.pid, std::process::id());
+    assert!(!report.etw_enabled && report.etw.is_none());
+    assert!(report.database_path.ends_with("host.db"), "{}", report.database_path);
+
+    host.join().unwrap().unwrap();
+    assert!(
+        matches!(request(&pipe, &Request::Ping, Duration::from_secs(2)), Err(ClientError::NotRunning)),
+        "the pipe must be gone once the host has exited"
+    );
 }

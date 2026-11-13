@@ -32,6 +32,14 @@ fn the_service_flag_is_what_the_service_control_manager_passes() {
 }
 
 #[test]
+fn the_status_and_ping_commands_and_their_pipe_name_are_read() {
+    assert!(parse(&["--status"]).unwrap().status);
+    assert!(parse(&["--ping"]).unwrap().ping);
+    assert_eq!(parse(&["--status", "--pipe", "syntrac-console"]).unwrap().pipe.as_deref(), Some("syntrac-console"));
+    assert!(parse(&["--pipe"]).is_err(), "--pipe needs a name");
+}
+
+#[test]
 fn help_is_recognised() {
     assert!(parse(&["--help"]).unwrap().help);
     assert!(parse(&["-h"]).unwrap().help);

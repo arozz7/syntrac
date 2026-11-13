@@ -108,6 +108,22 @@ Write-Host 'Building the release binary...'
 if ($LASTEXITCODE -ne 0) { Write-Host 'Build failed' -ForegroundColor Red; exit 1 }
 $exe = Join-Path $root 'target/release/syntrac-service.exe'
 
+# Runs the collector executable and returns its exit code and combined output. Windows PowerShell 5.1 turns ANY text
+# a native program writes to stderr into a terminating error when $ErrorActionPreference is Stop, and "not running"
+# is reported on stderr on purpose, so the preference is relaxed just for the call.
+function Invoke-Collector {
+    param([string[]]$Arguments)
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = (& $exe @Arguments 2>&1 | ForEach-Object { "$_" }) -join "`n"
+        $code = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+    return [pscustomobject]@{ ExitCode = $code; Output = $output.Trim() }
+}
+
 $helper = Join-Path $PSScriptRoot 'smoke-elevated.ps1'
 $helperArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$helper`" -UserSid $userSid -RunDir `"$runDir`" -Executable `"$exe`""
 if ($Uninstall) { $helperArgs += ' -Uninstall' }
@@ -134,6 +150,11 @@ if ($installed) {
         Add-Result 'Running-process list is plausible after the startup snapshot' (($fresh.Running -gt 20) -and ($fresh.Running -lt 5000)) "$($fresh.Running) running"
     }
 
+    # The status pipe: an ordinary user must be let in by its access list (SYSTEM created it).
+    $status = Invoke-Collector @('--status')
+    Add-Result 'Ordinary user can read the collector status over the pipe' (($status.ExitCode -eq 0) -and $status.Output.Contains('SYNTRAC collector')) ($status.Output -split "`n" | Select-Object -First 1)
+    Write-Host $status.Output
+
     $logs = @(Get-ChildItem -Path $logDir -Filter '*.log' -ErrorAction SilentlyContinue)
     Add-Result 'User can read a non-empty service log' (($logs.Count -gt 0) -and (($logs | Measure-Object -Property Length -Sum).Sum -gt 0)) "$($logs.Count) file(s) in $logDir"
 
@@ -157,6 +178,10 @@ if ($installed) {
         Add-Result "Service stops within $MaxStopSeconds s" ($seconds -le $MaxStopSeconds) "$seconds s"
         Add-Result 'No collector process is left running after the stop' ($left -eq 0)
         Add-Result 'Data survives the stop' (Test-Path $database)
+        $stoppedPing = Invoke-Collector @('--ping')
+        Add-Result 'The pipe is gone once the service has stopped (--ping reports not running)' ($stoppedPing.ExitCode -eq 4) "exit code $($stoppedPing.ExitCode)"
+        # The stopped state has been inspected; the elevated side may now restart the service.
+        Set-Content -Path (Join-Path $runDir 'phase2.ack') -Value 'ack' -Encoding ascii
     } else {
         Add-Result 'Service stop completed' $false 'phase2 did not finish'
     }
@@ -166,6 +191,8 @@ if ($installed) {
         Add-Result 'Service is Running again after the restart' ($service -and $service.Status -eq 'Running')
         $again = Wait-FreshData 60
         Add-Result 'Collector writes fresh data again after the restart' ($null -ne $again)
+        $restartedPing = Invoke-Collector @('--ping')
+        Add-Result 'The pipe answers again after the restart' (($restartedPing.ExitCode -eq 0) -and $restartedPing.Output.Contains('pong')) $restartedPing.Output
         if ($again) { Write-Host "    (processes closed as exited-while-down at the restart: $($again.Approximate))" }
     } else {
         Add-Result 'Service restarted' $false 'phase3 did not finish'
