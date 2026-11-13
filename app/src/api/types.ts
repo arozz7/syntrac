@@ -1,0 +1,103 @@
+// Mirrors the view models in app/src-tauri/src/views.rs and health.rs (camelCase on the wire).
+// Times are milliseconds since the Unix epoch.
+
+/** What a data call produced. `state` decides which screen to show. */
+export type Data<T> =
+  | { state: 'ok'; data: T }
+  | { state: 'no_database'; message: string }
+  | { state: 'schema_mismatch'; message: string }
+  | { state: 'error'; message: string };
+
+export type HealthState = 'running' | 'stale' | 'offline' | 'unknown';
+
+export interface HealthView {
+  state: HealthState;
+  message: string;
+  version: string | null;
+  pid: number | null;
+  uptimeSecs: number | null;
+  etwDropped: number | null;
+  dataAgeSecs: number | null;
+}
+
+export interface SystemPointView {
+  tsMs: number;
+  cpuPercent: number;
+  memoryPercent: number;
+  netReceivedBytes: number;
+  netSentBytes: number;
+  diskReadBytes: number;
+  diskWriteBytes: number;
+}
+
+export interface ProcessCpuView {
+  instance: string | null;
+  pid: number;
+  name: string;
+  imagePath: string | null;
+  avgPercent: number;
+  peakPercent: number;
+  samplesPresent: number;
+}
+
+export interface CpuView {
+  windowSamples: number;
+  systemAvgPercent: number;
+  othersAvgPercent: number;
+  /** System CPU that no measured process explains (interrupt/driver time, unreadable processes). */
+  unaccountedAvgPercent: number;
+  processes: ProcessCpuView[];
+}
+
+export interface DestinationView {
+  remoteAddr: string;
+  remotePort: number;
+  bytesSent: number;
+  bytesReceived: number;
+  flowCount: number;
+  processCount: number;
+}
+
+export interface OverviewView {
+  fromMs: number;
+  toMs: number;
+  system: SystemPointView[];
+  cpu: CpuView;
+  destinations: DestinationView[];
+}
+
+export interface ProcessListParams {
+  runningOnly: boolean;
+  search?: string;
+  limit?: number;
+}
+
+export interface ProcessRowView {
+  id: string;
+  pid: number;
+  parentId: string | null;
+  name: string;
+  imagePath: string;
+  commandLine: string | null;
+  startedMs: number;
+  endedMs: number | null;
+  /** The exit time is only an upper bound: the process exited while the collector was not running. */
+  endedApproximate: boolean;
+  running: boolean;
+}
+
+export interface ConnectionRowView {
+  startMs: number;
+  endMs: number;
+  processId: string | null;
+  pid: number;
+  name: string;
+  protocol: 'tcp' | 'udp';
+  remoteAddr: string;
+  remotePort: number;
+  bytesSent: number;
+  bytesReceived: number;
+  opened: number;
+  closed: number;
+  failed: number;
+}

@@ -22,4 +22,4 @@ pub use ports::{
     EventQuery, EventRepository, FlowQueries, MetricsRepository, MetricsSource, ProcessFilter, ProcessQueries,
     ProcessRecord, ProcessRepository, RepoError, Retention, SourceError, TelemetrySource,
 };
-pub use time::{Clock, Timestamp};
+pub use time::{Clock, SystemClock, Timestamp};

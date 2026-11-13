@@ -16,7 +16,17 @@ function Invoke-Step {
     param([string]$Name, [scriptblock]$Command)
     Write-Host ""
     Write-Host "==> $Name" -ForegroundColor Cyan
+    # A command that cannot even be found does not set $LASTEXITCODE, so a stale 0 from an earlier step would
+    # look like success (and $? only describes the call of the script block, not what ran inside it).
+    # Reset the exit code, and look for a "command not found" error record explicitly.
+    $global:LASTEXITCODE = 0
+    $Error.Clear()
     & $Command
+    $notFound = @($Error | Where-Object { $_.FullyQualifiedErrorId -like 'CommandNotFoundException*' })
+    if ($notFound.Count -gt 0) {
+        Write-Host "FAILED: $Name (command not found: $($notFound[0].Exception.Message))" -ForegroundColor Red
+        exit 1
+    }
     if ($LASTEXITCODE -ne 0) {
         Write-Host "FAILED: $Name (exit code $LASTEXITCODE)" -ForegroundColor Red
         exit 1
@@ -25,6 +35,7 @@ function Invoke-Step {
 
 $appDir = Join-Path $root 'app'
 if ((Test-Path (Join-Path $appDir 'package.json')) -and -not $SkipFrontend) {
+    . (Join-Path $PSScriptRoot 'use-pnpm.ps1')
     Push-Location $appDir
     Invoke-Step 'frontend: install (frozen lockfile)' { pnpm install --frozen-lockfile }
     Invoke-Step 'frontend: format check' { pnpm run format:check }

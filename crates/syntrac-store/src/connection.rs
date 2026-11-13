@@ -50,10 +50,7 @@ impl SqliteStore {
 
         let version = store.schema_version()?;
         if version != Self::LATEST_SCHEMA_VERSION {
-            return Err(RepoError::Backend(format!(
-                "database schema is v{version} but this build needs v{}; start the collector service to migrate it",
-                Self::LATEST_SCHEMA_VERSION
-            )));
+            return Err(RepoError::SchemaMismatch { found: version, expected: Self::LATEST_SCHEMA_VERSION });
         }
         Ok(store)
     }
@@ -71,10 +68,7 @@ impl SqliteStore {
     fn migrate(&mut self) -> Result<(), RepoError> {
         let current = self.schema_version()?;
         if current > Self::LATEST_SCHEMA_VERSION {
-            return Err(RepoError::Backend(format!(
-                "database schema v{current} is newer than supported v{}",
-                Self::LATEST_SCHEMA_VERSION
-            )));
+            return Err(RepoError::SchemaMismatch { found: current, expected: Self::LATEST_SCHEMA_VERSION });
         }
         for (index, sql) in MIGRATIONS.iter().enumerate().skip(current as usize) {
             let tx = self.conn.transaction().map_err(backend)?;

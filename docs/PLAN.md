@@ -123,6 +123,10 @@ Done when the UI can close and reopen with no data loss, and a connection links 
 Real-world acceptance check (owner's workstation, 2026-11-12): the owner sees sustained ~30% CPU with no obvious cause, and the dashboard's top-consumers view over history must show which processes contribute. Collector overhead is measured with the service running, both idle and under load, against the 2% budget.
 
 ### Phase 2: Intelligence
+
+> Follow-up from Phase 1b: the UI shows 5-8% of CPU as "not attributed to any process". Per-process times exclude
+> interrupt and DPC time, so split that share with the Windows processor interrupt/DPC counters.
+
 SHA-256 (cached by path, size, mtime), Authenticode/publisher via `WinVerifyTrust`, DNS-to-IP linking, first/last seen, Process Tree Explorer, Application DNA, connection map, day timeline with before/after context, global search, config change monitors (services, scheduled tasks, startup, Run keys).
 
 ### Phase 3: Detection

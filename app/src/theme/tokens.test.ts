@@ -56,6 +56,10 @@ describe('design tokens', () => {
     ['severity-unusual-fg', 'severity-unusual-bg'],
     ['severity-suspicious-fg', 'severity-suspicious-bg'],
     ['severity-confirmed-fg', 'severity-confirmed-bg'],
+    ['status-running-fg', 'status-running-bg'],
+    ['status-stale-fg', 'status-stale-bg'],
+    ['status-offline-fg', 'status-offline-bg'],
+    ['status-unknown-fg', 'status-unknown-bg'],
   ];
 
   it.each(textPairs)('%s on %s meets WCAG AA for text', (foreground, background) => {
@@ -74,6 +78,24 @@ describe('design tokens', () => {
   it('keeps severity chips distinguishable from the page surfaces', () => {
     for (const tier of ['unusual', 'suspicious', 'confirmed']) {
       expect(colourDistance(token(`severity-${tier}-bg`), token('color-surface'))).toBeGreaterThanOrEqual(30);
+    }
+  });
+});
+
+describe('collector health colours', () => {
+  const states = ['running', 'stale', 'offline', 'unknown'].map((state) => token(`status-${state}-bg`));
+
+  it('keep the four states visually distinct from each other', () => {
+    for (let i = 0; i < states.length; i++) {
+      for (let j = i + 1; j < states.length; j++) {
+        expect(colourDistance(states[i] ?? '', states[j] ?? '')).toBeGreaterThanOrEqual(40);
+      }
+    }
+  });
+
+  it('stay visibly separate from the card surface they sit on', () => {
+    for (const state of states) {
+      expect(colourDistance(state, token('color-surface'))).toBeGreaterThanOrEqual(30);
     }
   });
 });

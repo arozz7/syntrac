@@ -29,6 +29,17 @@ impl Timestamp {
     }
 }
 
+/// The real wall clock. The ONLY place the system time is read; everything else asks a `Clock`.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SystemClock;
+
+impl Clock for SystemClock {
+    fn now(&self) -> Timestamp {
+        let micros = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_micros());
+        Timestamp::from_micros(i64::try_from(micros).unwrap_or(i64::MAX))
+    }
+}
+
 /// Source of "now". Injected so logic is deterministic under test.
 pub trait Clock {
     fn now(&self) -> Timestamp;

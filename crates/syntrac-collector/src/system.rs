@@ -1,23 +1,14 @@
 //! Small Windows helpers shared by the collector and the console host.
 
 use std::mem::size_of;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
-use syntrac_core::{Clock, Timestamp};
 use windows::Win32::Foundation::{CloseHandle, FILETIME, HANDLE};
 use windows::Win32::Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY};
 use windows::Win32::System::Threading::{GetCurrentProcess, GetProcessTimes, OpenProcessToken};
 
-/// The wall clock, behind the `Clock` interface so everything else stays deterministic under test.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct SystemClock;
-
-impl Clock for SystemClock {
-    fn now(&self) -> Timestamp {
-        let micros = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |elapsed| elapsed.as_micros());
-        Timestamp::from_micros(i64::try_from(micros).unwrap_or(i64::MAX))
-    }
-}
+/// The wall clock lives in core (syntrac_core::SystemClock); re-exported here for the collector's callers.
+pub use syntrac_core::SystemClock;
 
 /// Closes a Windows handle when dropped, so early returns cannot leak it.
 pub(crate) struct OwnedHandle(pub HANDLE);

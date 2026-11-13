@@ -55,6 +55,17 @@
   --severity-confirmed-bg: #a3483a;
   --severity-confirmed-indicator: var(--brand-critical);
 
+  /* Collector health. These are deliberately NOT the detection-severity colours: an offline collector is not a
+     security finding and must not look like a confirmed threat. Each state also has a glyph and a word. */
+  --status-running-bg: var(--brand-forest);
+  --status-running-fg: var(--brand-cream);
+  --status-stale-bg: var(--brand-warning);
+  --status-stale-fg: var(--brand-charcoal);
+  --status-offline-bg: var(--brand-slate);
+  --status-offline-fg: var(--brand-cream);
+  --status-unknown-bg: var(--brand-info);
+  --status-unknown-fg: var(--brand-charcoal);
+
   /* Charts: sage = baseline, clay = comparison (per brand guidelines). Pair with line styles or markers. */
   --chart-1: var(--brand-forest);
   --chart-2: var(--brand-sage);

@@ -18,6 +18,9 @@ pub enum RepoError {
     Backend(String),
     #[error("record not found")]
     NotFound,
+    /// The database was created by a different version of SYNTRAC. The collector migrates it; readers never do.
+    #[error("database schema is v{found} but this build needs v{expected}")]
+    SchemaMismatch { found: u32, expected: u32 },
 }
 
 #[derive(Debug, thiserror::Error)]

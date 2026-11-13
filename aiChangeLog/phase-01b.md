@@ -123,7 +123,42 @@ proves the access list lets that user in.
   unelevated side before restarting, so the stopped state is actually inspected.
 - Also seen on run 2: 20 processes were closed as "exited while down" across the quick restart, and the pipe came back
   up with the service within 0.2 s of its start.
+## UI (2026-11-12)
+
+The smoke test passed 17/17 with the pipe (`service-smoke-20261112-211149.txt`). Then the UI, in two halves.
+
+**Backend** (`app/src-tauri`, library `syntrac_app_lib`, 39 tests): the UI reads the SQLite file directly, read-only,
+opened per call, and asks the service only for health over the pipe. Pure modules: `settings` (DB path and pipe name,
+overridable with `SYNTRAC_DB` / `SYNTRAC_PIPE`), `names`, `series` (downsampling), `health` (running / stale / offline /
+unknown), `views` (overview, processes, connections). `backend` wraps them in an explicit `Data<T>` state (`ok`,
+`no_database`, `schema_mismatch`, `error`); `commands` are thin Tauri wrappers.
+
+**Frontend** (`app/src`, 99 tests with the formatters and theme): `api` (interface + Tauri implementation, injected by
+context), `format`, `hooks` (polling, debounce), `charts/cpuChart` (pure option builder; memory is a dashed line so it is
+not distinguished by colour alone), `components` (status banner, data gate, range picker, chart wrapper), `views`
+(Overview, Processes, Connections). Collector-health colours are their own `--status-*` tokens, not the detection-severity
+colours, with contrast tests.
+
+**Checked against the live installed service** through the WebView2 debug port: banner Running, chart drawn, CPU rows,
+destinations, 500 processes and 200 connections listed, no console errors. Two defects found that way and fixed with
+tests first: loopback traffic (16 MB of local IPC) outranked every real destination, so loopback is now excluded after
+over-fetching; and processes named by pid showed it twice. One of my own edits then dropped the `pid N` detail from every
+CPU row (a PowerShell escaping slip); typecheck could not see it because the field is optional, and it was found by reading
+the file. Not re-checked in the running window after the fix.
+
+**Verification gate bug (important):** the first `verify.ps1` run on the user's conda shell printed "ALL STEPS PASSED"
+although every frontend step had failed with "pnpm is not recognized". A command that cannot be found does not set
+`$LASTEXITCODE`, so `Invoke-Step` read a stale 0. Fixed: the exit code is reset before each step, "command not found"
+errors are detected explicitly, and `scripts/dev/use-pnpm.ps1` finds node and pnpm like `use-cargo.ps1` finds cargo. Proven
+with a missing command (exit 1), a failing native command (exit 1) and a passing one. Full gate: passed, 99 frontend tests.
+
+## Finding for the CPU question (not yet acted on)
+
+Over 15 minutes the system averaged 12.0% CPU; the listed processes plus the long tail explained about 5.4%, leaving about
+4.9% to 7.7% "not attributed". Per-process CPU times exclude interrupt and DPC time, so the gap is probably driver and
+interrupt work. The UI shows that gap as its own row instead of hiding it. Follow-up (Phase 2): split it using the Windows
+processor interrupt/DPC counters.
+
 ## Next
 
-Rerun the smoke test to prove the pipe under the installed service, then the UI (dashboard, process list, connection list,
-collector status), then the overhead-under-load script.
+Overhead-under-load measurement script; then Phase 2 (intelligence).

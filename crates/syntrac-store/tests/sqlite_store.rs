@@ -174,3 +174,27 @@ fn opening_a_missing_database_read_only_is_a_clear_error() {
     let dir = tempfile::tempdir().unwrap();
     assert!(SqliteStore::open_read_only(&dir.path().join("does-not-exist.db")).is_err());
 }
+
+#[test]
+fn a_schema_mismatch_is_a_typed_error_so_the_ui_never_has_to_parse_text() {
+    use syntrac_core::RepoError;
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("syntrac.db");
+    {
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.pragma_update(None, "user_version", 1).unwrap(); // older than this build
+    }
+    match SqliteStore::open_read_only(&path) {
+        Err(RepoError::SchemaMismatch { found, expected }) => {
+            assert_eq!((found, expected), (1, SqliteStore::LATEST_SCHEMA_VERSION));
+        }
+        other => panic!("expected a schema mismatch, got {:?}", other.map(|_| "a store")),
+    }
+
+    {
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.pragma_update(None, "user_version", 999).unwrap(); // newer than this build
+    }
+    assert!(matches!(SqliteStore::open(&path), Err(RepoError::SchemaMismatch { found: 999, .. })));
+}

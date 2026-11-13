@@ -3429,8 +3429,16 @@ dependencies = [
 name = "syntrac-app"
 version = "0.1.0"
 dependencies = [
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "syntrac-core",
+ "syntrac-ipc",
+ "syntrac-store",
+ "syntrac-testkit",
  "tauri",
  "tauri-build",
+ "tempfile",
 ]
 
 [[package]]
