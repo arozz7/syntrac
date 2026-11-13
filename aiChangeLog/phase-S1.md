@@ -33,6 +33,22 @@ USB drive and a UNC path.
 Found while testing: the installed build predates `--check-db`, so the move script refuses with an explicit message; the
 current build must be installed first (or `-CollectorExecutable` pointed at a newer exe).
 
-## Still to do in S1
-E. The UI learns the database path from the service. F. The smoke test runs against a custom data root. Then the real move
-(elevated, by the user).
+**E. The UI follows the database.** `db_location` (10 tests) and a backend that asks the service where the database is
+(app: 62 tests, up from 45). Precedence: an explicit `SYNTRAC_DB` (pinned, never overridden) > the path the running service
+reports over the pipe > the last path remembered in `%LOCALAPPDATA%\Syntrac\database-path.txt` > the default. If the database
+is not where the app expects, the first data call asks the service before showing "No data", so a moved database is found
+immediately. A reported path is only believed if it is absolute, ends in `.db` and has no `..`.
+
+**F. Scripts follow the data root.** Found while thinking through the sequence: after a move, re-running the installer or
+smoke test with the default data folder would have seen a "wrong" config, regenerated it and pointed the service back at the
+stale copy on C:. The installer, smoke test and uninstaller now default to the data root recorded in the installed config
+(`Get-DataRootFromConfig`, 6 checks), then to the standard location on a fresh install; an explicit `-DataDir` still wins. The
+smoke test passes the root to the elevated half and checks the same things on any root.
+
+## Still to do
+The real move on this machine (elevated, by the user): install the current build, `move-data.ps1 -DryRun`, `move-data.ps1`,
+then the smoke test, which follows the new root. Then delete the old files on C: by hand when satisfied.
+
+Known gap: the database path is also what `-RemoveData` of the uninstaller deletes; it now follows the config, but it was
+not exercised. A pipe peer that squats the pipe name could still tell the UI to open some other `.db` file read-only
+(mitigated by the plausibility checks; the pipe itself is created by SYSTEM with FIRST_PIPE_INSTANCE).

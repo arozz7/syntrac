@@ -10,6 +10,7 @@ use syntrac_ipc::pipe::request;
 use syntrac_ipc::protocol::{Request, Response};
 use syntrac_store::SqliteStore;
 
+use crate::db_location::{DbLocation, FileMemory, NoMemory, PathMemory};
 use crate::health::{assess_health, HealthView};
 use crate::settings::AppSettings;
 use crate::views::{
@@ -41,26 +42,48 @@ pub enum Data<T> {
 }
 
 pub struct Backend<C> {
-    settings: AppSettings,
+    pipe_name: String,
+    location: DbLocation,
     clock: C,
 }
 
 impl<C: Clock + Send + Sync> Backend<C> {
     pub fn new(settings: AppSettings, clock: C) -> Self {
-        Self { settings, clock }
+        let memory: Box<dyn PathMemory> = match settings.memory_file {
+            Some(file) => Box::new(FileMemory::new(file)),
+            None => Box::new(NoMemory),
+        };
+        let location = DbLocation::new(settings.database_path, settings.database_pinned, memory);
+        Self { pipe_name: settings.pipe_name, location, clock }
+    }
+
+    /// Asks the collector how it is doing. Also keeps the database location up to date: the data may have been moved.
+    fn ask_collector(&self) -> Result<syntrac_ipc::protocol::StatusReport, syntrac_ipc::pipe::ClientError> {
+        let report = request(&self.pipe_name, &Request::Status, PIPE_TIMEOUT).and_then(|response| match response {
+            Response::Status(report) => Ok(report),
+            other => Err(syntrac_ipc::pipe::ClientError::Protocol(format!("{other:?}"))),
+        })?;
+        self.location.learn(&report.database_path);
+        Ok(report)
     }
 
     fn open(&self) -> Result<SqliteStore, Data<()>> {
-        let path = &self.settings.database_path;
+        let mut path = self.location.current();
+        if !path.exists() {
+            // Not where we expected. The data may have been moved: ask the collector where it is now.
+            let _ = self.ask_collector();
+            path = self.location.current();
+        }
         if !path.exists() {
             return Err(Data::NoDatabase {
                 message: format!(
-                    "There is no database at {}. Is the collector installed and has it run?",
+                    "There is no database at {}. Is the collector installed and has it run? \
+                     (If the data lives on another drive, is that drive connected?)",
                     path.display()
                 ),
             });
         }
-        SqliteStore::open_read_only(path).map_err(|error| match error {
+        SqliteStore::open_read_only(&path).map_err(|error| match error {
             RepoError::SchemaMismatch { found, expected } => Data::SchemaMismatch {
                 message: format!(
                     "The database is schema v{found} but this app needs v{expected}. Start the matching collector once so it can migrate the database."
@@ -99,11 +122,7 @@ impl<C: Clock + Send + Sync> Backend<C> {
     /// Never fails: every problem is a state.
     pub fn health(&self) -> HealthView {
         let now = self.clock.now();
-        let pipe =
-            request(&self.settings.pipe_name, &Request::Status, PIPE_TIMEOUT).and_then(|response| match response {
-                Response::Status(report) => Ok(report),
-                other => Err(syntrac_ipc::pipe::ClientError::Protocol(format!("{other:?}"))),
-            });
+        let pipe = self.ask_collector();
         let from = Timestamp::from_micros(now.as_micros().saturating_sub(FRESHNESS_LOOKBACK_SECS * 1_000_000));
         let newest = self
             .open()

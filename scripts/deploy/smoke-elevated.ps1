@@ -4,6 +4,7 @@ param(
     [Parameter(Mandatory = $true)][string]$UserSid,
     [Parameter(Mandatory = $true)][string]$RunDir,
     [Parameter(Mandatory = $true)][string]$Executable,
+    [Parameter(Mandatory = $true)][string]$DataDir,
     [switch]$Uninstall
 )
 
@@ -37,7 +38,7 @@ function Wait-Marker {
 $failed = $false
 try {
     Write-Log 'Installing and starting the service'
-    & (Join-Path $PSScriptRoot 'install-service.ps1') -UserSid $UserSid -Executable $Executable
+    & (Join-Path $PSScriptRoot 'install-service.ps1') -UserSid $UserSid -Executable $Executable -DataDir $DataDir
     Set-Marker 'phase1.ready'
 
     if (-not (Wait-Marker 'phase2.go' 600)) { throw 'Timed out waiting for the unelevated checks.' }

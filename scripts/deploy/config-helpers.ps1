@@ -38,6 +38,19 @@ function Test-ConfigPaths {
         ((Get-ConfigValue $ConfigText 'pipe_allowed_sid') -eq $UserSid)
 }
 
+# The data root an installed config points at (the folder holding data\syntrac.db and logs\), or $null if the config
+# does not follow that layout. Lets the scripts keep using a relocated data root instead of dragging it back to the
+# default.
+function Get-DataRootFromConfig {
+    param([string]$ConfigText)
+    $database = Get-ConfigValue $ConfigText 'database_path'
+    if (-not $database) { return $null }
+    $normal = $database -replace '/', '\'
+    $tail = '\data\syntrac.db'
+    if (-not $normal.EndsWith($tail, [StringComparison]::OrdinalIgnoreCase)) { return $null }
+    return $normal.Substring(0, $normal.Length - $tail.Length)
+}
+
 # Sets a `key = "value"` line, keeping everything else exactly as it was (comments, other settings, line endings).
 # A commented-out key does not count as present; if the key is missing it is added at the top.
 function Set-ConfigValue {

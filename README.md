@@ -41,6 +41,13 @@ powershell -ExecutionPolicy Bypass -File scripts/dev/run-console.ps1 -Seconds 60
 powershell -ExecutionPolicy Bypass -File scripts/deploy/smoke-test-service.ps1
 # Ask a running collector (service, or console with --pipe syntrac-console) how it is doing
 target/release/syntrac-service.exe --status
+# Where the data lives: wherever the installed config points (default C:\ProgramData\Syntrac). To move it to another
+# fixed internal drive (USB, network and nearly full drives are refused), run elevated; -DryRun only checks and plans:
+#   [Security.Principal.WindowsIdentity]::GetCurrent().User.Value        (your SID, from a normal PowerShell)
+powershell -ExecutionPolicy Bypass -File scripts/deploy/move-data.ps1 -UserSid <sid> -NewDataDir D:\Syntrac -DryRun
+powershell -ExecutionPolicy Bypass -File scripts/deploy/move-data.ps1 -UserSid <sid> -NewDataDir D:\Syntrac
+# Check any database file (read-only): schema, integrity, rows per table
+target/release/syntrac-service.exe --check-db D:\Syntrac\data\syntrac.db
 # Uninstall (keeps your data unless you pass -RemoveData)
 powershell -ExecutionPolicy Bypass -File scripts/deploy/uninstall-service.ps1   # run elevated
 

@@ -6,11 +6,17 @@ param(
     [switch]$RemoveProgramFiles,
     [switch]$RemoveData,
     [string]$InstallDir = (Join-Path $env:ProgramFiles 'Syntrac'),
-    [string]$DataDir = (Join-Path $env:ProgramData 'Syntrac')
+    # Which data folder -RemoveData would delete. Default: the one the installed config points at (the data may have been
+    # moved to another drive), else C:\ProgramData\Syntrac.
+    [string]$DataDir
 )
 
 $ErrorActionPreference = 'Stop'
 $ServiceName = 'Syntrac'
+. (Join-Path $PSScriptRoot 'config-helpers.ps1')
+$installedConfig = Join-Path $InstallDir 'config\service.toml'
+if (-not $DataDir -and (Test-Path $installedConfig)) { $DataDir = Get-DataRootFromConfig (Get-Content -Path $installedConfig -Raw) }
+if (-not $DataDir) { $DataDir = Join-Path $env:ProgramData 'Syntrac' }
 
 $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {

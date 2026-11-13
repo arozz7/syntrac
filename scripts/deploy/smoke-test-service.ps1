@@ -12,6 +12,9 @@
 #   * -Uninstall: the registration disappears but the data stays
 # Nothing is deleted by this script. Results: aiChangeLog/service-smoke-<stamp>.txt (PASS/FAIL per check).
 param(
+    # Where the service keeps its data. Default: wherever the installed config already points (so the test follows a
+    # relocated data root), else the standard location. Pass a path to test a different root, e.g. D:\Syntrac.
+    [string]$DataDir,
     [switch]$Uninstall,
     [int]$FreshWithinSeconds = 30,
     [int]$MaxStopSeconds = 30
@@ -37,9 +40,14 @@ $resultFile = Join-Path $root "aiChangeLog/service-smoke-$stamp.txt"
 New-Item -ItemType Directory -Force -Path $runDir | Out-Null
 
 $installDir = Join-Path $env:ProgramFiles 'Syntrac'
-$dataDir = Join-Path $env:ProgramData 'Syntrac'
-$database = Join-Path $dataDir 'data/syntrac.db'
-$logDir = Join-Path $dataDir 'logs'
+# (PowerShell variable names are case-insensitive: $DataDir is the parameter above; there is no separate local.)
+. (Join-Path $PSScriptRoot 'config-helpers.ps1')
+$installedConfig = Join-Path $installDir 'config/service.toml'
+if (-not $DataDir -and (Test-Path $installedConfig)) { $DataDir = Get-DataRootFromConfig (Get-Content -Path $installedConfig -Raw) }
+if (-not $DataDir) { $DataDir = Join-Path $env:ProgramData 'Syntrac' }
+Write-Host "Data root under test: $DataDir"
+$database = Join-Path $DataDir 'data/syntrac.db'
+$logDir = Join-Path $DataDir 'logs'
 $checker = Join-Path $PSScriptRoot 'check_db.py'
 
 $results = New-Object System.Collections.ArrayList
@@ -143,7 +151,7 @@ function Wait-EtwDelivering {
 }
 
 $helper = Join-Path $PSScriptRoot 'smoke-elevated.ps1'
-$helperArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$helper`" -UserSid $userSid -RunDir `"$runDir`" -Executable `"$exe`""
+$helperArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$helper`" -UserSid $userSid -RunDir `"$runDir`" -Executable `"$exe`" -DataDir `"$DataDir`""
 if ($Uninstall) { $helperArgs += ' -Uninstall' }
 Write-Host 'Starting the elevated installer (approve the UAC prompt)...'
 Start-Process powershell -Verb RunAs -ArgumentList $helperArgs

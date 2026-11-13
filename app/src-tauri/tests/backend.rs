@@ -17,10 +17,14 @@ use syntrac_testkit::fixtures::{at_secs, metrics_sample, process_metric, running
 use syntrac_testkit::ManualClock;
 
 fn backend(database: &std::path::Path, pipe: &str, now_secs: i64) -> Backend<ManualClock> {
-    Backend::new(
-        AppSettings { database_path: database.to_path_buf(), pipe_name: pipe.to_owned() },
-        ManualClock::new(at_secs(now_secs)),
-    )
+    Backend::new(AppSettings::for_database(database.to_path_buf(), pipe), ManualClock::new(at_secs(now_secs)))
+}
+
+/// A backend that, like the real app, has no explicit database: it must find the database through the service.
+fn following_backend(default_database: &std::path::Path, pipe: &str, now_secs: i64) -> Backend<ManualClock> {
+    let mut settings = AppSettings::for_database(default_database.to_path_buf(), pipe);
+    settings.database_pinned = false;
+    Backend::new(settings, ManualClock::new(at_secs(now_secs)))
 }
 
 fn unique_pipe(tag: &str) -> String {
@@ -137,4 +141,93 @@ fn health_is_offline_when_no_collector_listens_and_running_when_one_answers() {
     assert_eq!(running.state, HealthState::Running);
     assert_eq!((running.pid, running.uptime_secs), (Some(4242), Some(99)));
     let _ = Timestamp::from_micros(0);
+}
+
+// ---- the database moved: follow where the service says it is
+
+/// A service that reports a given database path.
+struct ReportsDatabase(String);
+
+impl Handler for ReportsDatabase {
+    fn handle(&self, request: Request) -> Response {
+        match request {
+            Request::Ping => Response::Pong { version: "t".into() },
+            Request::Status => Response::Status(StatusReport {
+                version: "t".into(),
+                pid: 1,
+                started_at_micros: 0,
+                uptime_secs: 5,
+                database_path: self.0.clone(),
+                etw_enabled: false,
+                last_tick_at_micros: None,
+                totals: CollectorTotals::default(),
+                etw: None,
+            }),
+        }
+    }
+}
+
+fn database_with_one_process(path: &std::path::Path) {
+    let mut store = SqliteStore::open(path).unwrap();
+    store.record_start(running_process(1, at_secs(100))).unwrap();
+}
+
+fn serve(pipe: &str, reported_path: &std::path::Path) -> PipeServer {
+    let mut config = PipeServerConfig::new(pipe);
+    config.read_timeout = Duration::from_secs(2);
+    PipeServer::start(config, Arc::new(ReportsDatabase(reported_path.display().to_string()))).unwrap()
+}
+
+#[test]
+fn after_the_data_moved_the_first_call_finds_the_new_database_through_the_service() {
+    let dir = tempfile::tempdir().unwrap();
+    let moved = dir.path().join("moved").join("syntrac.db");
+    std::fs::create_dir_all(moved.parent().unwrap()).unwrap();
+    database_with_one_process(&moved);
+    let pipe = unique_pipe("move1");
+    let _server = serve(&pipe, &moved);
+
+    // The app still believes the old location, where there is no database any more.
+    let backend = following_backend(&dir.path().join("old").join("syntrac.db"), &pipe, 10_000);
+    match backend.processes(ProcessListParams::default()) {
+        Data::Ok { data } => assert_eq!(data.len(), 1),
+        other => panic!("expected the moved database to be found, got {}", serde_json::to_string(&other).unwrap()),
+    }
+}
+
+#[test]
+fn a_pinned_database_is_not_replaced_by_what_the_service_reports() {
+    let dir = tempfile::tempdir().unwrap();
+    let moved = dir.path().join("syntrac.db");
+    database_with_one_process(&moved);
+    let pipe = unique_pipe("move2");
+    let _server = serve(&pipe, &moved);
+
+    let backend = backend(&dir.path().join("elsewhere.db"), &pipe, 10_000);
+    assert!(matches!(backend.processes(ProcessListParams::default()), Data::NoDatabase { .. }));
+}
+
+#[test]
+fn with_the_service_offline_a_missing_database_is_still_reported_as_no_data_and_names_the_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let backend = following_backend(&dir.path().join("gone.db"), &unique_pipe("move3"), 10_000);
+    match backend.overview(3600) {
+        Data::NoDatabase { message } => assert!(message.contains("gone.db"), "{message}"),
+        other => panic!("unexpected {}", serde_json::to_string(&other).unwrap()),
+    }
+}
+
+#[test]
+fn health_polling_also_makes_the_app_follow_a_moved_database() {
+    let dir = tempfile::tempdir().unwrap();
+    let moved = dir.path().join("syntrac.db");
+    database_with_one_process(&moved);
+    let pipe = unique_pipe("move4");
+    let _server = serve(&pipe, &moved);
+
+    let backend = following_backend(&dir.path().join("old.db"), &pipe, 10_000);
+    let _ = backend.health();
+    // Even if the service later goes away, the app now knows where the data is.
+    drop(_server);
+    assert!(matches!(backend.processes(ProcessListParams::default()), Data::Ok { .. }));
 }

@@ -14,7 +14,8 @@ param(
     [Parameter(Mandatory = $true)][string]$UserSid,
     [string]$Executable,
     [string]$InstallDir = (Join-Path $env:ProgramFiles 'Syntrac'),
-    [string]$DataDir = (Join-Path $env:ProgramData 'Syntrac'),
+    # Where the data lives. Default: wherever the installed config already points, else C:\ProgramData\Syntrac.
+    [string]$DataDir,
     [switch]$NoStart
 )
 
@@ -44,12 +45,17 @@ if (-not (Test-Path $Executable)) { throw "Executable not found: $Executable (ru
 # user-writable data folder).
 $binDir = Join-Path $InstallDir 'bin'
 $configDir = Join-Path $InstallDir 'config'
+$installedExe = Join-Path $binDir 'syntrac-service.exe'
+$configFile = Join-Path $configDir 'service.toml'
+
+# Where the data lives: an explicit -DataDir, else wherever the installed config already points (so an upgrade after
+# the data was moved keeps it there instead of dragging it back), else the standard location of a fresh install.
 $dataRoot = $DataDir
+if (-not $dataRoot -and (Test-Path $configFile)) { $dataRoot = Get-DataRootFromConfig (Get-Content -Path $configFile -Raw) }
+if (-not $dataRoot) { $dataRoot = Join-Path $env:ProgramData 'Syntrac' }
 $databaseFolder = Join-Path $dataRoot 'data'
 $logFolder = Join-Path $dataRoot 'logs'
 $expectedPaths = Get-ExpectedConfigPaths -DataRoot $dataRoot
-$installedExe = Join-Path $binDir 'syntrac-service.exe'
-$configFile = Join-Path $configDir 'service.toml'
 
 # 0. Refuse an unsuitable data drive BEFORE changing anything (USB disk, network share, missing or nearly full drive).
 #    An existing install already using this root is only re-checked for being a suitable kind of drive, not for free

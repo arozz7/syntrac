@@ -3,6 +3,7 @@
 
 pub mod backend;
 pub mod commands;
+pub mod db_location;
 pub mod health;
 pub mod names;
 pub mod series;

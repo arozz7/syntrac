@@ -48,6 +48,14 @@ Assert-That 'a commented-out path is left alone and a real one is added' ($fromC
 Assert-That 'missing keys are added' ((Get-ConfigValue (Set-ConfigPaths -ConfigText 'flow_window_secs = 10' -Database 'O:/a.db' -Logs 'O:/l') 'log_dir') -eq 'O:/l')
 Assert-That 'a path with a dollar sign is written literally' ((Get-ConfigValue (Set-ConfigPaths -ConfigText $customised -Database 'O:/a$1b/syntrac.db' -Logs 'O:/l') 'database_path') -eq 'O:/a$1b/syntrac.db')
 
+# --- after a move, re-running the installer must keep the data where it is, not drag it back to the default
+Assert-That 'the data root is recovered from the installed config (forward slashes in the file, backslashes out)' ((Get-DataRootFromConfig $moved) -eq 'D:\Syntrac')
+Assert-That 'the default location is recovered too' ((Get-DataRootFromConfig $customised) -eq 'C:\ProgramData\Syntrac')
+Assert-That 'a config with no database path gives no data root' ($null -eq (Get-DataRootFromConfig 'flow_window_secs = 10'))
+Assert-That 'a commented-out database path gives no data root' ($null -eq (Get-DataRootFromConfig "# database_path = `"O:/x/data/syntrac.db`""))
+Assert-That 'a database that is not in <root>\data\syntrac.db gives no data root (the installer then uses its default)' ($null -eq (Get-DataRootFromConfig 'database_path = "O:/somewhere/else.db"'))
+Assert-That 'the root recovered from a generated config is the one it was generated for' ((Get-DataRootFromConfig (New-ConfigText -Template '' -Database 'D:/Telemetry/data/syntrac.db' -Logs 'D:/Telemetry/logs' -UserSid $sid)) -eq 'D:\Telemetry')
+
 if ($script:failures -gt 0) { Write-Host "$($script:failures) failed" -ForegroundColor Red; exit 1 }
 Write-Host 'config helpers: all passed'
 exit 0
