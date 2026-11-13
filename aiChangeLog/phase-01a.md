@@ -1,6 +1,6 @@
 ﻿# Phase 01a: The collection pipeline (console mode)
 
-Date: 2026-11-13. Status: **built; offline-verified; first elevated ETW run captured good data but exposed a shutdown hang, now fixed and awaiting a second run.**
+Date: 2026-11-13. Status: **complete and verified live.** Two elevated ETW runs; the first exposed a shutdown stall, fixed and confirmed by the second.
 
 ## Goal
 
@@ -97,23 +97,34 @@ the evidence was lost with the summary. Fixes, all in place:
 
 These fixes are unit-tested only where possible (the stop ordering) and exercised live on the non-ETW path; the ETW stop
 itself is unverified until the next elevated run.
-## Still not verified (needs a second elevated run)
+## Second elevated run (2026-11-12 20:17, 60 s, `data/syntrac-20261112-201726.db`)
 
-- ETW **drops** and **parse errors by event id** (events did flow and parse, but the counters were lost with the summary).
-- That the process now EXITS promptly after its run (the fix above).
-- That `raw_timestamp()` is system time (FILETIME) on this trace (documented behaviour; the console run will show
-  event times next to wall-clock time through ordering and attribution).
-- How many processes the snapshot skips when elevated.
-- Collector CPU with ETW running, idle and under load, against the 2% budget.
-- The caller-PID attribution of DNS events (consistent in the spike, not proven).
+After the shutdown fix. The program wrote its own summary (`aiChangeLog/console-run-20261112-201726.txt`).
 
-Run: `powershell -ExecutionPolicy Bypass -File scripts/dev/run-console.ps1 -Seconds 60` (UAC prompt). During the run:
-open and close a few programs, browse a site or two, and generate some CPU load. Output: `aiChangeLog/console-run-<stamp>.txt`
-and the database `data/syntrac-<stamp>.db` (git-ignored). Afterwards: `python -I scripts/dev/inspect-run.py data/syntrac-<stamp>.db`
-reports attribution rates, duplicate flows (should be 0), process lifetimes, the CPU breakdown including the unattributed
-share, and the busiest destinations.
+| Check | Result |
+|---|---|
+| Exit | **Clean.** `Stopping the ETW trace session` to `ETW trace session stopped elapsed_ms=1` to `Shutdown complete`; run lasted 60.3 s. The stall is fixed |
+| ETW events | 9,093 received, **0 dropped, 0 parse errors** |
+| Timestamps | max delivery lag 1,014 ms; **0 events stamped in the future**, so ETW timestamps are system time (FILETIME), not QPC |
+| Snapshot | 387 processes, 40 connections, **1 skipped** (173 skipped unelevated) |
+| Attribution | flows 519/524, DNS 40/40, exits 12/12, metrics 274/275; 0 duplicate flow keys |
+| CPU | system 4.4%, listed 3.3%, tail 0.2%, **not attributed 0.9%** (2.3% in the first run, 2.8% unelevated) |
+| Collector overhead | 0.5 s CPU over 60 s = **0.03% of the whole machine** (first run 0.05%), against a 2% budget |
 
-## Deviations and pending confirmation
+The first run's own summary file also filled in later (its pipe finally closed): 23,039 ETW events, 0 dropped,
+0 parse errors, same lag figure. Its log shows the stall happened AFTER the summary printed, in teardown, which
+matches the diagnosis: the processing thread ended a few milliseconds after the stop began and the process then never
+exited. Only the exact blocking call remains unproven; the stall is gone.
+
+Caveats: both runs were normal desktop use, not a heavy-load test; overhead under sustained load is still unmeasured.
+The "System" process (pid 4) has no image path, so any UI must give it a display name.
+## Still not verified
+
+- Collector overhead under sustained heavy load (both runs were normal use).
+- The exact call that blocked in the original stall (the stall itself is fixed and confirmed gone).
+- DNS caller-PID attribution is consistent (100% attributed, queries line up with the calling processes' connections)
+  but was never independently proven against a known process.
+## Deviations
 
 - Removed with the owner's confirmation (2026-11-13): `crates/syntrac-store/src/sqlite.rs` (superseded by the split modules;
   it was already absent from the working tree when I went to delete it) and the Phase 0 spike binary
@@ -132,5 +143,6 @@ file), named-pipe link, and the UI (dashboard, process list, connections list).
 `scripts/dev/verify.ps1` exit code 0: **141 Rust tests** and **47 frontend tests**, clippy with warnings as errors, format
 checks, build and file-size check all clean. Live ETW behaviour is NOT covered by these and remains unverified until the
 elevated run.
+
 
 
