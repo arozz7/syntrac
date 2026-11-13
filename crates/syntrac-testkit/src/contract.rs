@@ -25,6 +25,7 @@ pub fn process_repository_contract<R: ProcessRepository>(make: impl Fn() -> R) {
     reconcile_leaves_live_new_and_ended_processes_alone(make());
     reconcile_is_idempotent(make());
     an_exact_exit_replaces_an_approximate_one_flag(make());
+    a_parent_link_round_trips(make());
 }
 
 fn start_then_get_returns_the_record<R: ProcessRepository>(mut repo: R) {
@@ -189,6 +190,7 @@ pub fn metrics_repository_contract<R: MetricsRepository>(make: impl Fn() -> R) {
     breakdown_of_an_empty_window_is_empty(make());
     breakdown_reports_cpu_that_no_process_explains(make());
     the_unaccounted_share_never_goes_negative(make());
+    a_sample_without_an_owner_is_kept(make());
 }
 
 fn fill_metrics<R: MetricsRepository>(repo: &mut R) -> (ProcessInstanceId, ProcessInstanceId) {
@@ -356,15 +358,16 @@ fn destinations_of_an_empty_store_are_empty<R: EventRepository + FlowQueries>(re
 
 pub fn retention_contract<R>(make: impl Fn() -> R)
 where
-    R: EventRepository + ProcessRepository + MetricsRepository + Retention,
+    R: EventRepository + ProcessRepository + MetricsRepository + FlowQueries + Retention,
 {
     purge_removes_only_data_older_than_the_cutoff(make());
     purging_twice_is_harmless(make());
+    purging_removes_a_flow_event_together_with_its_flow(make());
 }
 
 fn purge_removes_only_data_older_than_the_cutoff<R>(mut repo: R)
 where
-    R: EventRepository + ProcessRepository + MetricsRepository + Retention,
+    R: EventRepository + ProcessRepository + MetricsRepository + FlowQueries + Retention,
 {
     let mut f = EventFactory::default();
     repo.append(&[
@@ -400,7 +403,7 @@ where
 
 fn purging_twice_is_harmless<R>(mut repo: R)
 where
-    R: EventRepository + ProcessRepository + MetricsRepository + Retention,
+    R: EventRepository + ProcessRepository + MetricsRepository + FlowQueries + Retention,
 {
     let cutoff = Timestamp::from_micros(0);
     let first = repo.purge_before(cutoff).unwrap();
@@ -560,4 +563,52 @@ fn the_limit_keeps_the_newest_flows<R: EventRepository + ProcessRepository + Flo
     let rows = repo.recent_flows(at_secs(0), at_secs(100), 2).unwrap();
     let starts: Vec<_> = rows.iter().map(|r| r.window_start).collect();
     assert_eq!(starts, vec![at_secs(30), at_secs(20)]);
+}
+
+fn a_parent_link_round_trips<R: ProcessRepository>(mut repo: R) {
+    let parent = running_process(10, at_secs(5));
+    let mut child = running_process(11, at_secs(6));
+    child.parent_pid = 10;
+    child.parent_id = Some(parent.id);
+    child.command_line = Some("child.exe --flag".into());
+    repo.record_start(parent.clone()).unwrap();
+    repo.record_start(child.clone()).unwrap();
+    assert_eq!(repo.get(child.id).unwrap(), Some(child));
+    assert_eq!(repo.get(parent.id).unwrap(), Some(parent));
+}
+
+/// A process that could not be matched to an instance still has its CPU counted and listed.
+fn a_sample_without_an_owner_is_kept<R: MetricsRepository>(mut repo: R) {
+    let owned = ProcessInstanceId::from_pid_and_creation(1, at_secs(0));
+    let sample =
+        metrics_sample(10, 30.0, vec![process_metric(1, Some(owned), 20.0), process_metric(9, None, 8.0)], 0.0, 0);
+    repo.append_metrics(&sample).unwrap();
+
+    let breakdown = repo.cpu_breakdown(at_secs(0), at_secs(100), 10).unwrap();
+    let ownerless: Vec<_> = breakdown.processes.iter().filter(|p| p.instance.is_none()).collect();
+    assert_eq!(ownerless.len(), 1);
+    assert_eq!(ownerless[0].pid, 9);
+    assert_close(ownerless[0].avg_cpu_percent, 8.0);
+    assert!(breakdown.processes.iter().any(|p| p.instance == Some(owned)));
+}
+
+/// A flow is one stored thing: purging its event must not leave its flow behind, and keeping its event must keep it whole.
+fn purging_removes_a_flow_event_together_with_its_flow<R>(mut repo: R)
+where
+    R: EventRepository + FlowQueries + Retention,
+{
+    let mut f = EventFactory::default();
+    let owner = ProcessInstanceId::from_pid_and_creation(10, at_secs(1));
+    let mut old = f.make(at_secs(10), net_flow(10, BEACON_TARGET, 100, 200, 10));
+    old.process_instance_id = Some(owner);
+    let mut recent = f.make(at_secs(30), net_flow(10, BEACON_TARGET, 5, 6, 30));
+    recent.process_instance_id = Some(owner);
+    repo.append(&[old, recent.clone()]).unwrap();
+
+    repo.purge_before(at_secs(25)).unwrap();
+
+    assert_eq!(repo.query(&EventQuery::default()).unwrap(), vec![recent]);
+    let destinations = repo.top_destinations(at_secs(0), at_secs(100), 10).unwrap();
+    assert_eq!(destinations.len(), 1);
+    assert_eq!((destinations[0].bytes_sent, destinations[0].bytes_received, destinations[0].flow_count), (5, 6, 1));
 }

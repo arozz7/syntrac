@@ -74,7 +74,7 @@ Client: `syntrac-service --status` / `--ping` (`--pipe <name>`), exit codes 0 ok
 ```
 sources -> sort by time -> correlate (PID -> process instance) -> raw network activity -> FlowAggregator
                                                                -> everything else ----> events table
-FlowAggregator --(window ended, or shutdown)--> flow events --> events table + indexed flows table
+FlowAggregator --(window ended, or shutdown)--> flow events --> events table (no payload) + indexed flows table (the flow)
 MetricsSource --> resolve each PID to its instance --> system_metrics + process_metrics
 ```
 
@@ -127,8 +127,9 @@ decides what they mean (using values captured from real traces).
 
 - The in-memory repository lives in `syntrac-testkit` (not `syntrac-store`). It is test infrastructure, and placing it
   there avoids a dependency cycle between the store and the shared contract suites.
-- Network flows are stored twice on purpose: in `events` (so the timeline is uniform) and in the indexed `flows` table
-  (so analytics never scan JSON).
+- Network flows are stored once (schema v4): the `events` row keeps the timeline entry (id, time, owner) with a NULL payload,
+  and the flow itself lives in the indexed `flows` table under the same `seq`; reading an event rebuilds the flow payload
+  from it. Ids are stored as 16-byte blobs. (Before v4 flows were stored twice.)
 - DNS: only the caller-side response event (3008) is stored, so one lookup is one record.
 
 ## Logging

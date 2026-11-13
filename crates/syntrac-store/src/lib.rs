@@ -6,6 +6,8 @@ mod connection;
 mod events;
 mod inspect;
 mod metrics;
+#[cfg(test)]
+mod migration_v4_tests;
 mod migrations;
 mod processes;
 

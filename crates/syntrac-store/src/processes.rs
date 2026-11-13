@@ -1,20 +1,20 @@
-﻿//! `ProcessRepository` and `ProcessQueries` for SQLite.
+//! `ProcessRepository` and `ProcessQueries` for SQLite.
 
 use rusqlite::{params, params_from_iter, OptionalExtension, Row};
 use syntrac_core::{
     ProcessFilter, ProcessInstanceId, ProcessQueries, ProcessRecord, ProcessRepository, RepoError, Timestamp,
 };
 
-use crate::codec::{instance_from_column, instance_from_text, instance_to_text};
+use crate::codec::{instance_from_blob, instance_to_blob, IdBytes};
 use crate::connection::{backend, SqliteStore};
 
 fn process_from_row(row: &Row<'_>) -> Result<ProcessRecord, rusqlite::Error> {
-    let parent_id: Option<String> = row.get("parent_id")?;
+    let parent_id: Option<IdBytes> = row.get("parent_id")?;
     Ok(ProcessRecord {
-        id: instance_from_column(row.get("id")?)?,
+        id: instance_from_blob(row.get("id")?),
         pid: row.get("pid")?,
         parent_pid: row.get("parent_pid")?,
-        parent_id: parent_id.map(instance_from_column).transpose()?,
+        parent_id: parent_id.map(instance_from_blob),
         image_path: row.get("image_path")?,
         command_line: row.get("command_line")?,
         started: Timestamp::from_micros(row.get("started")?),
@@ -44,10 +44,10 @@ impl ProcessRepository for SqliteStore {
                                             ELSE excluded.ended_approximate END,
                    exit_code = COALESCE(excluded.exit_code, exit_code)",
                 params![
-                    instance_to_text(record.id),
+                    instance_to_blob(record.id),
                     record.pid,
                     record.parent_pid,
-                    record.parent_id.map(instance_to_text),
+                    record.parent_id.map(instance_to_blob),
                     record.image_path,
                     record.command_line,
                     record.started.as_micros(),
@@ -71,7 +71,7 @@ impl ProcessRepository for SqliteStore {
             .conn
             .execute(
                 "UPDATE processes SET ended = ?2, exit_code = ?3, ended_approximate = 0 WHERE id = ?1",
-                params![instance_to_text(id), ended.as_micros(), exit_code],
+                params![instance_to_blob(id), ended.as_micros(), exit_code],
             )
             .map_err(backend)?;
         if changed == 0 {
@@ -82,21 +82,22 @@ impl ProcessRepository for SqliteStore {
 
     fn get(&self, id: ProcessInstanceId) -> Result<Option<ProcessRecord>, RepoError> {
         self.conn
-            .query_row("SELECT * FROM processes WHERE id = ?1", [instance_to_text(id)], process_from_row)
+            .query_row("SELECT * FROM processes WHERE id = ?1", [instance_to_blob(id)], process_from_row)
             .optional()
             .map_err(backend)
     }
 
     fn reconcile_running(&mut self, alive: &[ProcessInstanceId], observed_at: Timestamp) -> Result<u64, RepoError> {
-        // The alive list is passed as one JSON array so a few hundred ids need no per-id parameters.
-        let alive_json = serde_json::to_string(&alive.iter().map(|id| instance_to_text(*id)).collect::<Vec<_>>())
-            .map_err(backend)?;
+        // The alive list is passed as one JSON array of hex ids (decoded to the stored 16 bytes by unhex) so a few hundred ids need no per-id parameters.
+        let alive_json =
+            serde_json::to_string(&alive.iter().map(|id| id.as_uuid().simple().to_string()).collect::<Vec<_>>())
+                .map_err(backend)?;
         let closed = self
             .conn
             .execute(
                 "UPDATE processes SET ended = ?1, ended_approximate = 1
                  WHERE ended IS NULL AND started <= ?1
-                   AND id NOT IN (SELECT value FROM json_each(?2))",
+                   AND id NOT IN (SELECT unhex(value) FROM json_each(?2))",
                 params![observed_at.as_micros(), alive_json],
             )
             .map_err(backend)?;
@@ -104,7 +105,7 @@ impl ProcessRepository for SqliteStore {
     }
 
     fn resolve(&self, pid: u32, at: Timestamp) -> Result<Option<ProcessInstanceId>, RepoError> {
-        let found: Option<String> = self
+        let found: Option<IdBytes> = self
             .conn
             .query_row(
                 "SELECT id FROM processes
@@ -115,7 +116,7 @@ impl ProcessRepository for SqliteStore {
             )
             .optional()
             .map_err(backend)?;
-        found.map(|text| instance_from_text(&text)).transpose()
+        Ok(found.map(instance_from_blob))
     }
 }
 

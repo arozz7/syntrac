@@ -48,7 +48,6 @@ pub const MIGRATIONS: &[&str] = &[
         failed      INTEGER NOT NULL
     );
     CREATE INDEX idx_flows_window ON flows (window_start);
-    CREATE INDEX idx_flows_remote ON flows (remote_addr, remote_port, window_start);
     CREATE INDEX idx_flows_process ON flows (process_instance_id, window_start);
 
     CREATE TABLE system_metrics (
@@ -79,7 +78,99 @@ pub const MIGRATIONS: &[&str] = &[
     "
     ALTER TABLE processes ADD COLUMN ended_approximate INTEGER NOT NULL DEFAULT 0;
     ",
+    // 4: compact layout (docs/STORAGE-PLAN.md, S2). Ids become 16-byte blobs (unhex of the text id without dashes; a malformed
+    // event or process id gives NULL, which fails its NOT NULL column and rolls the whole migration back instead of corrupting
+    // anything). A flow is stored once, in `flows`, keyed by the same number as its event (`seq`); its event keeps a NULL
+    // payload, but only when its flows row exists, so no event can lose its content. Three indexes that no query plan uses are
+    // dropped (found with EXPLAIN QUERY PLAN on a copy of the real database).
+    "
+    CREATE TABLE events_v4 (
+        seq         INTEGER PRIMARY KEY,
+        id          BLOB NOT NULL UNIQUE,
+        ts          INTEGER NOT NULL,
+        category    TEXT NOT NULL,
+        kind        TEXT NOT NULL,
+        process_instance_id BLOB,
+        severity    TEXT,
+        payload     TEXT
+    );
+    INSERT INTO events_v4 (seq, id, ts, category, kind, process_instance_id, severity, payload)
+    SELECT e.rowid, unhex(replace(e.id, '-', '')), e.ts, e.category, e.kind,
+           unhex(replace(e.process_instance_id, '-', '')), e.severity,
+           CASE WHEN EXISTS (SELECT 1 FROM flows f WHERE f.event_id = e.id) THEN NULL ELSE e.payload END
+    FROM events e ORDER BY e.rowid;
+
+    CREATE TABLE flows_v4 (
+        seq         INTEGER PRIMARY KEY,
+        window_start INTEGER NOT NULL,
+        window_end  INTEGER NOT NULL,
+        process_instance_id BLOB,
+        pid         INTEGER NOT NULL,
+        protocol    TEXT NOT NULL,
+        remote_addr TEXT NOT NULL,
+        remote_port INTEGER NOT NULL,
+        bytes_sent  INTEGER NOT NULL,
+        bytes_received INTEGER NOT NULL,
+        opened      INTEGER NOT NULL,
+        closed      INTEGER NOT NULL,
+        failed      INTEGER NOT NULL
+    );
+    INSERT INTO flows_v4 (seq, window_start, window_end, process_instance_id, pid, protocol, remote_addr, remote_port,
+                          bytes_sent, bytes_received, opened, closed, failed)
+    SELECT v.seq, f.window_start, f.window_end, unhex(replace(f.process_instance_id, '-', '')), f.pid, f.protocol,
+           f.remote_addr, f.remote_port, f.bytes_sent, f.bytes_received, f.opened, f.closed, f.failed
+    FROM flows f JOIN events_v4 v ON v.id = unhex(replace(f.event_id, '-', ''))
+    ORDER BY v.seq;
+
+    CREATE TABLE processes_v4 (
+        id          BLOB PRIMARY KEY,
+        pid         INTEGER NOT NULL,
+        parent_pid  INTEGER NOT NULL,
+        parent_id   BLOB,
+        image_path  TEXT NOT NULL,
+        command_line TEXT,
+        started     INTEGER NOT NULL,
+        ended       INTEGER,
+        exit_code   INTEGER,
+        ended_approximate INTEGER NOT NULL DEFAULT 0
+    );
+    INSERT INTO processes_v4 (id, pid, parent_pid, parent_id, image_path, command_line, started, ended, exit_code,
+                              ended_approximate)
+    SELECT unhex(replace(id, '-', '')), pid, parent_pid, unhex(replace(parent_id, '-', '')), image_path, command_line,
+           started, ended, exit_code, ended_approximate
+    FROM processes ORDER BY rowid;
+
+    CREATE TABLE process_metrics_v4 (
+        ts          INTEGER NOT NULL,
+        instance    BLOB,
+        pid         INTEGER NOT NULL,
+        cpu_percent REAL NOT NULL,
+        memory_bytes INTEGER NOT NULL
+    );
+    INSERT INTO process_metrics_v4 (ts, instance, pid, cpu_percent, memory_bytes)
+    SELECT ts, unhex(replace(instance, '-', '')), pid, cpu_percent, memory_bytes FROM process_metrics ORDER BY rowid;
+
+    DROP TABLE flows;
+    DROP TABLE events;
+    DROP TABLE processes;
+    DROP TABLE process_metrics;
+    ALTER TABLE events_v4 RENAME TO events;
+    ALTER TABLE flows_v4 RENAME TO flows;
+    ALTER TABLE processes_v4 RENAME TO processes;
+    ALTER TABLE process_metrics_v4 RENAME TO process_metrics;
+
+    CREATE INDEX idx_events_ts ON events (ts);
+    CREATE INDEX idx_events_category_ts ON events (category, ts);
+    CREATE INDEX idx_events_process_ts ON events (process_instance_id, ts);
+    CREATE INDEX idx_flows_window ON flows (window_start);
+    CREATE INDEX idx_processes_pid_started ON processes (pid, started);
+    CREATE INDEX idx_process_metrics_ts ON process_metrics (ts);
+    ",
 ];
+
+/// The migration (1-based number) that rewrites every table. An existing database gets a backup copy before it is applied
+/// and is compacted (`VACUUM`) after it, because a rewrite leaves free pages and the file would not shrink otherwise.
+pub const REWRITING_MIGRATION: u32 = 4;
 
 #[cfg(test)]
 mod tests {

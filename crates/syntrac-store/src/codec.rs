@@ -5,19 +5,23 @@ use uuid::Uuid;
 
 use crate::connection::backend;
 
-pub(crate) fn instance_to_text(id: ProcessInstanceId) -> String {
-    id.as_uuid().to_string()
+/// Ids are stored as their 16 raw bytes (a 36-character text id is more than twice the size, in every row and index).
+pub(crate) type IdBytes = [u8; 16];
+
+pub(crate) fn instance_to_blob(id: ProcessInstanceId) -> IdBytes {
+    *id.as_uuid().as_bytes()
 }
 
-pub(crate) fn instance_from_text(text: &str) -> Result<ProcessInstanceId, RepoError> {
-    Uuid::parse_str(text).map(ProcessInstanceId::from_uuid).map_err(backend)
+pub(crate) fn instance_from_blob(bytes: IdBytes) -> ProcessInstanceId {
+    ProcessInstanceId::from_uuid(Uuid::from_bytes(bytes))
 }
 
-/// Same as [`instance_from_text`] but shaped for use inside a rusqlite row closure.
-pub(crate) fn instance_from_column(text: String) -> Result<ProcessInstanceId, rusqlite::Error> {
-    Uuid::parse_str(&text)
-        .map(ProcessInstanceId::from_uuid)
-        .map_err(|e| rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e)))
+pub(crate) fn uuid_to_blob(id: Uuid) -> IdBytes {
+    *id.as_bytes()
+}
+
+pub(crate) fn uuid_from_blob(bytes: IdBytes) -> Uuid {
+    Uuid::from_bytes(bytes)
 }
 
 pub(crate) fn severity_to_text(severity: Severity) -> Result<String, RepoError> {

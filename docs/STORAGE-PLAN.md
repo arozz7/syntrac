@@ -50,20 +50,46 @@ Tasks
 Tests first: config and path validation (missing drive, relative path, removable drive), a move script self-test like
 `config-helpers.tests.ps1`, UI path-discovery logic with a fake pipe, the smoke test extended to run against a custom root.
 
-### S2 -> run as S3: Compact layout (migration v4)
+### S2: Compact layout (migration v4). Runs BEFORE S3 (rollups are built on the compact tables)
 
 Tasks
 1. Ids stored as 16-byte blobs instead of 36-character text (events, flows, processes, per-process samples).
-2. Network flows stored once: the `events` row for a flow carries no payload, the repository rebuilds it from `flows`.
-3. Review the three event indexes against the queries that really run (`EXPLAIN QUERY PLAN`); drop any that are unused.
-4. Per-process CPU stored as integer hundredths of a percent.
+2. Network flows stored once: the `events` row for a flow carries no payload (`payload` is NULL), the repository rebuilds it
+   from `flows`.
+3. Review the indexes against the queries that really run (`EXPLAIN QUERY PLAN`); drop any that no query uses.
+4. ~~Per-process CPU stored as integer hundredths of a percent.~~ **Dropped 2026-11-13**: SQLite already stores whole-number
+   REALs compactly, the saving is about 1.6 MB of 334 MB (0.5%), and it would change stored precision for no real gain.
+
+Design (added when S2 started; these are new points beyond the approved plan, recorded here before coding):
+- **`events`** becomes `seq INTEGER PRIMARY KEY, id BLOB NOT NULL UNIQUE, ts, category, kind, process_instance_id BLOB,
+  severity, payload TEXT NULL`. The old implicit rowid is copied into `seq`, so order (`ts, seq`) is unchanged. The unique
+  index on `id` is kept (a replayed batch is still rejected).
+- **`flows`** becomes `seq INTEGER PRIMARY KEY` (the SAME number as its event's `seq`: no second id and no second unique
+  index), the window, pid, protocol, address, port, byte and flag columns, and `process_instance_id BLOB` (kept so flow
+  queries and the S3 rollups need no join). Reading an event with a NULL payload joins `flows` on `seq`.
+- **The migration strips a flow event's payload only when its `flows` row exists**; otherwise the payload is kept, so no event
+  is ever lost. The rehearsal reports how many flow events have no flows row (expected 0).
+- **Retention** deletes flow events and their flows rows together, keyed by the event's `ts` (equal to the flow's
+  `window_start`), so a flow event can never be left without its flows row.
+- **Indexes dropped** (no query uses them; each can be recreated by the migration that adds the query that needs it):
+  `idx_flows_process`, `idx_flows_remote`, `idx_process_metrics_instance_ts` (the rehearsal's `EXPLAIN QUERY PLAN` showed them
+  unused). The three `events` indexes stay: the event query API filters by time, category and process, and nothing in
+  production calls it yet, so there is no evidence to drop any.
+- **Backup before migrating:** before applying v4 to an existing database the store writes a consistent copy next to it
+  (`VACUUM INTO` -> `syntrac.db.v3-backup`, a numbered name if that exists). If the backup cannot be written the migration
+  does not run. The backup is never deleted by SYNTRAC; you delete it once you accept the result.
+- **Compaction:** a rebuild leaves free pages, so the file would not shrink. After v4 the store runs `VACUUM` (outside the
+  migration transaction) and truncates the WAL. Needs about the database's size in temporary space.
+- **Ship together:** the service and the UI must be upgraded together; an old UI reports a schema mismatch, which is the
+  designed behaviour.
 
 Safety: the existing repository contract suites run unchanged against the new layout (the in-memory and SQLite
-implementations must still agree), the migration is rehearsed on a COPY of the real database with a before/after size and
-row-count report, and it is a normal numbered migration (existing databases upgrade in place; the old file is not touched
-until you accept the result).
+implementations must still agree), plus new cases (a parent link, a sample without an owner, flows surviving retention with
+their events). A migration test builds a real v3 database with text ids and checks every value through the repositories. The
+migration is rehearsed on a COPY of the real database (on O:, outside the live folder) with before/after sizes (before and
+after VACUUM), per-table row counts, timing, a sample of rows compared value by value, and the query plans.
 
-### S3 -> run as S2: Rollups and ledgers (migration v5)
+### S3: Rollups and ledgers (migration v5). Runs AFTER S2
 
 Tasks
 1. Pure core module `rollup`: given detail rows for a completed hour or day, produce rollup rows. Only COMPLETED periods are

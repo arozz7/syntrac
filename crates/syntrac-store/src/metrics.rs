@@ -6,7 +6,7 @@ use syntrac_core::{
     SystemMetrics, SystemPoint, Timestamp,
 };
 
-use crate::codec::{instance_from_text, instance_to_text, to_i64, to_u64};
+use crate::codec::{instance_from_blob, instance_to_blob, to_i64, to_u64, IdBytes};
 use crate::connection::{backend, SqliteStore};
 
 impl MetricsRepository for SqliteStore {
@@ -43,7 +43,7 @@ impl MetricsRepository for SqliteStore {
                  VALUES (?1, ?2, ?3, ?4, ?5)",
                 params![
                     ts,
-                    process.instance.map(instance_to_text),
+                    process.instance.map(instance_to_blob),
                     process.pid,
                     process.cpu_percent,
                     to_i64(process.memory_bytes)
@@ -130,11 +130,11 @@ impl MetricsRepository for SqliteStore {
                 .query(params![from.as_micros(), to.as_micros(), i64::try_from(limit).unwrap_or(i64::MAX)])
                 .map_err(backend)?;
             while let Some(row) = rows.next().map_err(backend)? {
-                let instance: Option<String> = row.get(0).map_err(backend)?;
+                let instance: Option<IdBytes> = row.get(0).map_err(backend)?;
                 let sum: f64 = row.get(2).map_err(backend)?;
                 let peak: f64 = row.get(3).map_err(backend)?;
                 processes.push(CpuContribution {
-                    instance: instance.as_deref().map(instance_from_text).transpose()?,
+                    instance: instance.map(instance_from_blob),
                     pid: row.get(1).map_err(backend)?,
                     avg_cpu_percent: (sum / divisor) as f32,
                     peak_cpu_percent: peak as f32,
@@ -160,8 +160,11 @@ impl Retention for SqliteStore {
         let cutoff = cutoff.as_micros();
         let tx = self.conn.transaction().map_err(backend)?;
 
+        // A flow lives in `flows` under its event's number: delete the flows of the events being purged FIRST, so no
+        // flow event can ever be left without its flow row.
+        tx.execute("DELETE FROM flows WHERE seq IN (SELECT seq FROM events WHERE ts < ?1)", [cutoff])
+            .map_err(backend)?;
         let events = tx.execute("DELETE FROM events WHERE ts < ?1", [cutoff]).map_err(backend)?;
-        tx.execute("DELETE FROM flows WHERE window_start < ?1", [cutoff]).map_err(backend)?;
         let processes =
             tx.execute("DELETE FROM processes WHERE ended IS NOT NULL AND ended < ?1", [cutoff]).map_err(backend)?;
         let metric_samples = tx.execute("DELETE FROM system_metrics WHERE ts < ?1", [cutoff]).map_err(backend)?;

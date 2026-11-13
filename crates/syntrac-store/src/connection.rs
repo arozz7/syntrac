@@ -7,7 +7,7 @@ use std::time::Duration;
 use rusqlite::{Connection, OpenFlags};
 use syntrac_core::RepoError;
 
-use crate::migrations::MIGRATIONS;
+use crate::migrations::{MIGRATIONS, REWRITING_MIGRATION};
 
 /// How long a connection waits for another to release a lock before failing.
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -20,6 +20,30 @@ pub(crate) fn backend(error: impl Display) -> RepoError {
     RepoError::Backend(error.to_string())
 }
 
+fn read_version(conn: &Connection) -> Result<u32, RepoError> {
+    conn.pragma_query_value(None, "user_version", |row| row.get(0)).map_err(backend)
+}
+
+/// A consistent copy of the database next to it (`<name>.v<version>-backup`, then `-2`, `-3` ... if that exists), made
+/// with `VACUUM INTO`, which is safe while the file is open. An existing file is never overwritten. If the copy cannot be
+/// written, the upgrade does not happen: nothing is rewritten without a way back.
+fn write_backup(conn: &Connection, database: &Path, version: u32) -> Result<(), RepoError> {
+    let file_name = database.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let mut attempt = 1;
+    let target = loop {
+        let suffix = if attempt == 1 { String::new() } else { format!("-{attempt}") };
+        let candidate = database.with_file_name(format!("{file_name}.v{version}-backup{suffix}"));
+        if !candidate.exists() {
+            break candidate;
+        }
+        attempt += 1;
+    };
+    conn.execute("VACUUM INTO ?1", [target.to_string_lossy().as_ref()]).map_err(|e| {
+        RepoError::Backend(format!("could not write the backup {} before upgrading: {e}", target.display()))
+    })?;
+    Ok(())
+}
+
 impl SqliteStore {
     pub const LATEST_SCHEMA_VERSION: u32 = MIGRATIONS.len() as u32;
 
@@ -30,7 +54,25 @@ impl SqliteStore {
         conn.busy_timeout(BUSY_TIMEOUT).map_err(backend)?;
         conn.pragma_update(None, "journal_mode", "WAL").map_err(backend)?;
         conn.pragma_update(None, "synchronous", "NORMAL").map_err(backend)?;
-        Self::migrated(conn)
+        let existing_version = read_version(&conn)?;
+        // An existing (version 1 or later) database that has not yet had the table rewrite applied: back it up first,
+        // compact it afterwards. A brand-new or already-current database needs neither.
+        let will_be_rewritten = (1..REWRITING_MIGRATION).contains(&existing_version);
+        if will_be_rewritten {
+            write_backup(&conn, path, existing_version)?;
+        }
+        let store = Self::migrated(conn)?;
+        if will_be_rewritten {
+            store.compact()?;
+        }
+        Ok(store)
+    }
+
+    /// Gives the pages freed by a table rewrite back to the file system, and empties the write-ahead log.
+    /// Needs about the database's size in temporary space; runs once, after the layout upgrade.
+    fn compact(&self) -> Result<(), RepoError> {
+        self.conn.execute_batch("VACUUM").map_err(backend)?;
+        self.conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(())).map_err(backend)
     }
 
     pub fn open_in_memory() -> Result<Self, RepoError> {
@@ -56,7 +98,7 @@ impl SqliteStore {
     }
 
     pub fn schema_version(&self) -> Result<u32, RepoError> {
-        self.conn.pragma_query_value(None, "user_version", |row| row.get(0)).map_err(backend)
+        read_version(&self.conn)
     }
 
     fn migrated(conn: Connection) -> Result<Self, RepoError> {
