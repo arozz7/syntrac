@@ -4,7 +4,9 @@ Implements S4 of `docs/STORAGE-PLAN.md`. Two decisions were taken with the user 
 **dropped** (measured: those samples are about 8% of the database, so about 9% saved over 14 days, for a weight column and a
 change to the CPU breakdown maths), and the installer **rewrites** the old default `retention_days = 30` to
 `detail_retention_days = 14` (with a timestamped copy of the config). Status: implemented and rehearsed on a copy of the live
-database; **not yet applied to the live service**.
+database; **applied to the live service on 2026-11-13** (log: "switched the database to incremental auto-vacuum"; installed
+config has `detail_retention_days = 14`; `--status` shows database size and drive free; smoke test 20 passed, 0 failed, see
+`service-smoke-20261113-154839.txt`). The kept config does not list the storage keys, so the defaults apply (10 / 20 / 5 GB).
 
 ## What changed
 
