@@ -52,3 +52,12 @@ then the smoke test, which follows the new root. Then delete the old files on C:
 Known gap: the database path is also what `-RemoveData` of the uninstaller deletes; it now follows the config, but it was
 not exercised. A pipe peer that squats the pipe name could still tell the UI to open some other `.db` file read-only
 (mitigated by the plausibility checks; the pipe itself is created by SYSTEM with FIRST_PIPE_INSTANCE).
+
+## Real move done (2026-11-13)
+Run elevated by the user: installer (kept the config), `move-data.ps1 -DryRun`, then the real move to `D:\Syntrac`.
+The copy verified equal to the source (schema v3, integrity ok, every table's row count matched at the moment of copying:
+events 413175, flows 288295, process_metrics 270350, processes 53437, system_metrics 10814; 332 MB). The service
+resumed on the new database; the old config was kept as `service.toml.bak-20261113-115744`. The unelevated smoke test then
+followed the new root and passed every check (read access, pipe, ETW 187 events in 60 s, orphan guard, privilege-escalation
+guards on the new logs folder, stop/restart, data survives). The old files on C: are untouched pending the user's deletion.
+Note: the move script prints the log path with forward slashes (`D:/Syntrac/logs`), which is cosmetic.
