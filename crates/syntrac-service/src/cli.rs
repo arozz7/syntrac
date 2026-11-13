@@ -30,6 +30,8 @@ pub struct CliArgs {
     pub status: bool,
     /// Ask a running collector whether it is alive.
     pub ping: bool,
+    /// Inspect this database file (integrity, schema version, rows per table) and exit.
+    pub check_db: Option<PathBuf>,
     /// Pipe to query for `--status` / `--ping` (default: the installed service's).
     pub pipe: Option<String>,
     pub help: bool,
@@ -50,6 +52,7 @@ OPTIONS:
     --status           Print the status of a running collector (asks it over the pipe) and exit
     --ping             Check that a running collector answers and exit
     --pipe <name>      Pipe for --status / --ping (default: syntrac-collector, the installed service)
+    --check-db <file>  Inspect a database file (integrity, schema version, rows per table) and exit
     -h, --help         Show this help
 
 ETW needs an elevated (Administrator) terminal.";
@@ -76,6 +79,7 @@ impl CliArgs {
                 "--status" => parsed.status = true,
                 "--ping" => parsed.ping = true,
                 "--pipe" => parsed.pipe = Some(value(&mut args, &arg)?),
+                "--check-db" => parsed.check_db = Some(PathBuf::from(value(&mut args, &arg)?)),
                 "--summary-file" => parsed.summary_file = Some(PathBuf::from(value(&mut args, &arg)?)),
                 "-h" | "--help" => parsed.help = true,
                 _ => return Err(CliError::UnknownOption(arg)),

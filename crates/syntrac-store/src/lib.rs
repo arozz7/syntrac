@@ -4,8 +4,10 @@
 mod codec;
 mod connection;
 mod events;
+mod inspect;
 mod metrics;
 mod migrations;
 mod processes;
 
 pub use connection::SqliteStore;
+pub use inspect::{inspect_database, DatabaseReport};

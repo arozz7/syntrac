@@ -13,8 +13,8 @@ use std::time::Duration;
 use syntrac_ipc::pipe::{request, ClientError};
 use syntrac_ipc::protocol::{Request, Response};
 use syntrac_service::{
-    format_status, run_host, CliArgs, HostError, HostOptions, PipeOptions, ServiceConfig, CONSOLE_PIPE_NAME,
-    DEFAULT_SHUTDOWN_LIMIT, SERVICE_PIPE_NAME, USAGE,
+    database_check_passed, format_database_report, format_status, run_host, CliArgs, HostError, HostOptions,
+    PipeOptions, ServiceConfig, CONSOLE_PIPE_NAME, DEFAULT_SHUTDOWN_LIMIT, SERVICE_PIPE_NAME, USAGE,
 };
 use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
@@ -47,6 +47,9 @@ fn main() -> ExitCode {
     if args.status || args.ping {
         return run_client(&args);
     }
+    if let Some(path) = &args.check_db {
+        return run_check_db(path);
+    }
     if args.service {
         // The Service Control Manager launched us: it sets up its own logging and reports its own status.
         return match service::run_as_service() {
@@ -71,6 +74,25 @@ fn main() -> ExitCode {
         Err(HostError::Failed(message)) => {
             error!(error = %message, "Collector stopped with an error");
             eprintln!("error: {message}");
+            ExitCode::from(EXIT_FAILURE)
+        }
+    }
+}
+
+/// `--check-db <file>`: read-only look inside a database file. Exit 0 only when SQLite's integrity check passes, so a
+/// script (the data move) can trust the exit code and compare the printed lines.
+fn run_check_db(path: &Path) -> ExitCode {
+    match syntrac_store::inspect_database(path) {
+        Ok(report) => {
+            print!("{}", format_database_report(path, &report));
+            if database_check_passed(&report) {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::from(EXIT_FAILURE)
+            }
+        }
+        Err(error) => {
+            eprintln!("error: could not inspect {}: {error}", path.display());
             ExitCode::from(EXIT_FAILURE)
         }
     }

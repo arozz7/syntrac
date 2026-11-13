@@ -22,30 +22,8 @@ $ErrorActionPreference = 'Stop'
 $ServiceName = 'Syntrac'
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '../..')
 . (Join-Path $PSScriptRoot 'config-helpers.ps1')
-
-function Assert-Elevated {
-    $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
-    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        throw 'This script must run in an elevated (Administrator) PowerShell.'
-    }
-}
-
-function Invoke-Icacls {
-    param([string[]]$Arguments)
-    & icacls.exe @Arguments | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "icacls failed ($LASTEXITCODE): $($Arguments -join ' ')" }
-}
-
-function Wait-ServiceState {
-    param([string]$State, [int]$Seconds)
-    $deadline = (Get-Date).AddSeconds($Seconds)
-    while ((Get-Date) -lt $deadline) {
-        $service = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-        if ($service -and $service.Status.ToString() -eq $State) { return $true }
-        Start-Sleep -Milliseconds 500
-    }
-    return $false
-}
+. (Join-Path $PSScriptRoot 'data-root.ps1')
+. (Join-Path $PSScriptRoot 'service-common.ps1')
 
 Assert-Elevated
 
@@ -73,12 +51,21 @@ $expectedPaths = Get-ExpectedConfigPaths -DataRoot $dataRoot
 $installedExe = Join-Path $binDir 'syntrac-service.exe'
 $configFile = Join-Path $configDir 'service.toml'
 
+# 0. Refuse an unsuitable data drive BEFORE changing anything (USB disk, network share, missing or nearly full drive).
+#    An existing install already using this root is only re-checked for being a suitable kind of drive, not for free
+#    space, so an upgrade is never blocked on a drive that is simply getting full.
+$alreadyUsesThisRoot = (Test-Path $configFile) -and
+    ((Get-ConfigValue (Get-Content -Path $configFile -Raw) 'database_path') -eq $expectedPaths.Database)
+$minFree = $script:DefaultMinFreeBytes
+if ($alreadyUsesThisRoot) { $minFree = 0 }
+Assert-DataRootAcceptable -DataRoot $dataRoot -MinFreeBytes $minFree
+
 # 1. Stop a running service before replacing its binary.
 $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($existing -and $existing.Status -ne 'Stopped') {
     Write-Host 'Stopping the running service for the upgrade...'
     Stop-Service -Name $ServiceName -Force
-    if (-not (Wait-ServiceState -State 'Stopped' -Seconds 90)) { throw 'The service did not stop within 90 seconds.' }
+    if (-not (Wait-ServiceState -Name $ServiceName -State 'Stopped' -Seconds 90)) { throw 'The service did not stop within 90 seconds.' }
 }
 
 # 2. Program files (inherit Program Files permissions: administrators write, users only read/execute).
@@ -105,12 +92,8 @@ if ($writeConfig) {
 }
 
 # 3. Data folder: SYSTEM and Administrators full control; the reading user may traverse the root, modify data\,
-#    and only read logs\. Nobody else gets in.
-New-Item -ItemType Directory -Force -Path $dataRoot | Out-Null
-Invoke-Icacls @($dataRoot, '/inheritance:r', '/grant:r', '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F', "*${UserSid}:(RX)")
-New-Item -ItemType Directory -Force -Path $databaseFolder, $logFolder | Out-Null
-Invoke-Icacls @($databaseFolder, '/grant:r', "*${UserSid}:(OI)(CI)M")
-Invoke-Icacls @($logFolder, '/grant:r', "*${UserSid}:(OI)(CI)RX")
+#    and only read logs\. Nobody else gets in. (The rules live in data-root.ps1, shared with move-data.ps1.)
+Set-DataRootAcls -DataRoot $dataRoot -UserSid $UserSid
 
 # 4. Register the service (LocalSystem; ETW needs high privileges). If the registered path differs, recreate it.
 $binaryPath = "`"$installedExe`" --service"
@@ -126,14 +109,16 @@ if (-not $registered) {
 }
 Set-Service -Name $ServiceName -Description 'SYNTRAC workstation activity collector. Writes local telemetry to SQLite; sends nothing off the machine.'
 & sc.exe config $ServiceName start= delayed-auto | Out-Null
-# Restart after failures: 5 s, then 30 s; reset the failure count daily. Failures include non-zero stops.
-& sc.exe failure $ServiceName reset= 86400 actions= restart/5000/restart/30000// | Out-Null
+# Restart after failures: after 5 s, then 30 s, then every 60 s for as long as it keeps failing (the last action
+# repeats), so a data drive that is not yet available at boot is retried until it appears. The failure count resets
+# daily. Failures include non-zero stops.
+& sc.exe failure $ServiceName reset= 86400 actions= restart/5000/restart/30000/restart/60000 | Out-Null
 & sc.exe failureflag $ServiceName 1 | Out-Null
 
 # 5. Start it.
 if (-not $NoStart) {
     Start-Service -Name $ServiceName
-    if (-not (Wait-ServiceState -State 'Running' -Seconds 60)) {
+    if (-not (Wait-ServiceState -Name $ServiceName -State 'Running' -Seconds 60)) {
         $reason = Join-Path $binDir 'startup-error.txt'
         $detail = ''
         if (Test-Path $reason) { $detail = ' Reason: ' + (Get-Content $reason -Raw) }

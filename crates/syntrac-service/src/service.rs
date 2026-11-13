@@ -12,7 +12,7 @@ use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use syntrac_service::{
-    run_host, service_config_path, validate_service_paths, HostOptions, PipeOptions, ServiceConfig,
+    check_data_drives, run_host, service_config_path, validate_service_paths, HostOptions, PipeOptions, ServiceConfig,
     DEFAULT_SHUTDOWN_LIMIT, SERVICE_PIPE_NAME,
 };
 use tracing::{error, info};
@@ -112,6 +112,9 @@ fn start_and_run(stop: &Arc<AtomicBool>, handle: ServiceStatusHandle) -> Result<
         .map_err(|e| format!("cannot read the service configuration {}: {e}", config_path.display()))?;
     let config = ServiceConfig::from_toml_str(&text).map_err(|e| format!("{}: {e}", config_path.display()))?;
     let paths = validate_service_paths(&config).map_err(|e| format!("{}: {e}", config_path.display()))?;
+    // The data may be on another drive. If it is missing, fail with a clear reason (written to startup-error.txt);
+    // the Service Control Manager then restarts the service until the drive is back.
+    check_data_drives(&paths).map_err(|e| e.to_string())?;
 
     let _log_guard = init_logging(&paths.log_dir)?;
     info!(config = %config_path.display(), database = %paths.database_path.display(), "Service starting");

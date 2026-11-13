@@ -53,6 +53,8 @@ Invoke-Step 'rust: test' { cargo test --workspace }
 
 Invoke-Step 'deploy scripts: config helper self-test' { & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot '../deploy/config-helpers.tests.ps1') }
 
+Invoke-Step 'deploy scripts: data root self-test' { & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot '../deploy/data-root.tests.ps1') }
+
 Invoke-Step 'file size check' { & (Join-Path $PSScriptRoot 'check-file-size.ps1') }
 
 Write-Host ""

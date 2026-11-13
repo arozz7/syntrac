@@ -52,3 +52,10 @@ fn unknown_options_and_missing_or_bad_values_are_errors() {
     assert!(parse(&["--seconds", "abc"]).is_err());
     assert!(parse(&["--seconds", "0"]).is_err());
 }
+
+#[test]
+fn check_db_takes_a_file_and_needs_one() {
+    let args = parse(&["--check-db", r"D:\Syntrac\data\syntrac.db"]).unwrap();
+    assert_eq!(args.check_db, Some(PathBuf::from(r"D:\Syntrac\data\syntrac.db")));
+    assert!(matches!(parse(&["--check-db"]), Err(syntrac_service::CliError::MissingValue(_))));
+}
