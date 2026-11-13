@@ -131,6 +131,56 @@ export interface SystemHistoryView {
   hours: SystemHourView[];
 }
 
+export type ProgramMetric = 'cpu' | 'memory' | 'starts' | 'network';
+
+export interface ProgramRowView {
+  name: string;
+  /** Null for the bucket of processes whose program is unknown. */
+  path: string | null;
+  /** Averaged over every sample of the range: a program not among the heaviest processes counts as zero then. */
+  cpuAvgPercent: number;
+  cpuPeakPercent: number;
+  memoryPeakBytes: number;
+  starts: number;
+  /** In how many hours the program was recorded among the heaviest processes (out of `hoursInRange`). */
+  hoursPresent: number;
+  bytesSent: number;
+  bytesReceived: number;
+  destinations: number;
+  firstSeenMs: number | null;
+  lastSeenMs: number | null;
+}
+
+export interface ProgramsView {
+  fromMs: number;
+  toMs: number;
+  historyStartsMs: number | null;
+  /** Hours of the range that have data at all. */
+  hoursInRange: number;
+  programs: ProgramRowView[];
+}
+
+export interface ProgramHourView {
+  hourMs: number;
+  /** The samples behind the hour: the weight when hours are grouped into days. */
+  samples: number;
+  present: boolean;
+  cpuAvgPercent: number;
+  cpuPeakPercent: number;
+  memoryPeakBytes: number;
+  starts: number;
+}
+
+export interface ProgramHistoryView {
+  name: string;
+  path: string;
+  fromMs: number;
+  toMs: number;
+  firstSeenMs: number | null;
+  lastSeenMs: number | null;
+  hours: ProgramHourView[];
+}
+
 export type StorageLevel = 'ok' | 'trimming' | 'paused';
 
 export interface StorageView {

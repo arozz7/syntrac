@@ -16,6 +16,7 @@ mod rollups;
 mod storage;
 #[cfg(test)]
 mod storage_tests;
+mod trends;
 
 pub use connection::SqliteStore;
 pub use inspect::{inspect_database, DatabaseReport};

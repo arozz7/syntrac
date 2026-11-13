@@ -208,3 +208,8 @@ fn sqlite_store_satisfies_the_rollup_contract() {
 fn sqlite_store_satisfies_the_storage_stats_contract() {
     syntrac_testkit::storage_contract::storage_stats_contract(in_memory_store);
 }
+
+#[test]
+fn sqlite_store_satisfies_the_trend_contract() {
+    syntrac_testkit::trend_contract::trend_contract(in_memory_store);
+}

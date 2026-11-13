@@ -7,6 +7,9 @@ import type {
   OverviewView,
   ProcessCpuView,
   ProcessRowView,
+  ProgramHistoryView,
+  ProgramRowView,
+  ProgramsView,
   SystemHistoryView,
   SystemHourView,
 } from '../api/types';
@@ -147,6 +150,70 @@ export function systemHistory(overrides: Partial<SystemHistoryView> = {}): Syste
   };
 }
 
+export function programRow(overrides: Partial<ProgramRowView> = {}): ProgramRowView {
+  return {
+    name: 'chrome.exe',
+    path: 'C:\\apps\\chrome.exe',
+    cpuAvgPercent: 10,
+    cpuPeakPercent: 20,
+    memoryPeakBytes: 1024 ** 3,
+    starts: 7,
+    hoursPresent: 1,
+    bytesSent: 1024,
+    bytesReceived: 4096,
+    destinations: 3,
+    firstSeenMs: NOW - 86_400_000,
+    lastSeenMs: NOW - 3_600_000,
+    ...overrides,
+  };
+}
+
+export function programsView(overrides: Partial<ProgramsView> = {}): ProgramsView {
+  return {
+    fromMs: NOW - 7 * 86_400_000,
+    toMs: NOW,
+    historyStartsMs: NOW - 86_400_000,
+    hoursInRange: 2,
+    programs: [
+      programRow(),
+      programRow({ name: 'code.exe', path: 'C:\\apps\\code.exe', cpuAvgPercent: 1.3, cpuPeakPercent: 4, starts: 2 }),
+    ],
+    ...overrides,
+  };
+}
+
+export function programHistoryView(overrides: Partial<ProgramHistoryView> = {}): ProgramHistoryView {
+  return {
+    name: 'chrome.exe',
+    path: 'C:\\apps\\chrome.exe',
+    fromMs: NOW - 7 * 86_400_000,
+    toMs: NOW,
+    firstSeenMs: NOW - 86_400_000,
+    lastSeenMs: NOW - 3_600_000,
+    hours: [
+      {
+        hourMs: NOW - 3 * 3_600_000,
+        samples: 120,
+        present: true,
+        cpuAvgPercent: 10,
+        cpuPeakPercent: 20,
+        memoryPeakBytes: 1024 ** 3,
+        starts: 2,
+      },
+      {
+        hourMs: NOW - 2 * 3_600_000,
+        samples: 120,
+        present: false,
+        cpuAvgPercent: 0,
+        cpuPeakPercent: 0,
+        memoryPeakBytes: 0,
+        starts: 0,
+      },
+    ],
+    ...overrides,
+  };
+}
+
 const ok = <T>(data: T): Data<T> => ({ state: 'ok', data });
 
 /** An `Api` whose every method is a spy returning sensible sample data. */
@@ -155,6 +222,8 @@ export function makeFakeApi(overrides: Partial<Api> = {}): Api & { [K in keyof A
     health: vi.fn(async () => health()),
     overview: vi.fn(async () => ok(overview())),
     systemHistory: vi.fn(async () => ok(systemHistory())),
+    topPrograms: vi.fn(async () => ok(programsView())),
+    programHistory: vi.fn(async () => ok(programHistoryView())),
     processes: vi.fn(async () =>
       ok([
         processRow(),

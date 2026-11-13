@@ -6,6 +6,9 @@ import type {
   OverviewView,
   ProcessListParams,
   ProcessRowView,
+  ProgramHistoryView,
+  ProgramMetric,
+  ProgramsView,
   SystemHistoryView,
 } from './types';
 
@@ -15,6 +18,10 @@ export interface Api {
   overview(rangeSecs: number): Promise<Data<OverviewView>>;
   /** The machine hour by hour from the rollups, which outlive the detail. */
   systemHistory(rangeSecs: number): Promise<Data<SystemHistoryView>>;
+  /** The programs that used the most of `metric` over the range, from the rollups. */
+  topPrograms(rangeSecs: number, metric: ProgramMetric, limit?: number): Promise<Data<ProgramsView>>;
+  /** One program, hour by hour. `path` is the program's image path as listed by `topPrograms`. */
+  programHistory(rangeSecs: number, path: string): Promise<Data<ProgramHistoryView>>;
   processes(params: ProcessListParams): Promise<Data<ProcessRowView[]>>;
   connections(rangeSecs: number, limit?: number): Promise<Data<ConnectionRowView[]>>;
 }
@@ -53,6 +60,8 @@ export const tauriApi: Api = {
   },
   overview: (rangeSecs) => data<OverviewView>('get_overview', { rangeSecs }),
   systemHistory: (rangeSecs) => data<SystemHistoryView>('get_system_history', { rangeSecs }),
+  topPrograms: (rangeSecs, metric, limit) => data<ProgramsView>('get_top_programs', { rangeSecs, metric, limit }),
+  programHistory: (rangeSecs, path) => data<ProgramHistoryView>('get_program_history', { rangeSecs, path }),
   processes: (params) => data<ProcessRowView[]>('list_processes', { params }),
   connections: (rangeSecs, limit) => data<ConnectionRowView[]>('list_connections', { rangeSecs, limit }),
 };

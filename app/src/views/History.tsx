@@ -1,14 +1,20 @@
 import { useState } from 'react';
+import { ProgramsHistory } from './ProgramsHistory';
 import { SystemHistory } from './SystemHistory';
 
-type TabId = 'system';
+type TabId = 'system' | 'programs';
 
-const TABS: Array<{ id: TabId; label: string }> = [{ id: 'system', label: 'System' }];
+const TABS: Array<{ id: TabId; label: string }> = [
+  { id: 'system', label: 'System' },
+  { id: 'programs', label: 'Programs' },
+];
 
 function CurrentTab({ tab }: { tab: TabId }) {
   switch (tab) {
     case 'system':
       return <SystemHistory />;
+    case 'programs':
+      return <ProgramsHistory />;
   }
 }
 

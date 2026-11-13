@@ -14,6 +14,7 @@ pub mod rollup_run;
 pub mod silence;
 pub mod storage_guard;
 pub mod time;
+pub mod trend;
 
 pub use correlator::correlate;
 pub use event::{EventCategory, EventEnvelope, EventPayload, NetAction, NetProtocol, Severity};
@@ -32,3 +33,7 @@ pub use rollup::{Executable, HourInput, HourRollup, LedgerEntry, ProcessHour, Sy
 pub use rollup_ledger::LedgerObservations;
 pub use rollup_run::{roll_up_due, RollupPass, RollupRepository, RollupSettings};
 pub use time::{Clock, SystemClock, Timestamp};
+pub use trend::{
+    collect_totals, rank_totals, top_programs, ProcessTotals, ProgramMetric, ProgramSummary, ProgramTotals,
+    TrafficTotals, TrendRepository,
+};

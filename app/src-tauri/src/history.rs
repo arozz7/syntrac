@@ -16,8 +16,14 @@ pub fn clamp_history_secs(secs: u64) -> u64 {
     secs.clamp(MIN_HISTORY_SECS, MAX_HISTORY_SECS)
 }
 
-fn ms(ts: Timestamp) -> i64 {
+pub(crate) fn ms(ts: Timestamp) -> i64 {
     ts.as_micros() / 1000
+}
+
+/// The start of a history range that ends at `now`.
+pub(crate) fn range_start(now: Timestamp, range_secs: u64) -> Timestamp {
+    let window = i64::try_from(clamp_history_secs(range_secs).saturating_mul(1_000_000)).unwrap_or(i64::MAX);
+    Timestamp::from_micros(now.as_micros().saturating_sub(window))
 }
 
 fn percent(part: u64, whole: u64) -> f64 {
@@ -81,8 +87,7 @@ pub fn system_history<R>(repo: &R, now: Timestamp, range_secs: u64) -> Result<Sy
 where
     R: RollupRepository + StorageStats,
 {
-    let window = i64::try_from(clamp_history_secs(range_secs).saturating_mul(1_000_000)).unwrap_or(i64::MAX);
-    let from = Timestamp::from_micros(now.as_micros().saturating_sub(window));
+    let from = range_start(now, range_secs);
     let hours = repo.system_hours(from, now)?.into_iter().map(SystemHourView::from).collect();
     Ok(SystemHistoryView {
         from_ms: ms(from),

@@ -14,21 +14,21 @@ use crate::fixtures::{
 };
 
 const T0: i64 = 1_794_571_200 / 3600 * 3600; // an exact UTC hour, in seconds
-const A_EXE: &str = r"C:\Apps\A.exe";
-const B_EXE: &str = r"C:\Apps\B.exe";
-const OTHER_TARGET: Ipv4Addr = Ipv4Addr::new(198, 51, 100, 7);
+pub(crate) const A_EXE: &str = r"C:\Apps\A.exe";
+pub(crate) const B_EXE: &str = r"C:\Apps\B.exe";
+pub(crate) const OTHER_TARGET: Ipv4Addr = Ipv4Addr::new(198, 51, 100, 7);
 
 /// Hour `hour` (0 = the base hour) plus `minutes`, as a timestamp.
-fn t(hour: i64, minutes: i64) -> Timestamp {
+pub(crate) fn t(hour: i64, minutes: i64) -> Timestamp {
     Timestamp::from_micros((T0 + hour * 3600 + minutes * 60) * SEC)
 }
 
 /// The same instant in seconds, for the fixtures that take seconds.
-fn secs(hour: i64, minutes: i64) -> i64 {
+pub(crate) fn secs(hour: i64, minutes: i64) -> i64 {
     T0 + hour * 3600 + minutes * 60
 }
 
-fn settings(max_hours: usize) -> RollupSettings {
+pub(crate) fn settings(max_hours: usize) -> RollupSettings {
     RollupSettings { settle: Duration::from_secs(5 * 60), max_hours_per_pass: max_hours }
 }
 
@@ -58,11 +58,16 @@ pub fn rollup_contract<R: RollupSubject>(make: impl Fn() -> R) {
     history_ranges_are_inclusive_and_ordered(make());
 }
 
-fn sample_at<R: MetricsRepository>(repo: &mut R, hour: i64, minutes: i64, cpu: f32) {
+pub(crate) fn sample_at<R: MetricsRepository>(repo: &mut R, hour: i64, minutes: i64, cpu: f32) {
     repo.append_metrics(&metrics_sample(secs(hour, minutes), cpu, vec![], 0.0, 0)).unwrap();
 }
 
-fn start_process<R: ProcessRepository>(repo: &mut R, pid: u32, started: Timestamp, exe: &str) -> ProcessRecord {
+pub(crate) fn start_process<R: ProcessRepository>(
+    repo: &mut R,
+    pid: u32,
+    started: Timestamp,
+    exe: &str,
+) -> ProcessRecord {
     let mut record = running_process(pid, started);
     record.image_path = exe.to_owned();
     repo.record_start(record.clone()).unwrap();
@@ -188,7 +193,7 @@ fn starts_come_from_process_started_events<R: RollupSubject>(mut repo: R) {
     assert_eq!(repo.executable_hours(B_EXE, t(0, 0), t(0, 0)).unwrap()[0].starts, 1);
 }
 
-fn flow_event(
+pub(crate) fn flow_event(
     f: &mut EventFactory,
     owner: Option<ProcessInstanceId>,
     target: Ipv4Addr,

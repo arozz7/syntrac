@@ -1,31 +1,19 @@
 import type { SystemHourView } from '../api/types';
+import {
+  bucketSeries,
+  granularityFor,
+  localDayStart,
+  type DataBucketBase,
+  type DayStart,
+  type GapBucket,
+  type Granularity,
+} from './bucketing';
 
-// Groups the stored hourly rows into the buckets the history charts draw. Pure: the time zone is injected, so daylight
-// saving and midnight are tested without depending on the machine the tests run on.
+// The system history: the stored hourly rows grouped into the buckets the charts draw (see `bucketing.ts` for the rules).
+export { granularityFor, localDayStart };
+export type { DayStart, GapBucket, Granularity };
 
-const HOUR_MS = 3_600_000;
-/// A point 36 hours after a local midnight is always inside the next local day (days are 23 to 25 hours long).
-const INTO_NEXT_DAY_MS = 36 * HOUR_MS;
-const WEEK_SECS = 7 * 24 * 3600;
-
-export type Granularity = 'hour' | 'day';
-
-/** The start (epoch ms) of the local day that contains `ms`. */
-export type DayStart = (ms: number) => number;
-
-export const localDayStart: DayStart = (ms) => {
-  const date = new Date(ms);
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-};
-
-/** Hours up to a week, local-time days beyond it. */
-export function granularityFor(rangeSecs: number): Granularity {
-  return rangeSecs <= WEEK_SECS ? 'hour' : 'day';
-}
-
-export interface DataBucket {
-  gap: false;
-  startMs: number;
+export interface DataBucket extends DataBucketBase {
   /** Hours of data in the bucket (a day with the collector down for part of it has fewer than 24). */
   hours: number;
   samples: number;
@@ -37,12 +25,6 @@ export interface DataBucket {
   netSent: number;
   diskRead: number;
   diskWrite: number;
-}
-
-/** A stretch with no data (the collector was down or paused): drawn as a break, never as zero. */
-export interface GapBucket {
-  gap: true;
-  startMs: number;
 }
 
 export type Bucket = DataBucket | GapBucket;
@@ -85,44 +67,13 @@ function finish(bucket: DataBucket): DataBucket {
   return { ...bucket, cpuAvg: bucket.cpuAvg / bucket.samples, memoryAvg: bucket.memoryAvg / bucket.samples };
 }
 
-function nextStart(startMs: number, granularity: Granularity, dayStart: DayStart): number {
-  return granularity === 'hour' ? startMs + HOUR_MS : dayStart(startMs + INTO_NEXT_DAY_MS);
-}
-
-/**
- * Hours (oldest first) grouped into buckets. Between the first and last bucket with data, a bucket with none is a gap.
- * Nothing is added before the first or after the last: a short history stays short.
- */
+/** Hours (oldest first) grouped into buckets by hour or by local day; a bucket with no data between two with data is a gap. */
 export function bucketHours(
   hours: SystemHourView[],
   granularity: Granularity,
   dayStart: DayStart = localDayStart,
 ): Bucket[] {
-  const byStart = new Map<number, DataBucket>();
-  for (const hour of [...hours].sort((a, b) => a.hourMs - b.hourMs)) {
-    const start = granularity === 'hour' ? hour.hourMs : dayStart(hour.hourMs);
-    const bucket = byStart.get(start) ?? emptyBucket(start);
-    add(bucket, hour);
-    byStart.set(start, bucket);
-  }
-  const starts = [...byStart.keys()];
-  const first = starts[0];
-  const last = starts.at(-1);
-  if (first === undefined || last === undefined) {
-    return [];
-  }
-  const buckets: Bucket[] = [];
-  let start = first;
-  while (start <= last) {
-    const bucket = byStart.get(start);
-    buckets.push(bucket ? finish(bucket) : { gap: true, startMs: start });
-    const next = nextStart(start, granularity, dayStart);
-    if (next <= start) {
-      break; // a day-start rule that does not advance must never hang the screen
-    }
-    start = next;
-  }
-  return buckets;
+  return bucketSeries(hours, (hour) => hour.hourMs, granularity, dayStart, emptyBucket, add, finish);
 }
 
 export interface Summary {

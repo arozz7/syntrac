@@ -1,6 +1,6 @@
 //! `RollupRepository` for the in-memory repository: the reference the SQLite one must agree with.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::net::IpAddr;
 
 use syntrac_core::rollup::{executable_key, next_hour, FlowInputRow, ProcessSampleRow, StartRow};
@@ -8,6 +8,7 @@ use syntrac_core::{
     EventPayload, HourInput, HourRollup, LedgerEntry, ProcessHour, ProcessInstanceId, RepoError, RollupRepository,
     SystemHour, SystemPoint, Timestamp, TrafficHour,
 };
+use syntrac_core::{ProcessTotals, TrafficTotals};
 
 use crate::memory::InMemoryRepository;
 
@@ -176,6 +177,64 @@ impl RollupRepository for InMemoryRepository {
 
     fn pair_ledger(&self, path: &str, addr: IpAddr) -> Result<Option<LedgerEntry>, RepoError> {
         Ok(executable_key(path).and_then(|key| self.rollups.pairs.get(&(key, addr)).copied()))
+    }
+}
+
+impl syntrac_core::TrendRepository for InMemoryRepository {
+    fn system_sample_total(&self, from: Timestamp, to: Timestamp) -> Result<u64, RepoError> {
+        Ok(self.rollups.system.range(from..=to).map(|(_, row)| u64::from(row.samples)).sum())
+    }
+
+    fn process_totals(&self, from: Timestamp, to: Timestamp) -> Result<Vec<ProcessTotals>, RepoError> {
+        let mut by_key: BTreeMap<Option<String>, ProcessTotals> = BTreeMap::new();
+        for ((hour, key), row) in &self.rollups.processes {
+            // Only hours with a system row count: its samples are the weights.
+            let Some(system) = self.rollups.system.get(hour).filter(|_| *hour >= from && *hour <= to) else {
+                continue;
+            };
+            let totals = by_key.entry(key.clone()).or_insert_with(|| ProcessTotals {
+                exe: row.exe.clone(),
+                hours_present: 0,
+                samples_present: 0,
+                cpu_weighted: 0.0,
+                cpu_peak: 0.0,
+                memory_peak: 0,
+                starts: 0,
+            });
+            totals.hours_present += 1;
+            totals.samples_present += u64::from(row.samples_present);
+            totals.cpu_weighted += row.cpu_avg * f64::from(system.samples);
+            totals.cpu_peak = totals.cpu_peak.max(row.cpu_peak);
+            totals.memory_peak = totals.memory_peak.max(row.memory_peak);
+            totals.starts += u64::from(row.starts);
+        }
+        Ok(by_key.into_values().collect())
+    }
+
+    fn traffic_totals(&self, from: Timestamp, to: Timestamp) -> Result<Vec<TrafficTotals>, RepoError> {
+        let mut by_key: BTreeMap<Option<String>, (TrafficTotals, HashSet<IpAddr>)> = BTreeMap::new();
+        for ((hour, key, addr), row) in &self.rollups.traffic {
+            if *hour < from || *hour > to || addr.is_loopback() {
+                continue;
+            }
+            let (totals, addrs) = by_key.entry(key.clone()).or_insert_with(|| {
+                (
+                    TrafficTotals { exe: row.exe.clone(), bytes_sent: 0, bytes_received: 0, flows: 0, destinations: 0 },
+                    HashSet::new(),
+                )
+            });
+            totals.bytes_sent += row.bytes_sent;
+            totals.bytes_received += row.bytes_received;
+            totals.flows += u64::from(row.flows);
+            addrs.insert(*addr);
+        }
+        Ok(by_key
+            .into_values()
+            .map(|(mut totals, addrs)| {
+                totals.destinations = u32::try_from(addrs.len()).unwrap_or(u32::MAX);
+                totals
+            })
+            .collect())
     }
 }
 

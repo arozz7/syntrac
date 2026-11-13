@@ -9,6 +9,7 @@ use tauri::State;
 use crate::backend::{Backend, Data};
 use crate::health::HealthView;
 use crate::history::SystemHistoryView;
+use crate::history_programs::{ProgramHistoryView, ProgramMetricParam, ProgramsView};
 use crate::views::{ConnectionRowView, OverviewView, ProcessListParams, ProcessRowView};
 
 pub type SharedBackend = Arc<Backend<SystemClock>>;
@@ -40,6 +41,27 @@ pub async fn get_system_history(
 ) -> Result<Data<SystemHistoryView>, ()> {
     let backend = Arc::clone(&backend);
     Ok(blocking(move || backend.system_history(range_secs)).await.unwrap_or_else(internal))
+}
+
+#[tauri::command]
+pub async fn get_top_programs(
+    backend: State<'_, SharedBackend>,
+    range_secs: u64,
+    metric: ProgramMetricParam,
+    limit: Option<usize>,
+) -> Result<Data<ProgramsView>, ()> {
+    let backend = Arc::clone(&backend);
+    Ok(blocking(move || backend.top_programs(range_secs, metric, limit)).await.unwrap_or_else(internal))
+}
+
+#[tauri::command]
+pub async fn get_program_history(
+    backend: State<'_, SharedBackend>,
+    range_secs: u64,
+    path: String,
+) -> Result<Data<ProgramHistoryView>, ()> {
+    let backend = Arc::clone(&backend);
+    Ok(blocking(move || backend.program_history(range_secs, path)).await.unwrap_or_else(internal))
 }
 
 #[tauri::command]

@@ -340,3 +340,22 @@
   background: var(--status-degraded-bg);
   color: var(--status-degraded-fg);
 }
+
+/* A button that reads as a link (a program name in a table that opens its history) */
+.linklike {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--color-primary);
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}

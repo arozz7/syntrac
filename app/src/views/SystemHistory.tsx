@@ -6,23 +6,12 @@ import { buildBytesChartOption, buildLoadChartOption } from '../charts/historyCh
 import { readPalette } from '../charts/readPalette';
 import { Chart } from '../components/Chart';
 import { DataGate } from '../components/DataGate';
-import { RangePicker, type RangeOption } from '../components/RangePicker';
+import { DEFAULT_HISTORY_RANGE_SECS, HISTORY_RANGES } from '../components/historyRanges';
+import { RangePicker } from '../components/RangePicker';
 import { formatBytes, formatDay, formatPercent } from '../format';
 import { usePolled } from '../hooks/usePolled';
 
 const REFRESH_MS = 60_000;
-const DAY_SECS = 86_400;
-const DEFAULT_RANGE_SECS = 7 * DAY_SECS;
-
-/** "All" is simply longer than any history (ten years, the most the backend will look back). */
-export const HISTORY_RANGES: RangeOption[] = [
-  { label: '24 hours', secs: DAY_SECS },
-  { label: '7 days', secs: 7 * DAY_SECS },
-  { label: '30 days', secs: 30 * DAY_SECS },
-  { label: '90 days', secs: 90 * DAY_SECS },
-  { label: '1 year', secs: 365 * DAY_SECS },
-  { label: 'All', secs: 3650 * DAY_SECS },
-];
 
 function HistoryBody({ data }: { data: SystemHistoryView }) {
   const granularity = granularityFor((data.toMs - data.fromMs) / 1000);
@@ -144,7 +133,7 @@ function HistoryBody({ data }: { data: SystemHistoryView }) {
 /** The machine over days and months, from the hourly summaries that outlive the detailed data. */
 export function SystemHistory() {
   const api = useApi();
-  const [rangeSecs, setRangeSecs] = useState(DEFAULT_RANGE_SECS);
+  const [rangeSecs, setRangeSecs] = useState(DEFAULT_HISTORY_RANGE_SECS);
   const result = usePolled(() => api.systemHistory(rangeSecs), REFRESH_MS, `system-history:${rangeSecs}`);
 
   return (

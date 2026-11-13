@@ -130,6 +130,11 @@ a range, plus where the history begins); the store returns completed hours only,
 hours into LOCAL-time days (for ranges beyond 7 days) is done in the UI (`charts/historyBuckets.ts`), which knows the time zone
 and daylight saving; averages are weighted by the samples behind each hour. Plan and slices: `docs/TRENDS-PLAN.md`.
 
+Programs are ranked over a range by `syntrac_core::trend`: the store only sums (`TrendRepository`: one group-by per table, so a
+year of rows never reaches the app), and merging, averaging and ranking are pure. A program's CPU average divides by the samples of
+the whole range (not recorded counts as zero); network totals leave out loopback. Summing a year takes about 2 s, ranking the
+sums under 1 ms, so the app's backend keeps the sums of each range until the rollup watermark moves (an hour).
+
 ## Collector adapters (`syntrac-collector`)
 
 Each Windows adapter is split in two: a thin adapter that reads raw values, and a **pure, unit-tested function** that

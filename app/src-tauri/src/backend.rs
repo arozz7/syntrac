@@ -2,17 +2,25 @@
 //! transaction can hold back the collector''s WAL checkpoints) and turns every problem into an explicit state the UI
 //! can show, never a raw error.
 
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde::Serialize;
-use syntrac_core::{Clock, MetricsRepository, RepoError, Timestamp};
+use syntrac_core::rollup::HOUR_MICROS;
+use syntrac_core::{Clock, MetricsRepository, RepoError, RollupRepository, Timestamp};
 use syntrac_ipc::pipe::request;
 use syntrac_ipc::protocol::{Request, Response};
 use syntrac_store::SqliteStore;
 
 use crate::db_location::{DbLocation, FileMemory, NoMemory, PathMemory};
 use crate::health::{assess_health, HealthView};
+use crate::history::range_start;
 use crate::history::{system_history, SystemHistoryView};
+use crate::history_programs::{
+    program_history, range_totals, rank_range, ProgramHistoryView, ProgramMetricParam, ProgramsView, RangeTotals,
+    DEFAULT_PROGRAM_ROWS,
+};
 use crate::settings::AppSettings;
 use crate::views::{
     connection_list, overview, process_list, ConnectionRowView, OverviewView, ProcessListParams, ProcessRowView,
@@ -42,10 +50,17 @@ pub enum Data<T> {
     },
 }
 
+/// Sums over a long range are the expensive part of a ranking (a year is millions of rows), and they only change when the
+/// collector rolls up another hour. So they are kept, keyed by the range start and the rollup watermark: a new hour changes the
+/// key, and the old entries are dropped.
+type TotalsKey = (i64, Option<i64>);
+const MAX_CACHED_RANGES: usize = 16;
+
 pub struct Backend<C> {
     pipe_name: String,
     location: DbLocation,
     clock: C,
+    totals: Mutex<HashMap<TotalsKey, Arc<RangeTotals>>>,
 }
 
 impl<C: Clock + Send + Sync> Backend<C> {
@@ -55,7 +70,31 @@ impl<C: Clock + Send + Sync> Backend<C> {
             None => Box::new(NoMemory),
         };
         let location = DbLocation::new(settings.database_path, settings.database_pinned, memory);
-        Self { pipe_name: settings.pipe_name, location, clock }
+        Self { pipe_name: settings.pipe_name, location, clock, totals: Mutex::new(HashMap::new()) }
+    }
+
+    /// The summed range, from the cache when the collector has not rolled up another hour since it was read.
+    fn cached_totals(
+        &self,
+        store: &SqliteStore,
+        now: Timestamp,
+        range_secs: u64,
+    ) -> Result<Arc<RangeTotals>, RepoError> {
+        let watermark = store.rolled_up_before()?.map(|w| w.as_micros());
+        let key = (range_start(now, range_secs).as_micros() / HOUR_MICROS, watermark);
+        if let Some(found) = self.totals.lock().ok().and_then(|cache| cache.get(&key).cloned()) {
+            return Ok(found);
+        }
+        let totals = Arc::new(range_totals(store, now, range_secs)?);
+        if let Ok(mut cache) = self.totals.lock() {
+            // An entry for an older watermark can never be asked for again; and the cache stays small whatever is asked.
+            cache.retain(|(_, mark), _| *mark == watermark);
+            if cache.len() >= MAX_CACHED_RANGES {
+                cache.clear();
+            }
+            cache.insert(key, Arc::clone(&totals));
+        }
+        Ok(totals)
     }
 
     /// Asks the collector how it is doing. Also keeps the database location up to date: the data may have been moved.
@@ -122,6 +161,22 @@ impl<C: Clock + Send + Sync> Backend<C> {
 
     pub fn system_history(&self, range_secs: u64) -> Data<SystemHistoryView> {
         self.with_store(|store, now| system_history(store, now, range_secs))
+    }
+
+    pub fn top_programs(
+        &self,
+        range_secs: u64,
+        metric: ProgramMetricParam,
+        limit: Option<usize>,
+    ) -> Data<ProgramsView> {
+        self.with_store(|store, now| {
+            let range = self.cached_totals(store, now, range_secs)?;
+            rank_range(store, &range, metric, limit.unwrap_or(DEFAULT_PROGRAM_ROWS))
+        })
+    }
+
+    pub fn program_history(&self, range_secs: u64, path: String) -> Data<ProgramHistoryView> {
+        self.with_store(|store, now| program_history(store, now, range_secs, &path))
     }
 
     /// Never fails: every problem is a state.

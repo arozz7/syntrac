@@ -1,20 +1,34 @@
 import type { EChartsOption } from 'echarts';
 import { formatBytes, formatDateTime, formatDay } from '../format';
+import type { DataBucketBase, GapBucket, Granularity } from './bucketing';
 import type { ChartPalette } from './cpuChart';
-import type { Bucket, DataBucket, Granularity } from './historyBuckets';
+import type { Bucket } from './historyBuckets';
 
 // Chart options for the History screens. Pure (colours come in as a palette), so they are unit-tested.
 // The x axis is a CATEGORY axis with one entry per bucket: a gap is an explicit null, and spacing stays even.
 
-function labels(buckets: Bucket[], granularity: Granularity): string[] {
+type Slot<B extends DataBucketBase> = B | GapBucket;
+
+function isGap<B extends DataBucketBase>(bucket: Slot<B>): bucket is GapBucket {
+  return bucket.gap;
+}
+
+function labels<B extends DataBucketBase>(buckets: Array<Slot<B>>, granularity: Granularity): string[] {
   return buckets.map((bucket) => (granularity === 'day' ? formatDay(bucket.startMs) : formatDateTime(bucket.startMs)));
 }
 
-function values(buckets: Bucket[], pick: (bucket: DataBucket) => number): Array<number | null> {
-  return buckets.map((bucket) => (bucket.gap ? null : pick(bucket)));
+export function values<B extends DataBucketBase>(
+  buckets: Array<Slot<B>>,
+  pick: (bucket: B) => number,
+): Array<number | null> {
+  return buckets.map((bucket) => (isGap(bucket) ? null : pick(bucket)));
 }
 
-function frame(buckets: Bucket[], granularity: Granularity, palette: ChartPalette) {
+export function frame<B extends DataBucketBase>(
+  buckets: Array<Slot<B>>,
+  granularity: Granularity,
+  palette: ChartPalette,
+) {
   return {
     animation: false,
     grid: { left: 56, right: 16, top: 28, bottom: 28 },
@@ -28,13 +42,24 @@ function frame(buckets: Bucket[], granularity: Granularity, palette: ChartPalett
   };
 }
 
-function tooltip(palette: ChartPalette, valueFormatter: (value: number) => string) {
+export function tooltip(palette: ChartPalette, valueFormatter: (value: number) => string) {
   return {
     trigger: 'axis' as const,
     valueFormatter: (value: unknown) => (typeof value === 'number' ? valueFormatter(value) : 'no data'),
     backgroundColor: palette.surface,
     borderColor: palette.grid,
     textStyle: { color: palette.text },
+  };
+}
+
+export function line(name: string, color: string, type: 'solid' | 'dashed' | 'dotted', width: number) {
+  return {
+    name,
+    type: 'line' as const,
+    showSymbol: false,
+    smooth: false,
+    lineStyle: { color, width, type },
+    itemStyle: { color },
   };
 }
 
@@ -47,14 +72,6 @@ export function buildLoadChartOption(
   granularity: Granularity,
   palette: ChartPalette,
 ): EChartsOption {
-  const line = (name: string, color: string, type: 'solid' | 'dashed' | 'dotted', width: number) => ({
-    name,
-    type: 'line' as const,
-    showSymbol: false,
-    smooth: false,
-    lineStyle: { color, width, type },
-    itemStyle: { color },
-  });
   return {
     ...frame(buckets, granularity, palette),
     tooltip: tooltip(palette, (value) => `${value.toFixed(1)}%`),
@@ -77,16 +94,16 @@ export function buildLoadChartOption(
   };
 }
 
-export interface BytesSeries {
+export interface BytesSeries<B extends DataBucketBase> {
   name: string;
-  pick: (bucket: DataBucket) => number;
+  pick: (bucket: B) => number;
 }
 
 /** Bytes per bucket as grouped bars (the first series in the first colour, the second in the second). */
-export function buildBytesChartOption(
-  buckets: Bucket[],
+export function buildBytesChartOption<B extends DataBucketBase>(
+  buckets: Array<Slot<B>>,
   granularity: Granularity,
-  series: BytesSeries[],
+  series: Array<BytesSeries<B>>,
   palette: ChartPalette,
 ): EChartsOption {
   const colours = [palette.cpu, palette.memory];

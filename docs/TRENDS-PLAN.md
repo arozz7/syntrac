@@ -79,7 +79,18 @@ range picker component and chart wrapper, no new dependencies, light theme only.
   NOT introduced yet, because T1 needs nothing beyond `RollupRepository::system_hours` (a trait with one wrapper method would be
   noise). `TrendRepository` arrives with T2, where ranking over a range is new. Delivered: `app/src-tauri/src/history.rs`
   (`system_history`), command `get_system_history`, the History entry with its System tab (CPU and memory, network, disk).
-- **T2 Programs.** `top_programs`, `program_trend`, the ranked table and the drill-down.
+- **T2 Programs** (done). `TrendRepository` (three group-bys: system samples, per-program process totals, per-program traffic
+  totals without loopback), pure `trend.rs` (merge, rank, ties by path, the unattributed bucket last), `top_programs` /
+  `collect_totals` / `rank_totals`; ranking by CPU average, memory peak, starts, and (added at the user's request) network
+  bytes per program. App: `history_programs.rs`, commands `get_top_programs` and `get_program_history`, the Programs tab with
+  a drill-down (CPU average and peak, memory peak, first and last seen). CPU is averaged over every sample of the range, so a
+  program that was not among the 25 heaviest counts as zero then; the screen says so. Deviation: `program_trend` became
+  `program_history`, built from `executable_hours` and the system hours (so absent hours are zeros with their sample weight).
+  Measured (release build, a copy of the live database inflated to one year: 7,300 system hours, 1.08 M process rows, 2.08 M
+  traffic rows): summing a year takes 2.3 s (0.9 s process, 1.5 s traffic); ranking the sums takes under 1 ms. The backend
+  therefore keeps the sums per range until the collector rolls up another hour (key: range start and rollup watermark), so
+  switching metric is instant and polling does not re-read. Seven days (about 20 hours of rollups today) takes milliseconds.
+  If a one-year first view ever feels slow, the next step is a daily summary table (schema v6), not a different query.
 - **T3 Network.** `top_destinations`, `new_destinations`, `destination_trend`, the Network tab.
 
 ## Tests first (per slice)

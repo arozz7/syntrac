@@ -48,3 +48,8 @@ fn in_memory_repository_satisfies_the_rollup_contract() {
 fn in_memory_repository_satisfies_the_storage_stats_contract() {
     syntrac_testkit::storage_contract::storage_stats_contract(InMemoryRepository::default);
 }
+
+#[test]
+fn in_memory_repository_satisfies_the_trend_contract() {
+    syntrac_testkit::trend_contract::trend_contract(InMemoryRepository::default);
+}
