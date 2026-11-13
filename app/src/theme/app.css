@@ -335,3 +335,8 @@
     display: none;
   }
 }
+
+.status--degraded .status__label {
+  background: var(--status-degraded-bg);
+  color: var(--status-degraded-fg);
+}

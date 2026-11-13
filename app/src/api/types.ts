@@ -8,7 +8,7 @@ export type Data<T> =
   | { state: 'schema_mismatch'; message: string }
   | { state: 'error'; message: string };
 
-export type HealthState = 'running' | 'stale' | 'offline' | 'unknown';
+export type HealthState = 'running' | 'stale' | 'degraded' | 'offline' | 'unknown';
 
 export interface HealthView {
   state: HealthState;
@@ -17,6 +17,8 @@ export interface HealthView {
   pid: number | null;
   uptimeSecs: number | null;
   etwDropped: number | null;
+  /** Seconds since ETW last delivered an event (null when ETW is not running). */
+  etwSilentSecs: number | null;
   dataAgeSecs: number | null;
 }
 

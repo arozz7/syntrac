@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use syntrac_core::{
     ingest_metrics, Clock, EventRepository, IngestError, MetricsRepository, MetricsSource, Pipeline, ProcessRepository,
-    PurgeCounts, Retention, TelemetrySource, Timestamp,
+    PurgeCounts, Retention, SourceError, TelemetrySource, Timestamp,
 };
 use tracing::{error, info, warn};
 
@@ -104,6 +104,14 @@ where
 
     pub fn totals(&self) -> Totals {
         self.totals
+    }
+
+    /// Restarts the source with this name, for example an ETW trace that has gone silent.
+    pub fn restart_source(&mut self, name: &str) -> Result<(), SourceError> {
+        match self.sources.iter_mut().find(|source| source.name() == name) {
+            Some(source) => source.restart(),
+            None => Err(SourceError::Failed(format!("there is no source named {name}"))),
+        }
     }
 
     /// One pass of the loop. Call it every few hundred milliseconds.

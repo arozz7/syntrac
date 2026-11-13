@@ -1,6 +1,6 @@
 //! The banner has to tell apart: running, running-but-silent, not running, and "cannot tell".
 
-use syntrac_app_lib::health::{assess_health, HealthState};
+use syntrac_app_lib::health::{assess_health, HealthState, ETW_SILENT_DEGRADED_AFTER_SECS};
 use syntrac_core::Timestamp;
 use syntrac_ipc::pipe::ClientError;
 use syntrac_ipc::protocol::{CollectorTotals, EtwStatus, StatusReport};
@@ -12,6 +12,10 @@ fn now() -> Timestamp {
 }
 
 fn report(dropped: u64) -> StatusReport {
+    report_silent(dropped, 0)
+}
+
+fn report_silent(dropped: u64, silent_secs: u64) -> StatusReport {
     StatusReport {
         version: "0.1.0".into(),
         pid: 99,
@@ -21,7 +25,7 @@ fn report(dropped: u64) -> StatusReport {
         etw_enabled: true,
         last_tick_at_micros: Some(10_000 * SEC),
         totals: CollectorTotals::default(),
-        etw: Some(EtwStatus { received: 100, dropped, parse_errors: 0, max_lag_ms: 5, future_events: 0 }),
+        etw: Some(EtwStatus { received: 100, dropped, parse_errors: 0, max_lag_ms: 5, future_events: 0, silent_secs }),
     }
 }
 
@@ -77,4 +81,51 @@ fn access_denied_and_other_pipe_problems_are_unknown_not_offline() {
 fn a_future_dated_sample_never_gives_a_negative_age() {
     let health = assess_health(Ok(report(0)), Some(Timestamp::from_micros(10_100 * SEC)), now());
     assert_eq!(health.data_age_secs, Some(0));
+}
+
+// ---- a trace that is "started" but delivers nothing
+
+#[test]
+fn a_few_quiet_seconds_from_etw_are_normal_and_do_not_change_the_state() {
+    let health = assess_health(Ok(report_silent(0, 15)), data_age(2), now());
+    assert_eq!(health.state, HealthState::Running);
+}
+
+#[test]
+fn etw_that_has_delivered_nothing_for_a_long_time_is_degraded_even_though_the_collector_looks_alive() {
+    let silent = ETW_SILENT_DEGRADED_AFTER_SECS + 60;
+    let health = assess_health(Ok(report_silent(0, silent)), data_age(2), now());
+    assert_eq!(health.state, HealthState::Degraded);
+    assert_eq!(health.etw_silent_secs, Some(silent));
+    let message = health.message.to_lowercase();
+    assert!(message.contains("etw") && message.contains(&silent.to_string()), "{}", health.message);
+    assert!(message.contains("not being recorded"), "say what is lost: {}", health.message);
+}
+
+#[test]
+fn the_degraded_threshold_is_exact() {
+    let just_under = assess_health(Ok(report_silent(0, ETW_SILENT_DEGRADED_AFTER_SECS - 1)), data_age(2), now());
+    let at = assess_health(Ok(report_silent(0, ETW_SILENT_DEGRADED_AFTER_SECS)), data_age(2), now());
+    assert_eq!((just_under.state, at.state), (HealthState::Running, HealthState::Degraded));
+}
+
+#[test]
+fn old_data_is_still_reported_as_stale_before_a_silent_trace() {
+    // Nothing is being written at all: that is the bigger problem and the banner must say so.
+    let health = assess_health(Ok(report_silent(0, 1000)), data_age(300), now());
+    assert_eq!(health.state, HealthState::Stale);
+}
+
+#[test]
+fn a_silent_trace_outranks_dropped_events() {
+    let health = assess_health(Ok(report_silent(40, 1000)), data_age(2), now());
+    assert_eq!(health.state, HealthState::Degraded);
+}
+
+#[test]
+fn a_collector_running_without_etw_is_not_called_degraded() {
+    let mut no_etw = report(0);
+    no_etw.etw = None;
+    no_etw.etw_enabled = false;
+    assert_eq!(assess_health(Ok(no_etw), data_age(2), now()).state, HealthState::Running);
 }

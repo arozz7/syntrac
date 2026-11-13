@@ -139,6 +139,12 @@ pub trait TelemetrySource {
     /// buffered events when it ends does not lose them. Must not block indefinitely. Sources with nothing
     /// to release keep this default.
     fn stop(&mut self) {}
+
+    /// Starts a fresh session after the source has gone silent (for ETW: a new trace session). Events already
+    /// buffered must still be delivered by the next `drain`. Sources that cannot be restarted keep this default.
+    fn restart(&mut self) -> Result<(), SourceError> {
+        Err(SourceError::Failed(format!("{} cannot be restarted", self.name())))
+    }
 }
 
 /// Takes a resource-usage sample. CPU figures are a share of the whole machine.

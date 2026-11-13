@@ -124,6 +124,24 @@ function Invoke-Collector {
     return [pscustomobject]@{ ExitCode = $code; Output = $output.Trim() }
 }
 
+# A trace that "started" but delivers nothing leaves every other number healthy (metrics keep flowing), which is
+# exactly how a dead ETW session went unnoticed for over an hour. So prove events actually arrive: on a normal
+# machine something starts or talks to the network within seconds.
+function Wait-EtwDelivering {
+    param([int]$Seconds)
+    $deadline = (Get-Date).AddSeconds($Seconds)
+    $received = -1
+    while ((Get-Date) -lt $deadline) {
+        $status = Invoke-Collector @('--status')
+        if ($status.Output -match 'ETW:\s+(\d+) received') {
+            $received = [int64]$Matches[1]
+            if ($received -gt 0) { return $received }
+        }
+        Start-Sleep -Seconds 3
+    }
+    return $received
+}
+
 $helper = Join-Path $PSScriptRoot 'smoke-elevated.ps1'
 $helperArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$helper`" -UserSid $userSid -RunDir `"$runDir`" -Executable `"$exe`""
 if ($Uninstall) { $helperArgs += ' -Uninstall' }
@@ -155,7 +173,10 @@ if ($installed) {
     Add-Result 'Ordinary user can read the collector status over the pipe' (($status.ExitCode -eq 0) -and $status.Output.Contains('SYNTRAC collector')) ($status.Output -split "`n" | Select-Object -First 1)
     Write-Host $status.Output
 
-    $logs = @(Get-ChildItem -Path $logDir -Filter '*.log' -ErrorAction SilentlyContinue)
+    $etwReceived = Wait-EtwDelivering 60
+    Add-Result 'ETW delivers events (a started but silent trace would pass every other check)' ($etwReceived -gt 0) "$etwReceived events received within 60 s"
+
+    $logs =@(Get-ChildItem -Path $logDir -Filter '*.log' -ErrorAction SilentlyContinue)
     Add-Result 'User can read a non-empty service log' (($logs.Count -gt 0) -and (($logs | Measure-Object -Property Length -Sum).Sum -gt 0)) "$($logs.Count) file(s) in $logDir"
 
     # If a probe write ever SUCCEEDS the permissions are wrong. The probe is not deleted (this script never
@@ -193,6 +214,8 @@ if ($installed) {
         Add-Result 'Collector writes fresh data again after the restart' ($null -ne $again)
         $restartedPing = Invoke-Collector @('--ping')
         Add-Result 'The pipe answers again after the restart' (($restartedPing.ExitCode -eq 0) -and $restartedPing.Output.Contains('pong')) $restartedPing.Output
+        $etwAfterRestart = Wait-EtwDelivering 60
+        Add-Result 'ETW delivers events again after the restart' ($etwAfterRestart -gt 0) "$etwAfterRestart events received within 60 s"
         if ($again) { Write-Host "    (processes closed as exited-while-down at the restart: $($again.Approximate))" }
     } else {
         Add-Result 'Service restarted' $false 'phase3 did not finish'

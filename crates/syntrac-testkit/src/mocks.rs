@@ -1,7 +1,7 @@
 //! Mock implementations of the tool-layer interfaces.
 
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU32, Ordering};
 use std::sync::Arc;
 
 use syntrac_core::{Clock, EventEnvelope, MetricsSample, MetricsSource, SourceError, TelemetrySource, Timestamp};
@@ -107,5 +107,55 @@ impl ManualClock {
 impl Clock for ManualClock {
     fn now(&self) -> Timestamp {
         Timestamp::from_micros(self.micros.load(Ordering::SeqCst))
+    }
+}
+
+/// How many times a `RestartableTelemetrySource` was asked to restart. Shared, so a test can read it after the
+/// source has been handed to the collector.
+#[derive(Debug, Clone, Default)]
+pub struct RestartCounter(Arc<AtomicU32>);
+
+impl RestartCounter {
+    pub fn count(&self) -> u32 {
+        self.0.load(Ordering::SeqCst)
+    }
+}
+
+/// A source with a name of the test's choosing that supports `restart`, for exercising the silence watchdog.
+#[derive(Debug)]
+pub struct RestartableTelemetrySource {
+    name: String,
+    restarts: RestartCounter,
+    fail: bool,
+}
+
+impl RestartableTelemetrySource {
+    pub fn new(name: &str) -> (Self, RestartCounter) {
+        let restarts = RestartCounter::default();
+        (Self { name: name.to_owned(), restarts: restarts.clone(), fail: false }, restarts)
+    }
+
+    /// Makes every restart fail, after counting it.
+    pub fn fail_restarts(&mut self) {
+        self.fail = true;
+    }
+}
+
+impl TelemetrySource for RestartableTelemetrySource {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn drain(&mut self) -> Result<Vec<EventEnvelope>, SourceError> {
+        Ok(Vec::new())
+    }
+
+    fn restart(&mut self) -> Result<(), SourceError> {
+        self.restarts.0.fetch_add(1, Ordering::SeqCst);
+        if self.fail {
+            Err(SourceError::Failed("simulated restart failure".into()))
+        } else {
+            Ok(())
+        }
     }
 }

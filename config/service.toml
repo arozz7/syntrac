@@ -23,3 +23,8 @@ purge_interval_minutes = 60
 
 # How often a status line is logged (events stored, drops, own CPU).
 status_interval_secs = 30
+
+# If ETW delivers no events for this long, the trace session is restarted (at most etw_max_restarts times in a row;
+# 0 means watch and report only). The health banner reports a silent trace either way.
+etw_silent_restart_secs = 180
+etw_max_restarts = 3

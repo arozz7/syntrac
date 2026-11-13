@@ -14,7 +14,10 @@ use syntrac_collector::snapshot::SnapshotSource;
 use syntrac_collector::sysmetrics::SysinfoMetricsSource;
 use syntrac_collector::system::{is_elevated, own_cpu_time, SystemClock};
 use syntrac_collector::volumes::system_path_converter;
-use syntrac_core::{Clock, MetricsSource, TelemetrySource};
+use syntrac_core::silence::{SilenceAction, SilencePolicy, SilenceVerdict, SilenceWatchdog};
+use syntrac_core::{
+    Clock, EventRepository, MetricsRepository, MetricsSource, ProcessRepository, Retention, TelemetrySource,
+};
 use syntrac_ipc::pipe::{PipeServer, PipeServerConfig};
 use syntrac_store::SqliteStore;
 use tracing::{error, info, warn};
@@ -141,10 +144,25 @@ pub fn run_host(
     let mut last_status = Instant::now();
     let mut cpu_at_last_status = cpu_at_start;
 
+    let mut etw_watchdog = etw_stats.as_ref().map(|_| {
+        let policy =
+            SilencePolicy { restart_after_secs: config.etw_silent_restart_secs, max_restarts: config.etw_max_restarts };
+        SilenceWatchdog::new(policy, SystemClock.now())
+    });
+
     info!("Collecting");
     while !stop.load(Ordering::SeqCst) && deadline.is_none_or(|end| Instant::now() < end) {
         collector.tick();
-        board.publish(collector.totals(), etw_stats.as_ref().map(|s| s.report()).as_ref(), SystemClock.now());
+        let etw_report = etw_stats.as_ref().map(|s| s.report());
+        let etw_silent_secs = match (etw_watchdog.as_mut(), etw_report.as_ref()) {
+            (Some(watchdog), Some(report)) => {
+                let verdict = watchdog.observe(report.received, SystemClock.now());
+                act_on_silence(&mut collector, verdict);
+                verdict.silent_secs
+            }
+            _ => 0,
+        };
+        board.publish(collector.totals(), etw_report.as_ref(), etw_silent_secs, SystemClock.now());
         if last_status.elapsed() >= status_interval {
             let cpu_now = own_cpu_time();
             let totals = collector.totals();
@@ -173,6 +191,34 @@ pub fn run_host(
     collector.shutdown();
     let summary = render_summary(&collector, etw_stats.as_deref(), started.elapsed(), own_cpu_time() - cpu_at_start);
     Ok(HostOutcome { summary })
+}
+
+/// Name of the ETW source, as `EtwSource` reports it.
+const ETW_SOURCE_NAME: &str = "etw";
+
+/// Carries out the watchdog's decision. A trace that is "started" but silent records nothing while every other
+/// number still looks healthy, so each step is logged loudly.
+fn act_on_silence<R, C>(collector: &mut Collector<R, C>, verdict: SilenceVerdict)
+where
+    R: ProcessRepository + EventRepository + MetricsRepository + Retention,
+    C: Clock,
+{
+    match verdict.action {
+        SilenceAction::None => {}
+        SilenceAction::Restart { attempt } => {
+            warn!(
+                silent_secs = verdict.silent_secs,
+                attempt, "ETW has delivered no events for too long; restarting the trace session"
+            );
+            if let Err(error) = collector.restart_source(ETW_SOURCE_NAME) {
+                error!(%error, attempt, "Restarting the ETW trace session failed");
+            }
+        }
+        SilenceAction::GiveUp => error!(
+            silent_secs = verdict.silent_secs,
+            "ETW is still silent after restarting; process and network activity is NOT being recorded"
+        ),
+    }
 }
 
 fn start_pipe(options: &PipeOptions, board: Arc<StatusBoard<SystemClock>>) -> Option<PipeServer> {

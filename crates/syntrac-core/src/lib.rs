@@ -7,6 +7,7 @@ pub mod identity;
 pub mod metrics;
 pub mod pipeline;
 pub mod ports;
+pub mod silence;
 pub mod time;
 
 pub use correlator::correlate;

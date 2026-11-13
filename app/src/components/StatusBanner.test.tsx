@@ -15,6 +15,7 @@ describe('StatusBanner', () => {
   it.each([
     ['running', 'Running'],
     ['stale', 'Stale'],
+    ['degraded', 'Degraded'],
     ['offline', 'Offline'],
     ['unknown', 'Unknown'],
   ] as const)('labels the %s state in words, never by colour alone', (state, label) => {
@@ -46,5 +47,17 @@ describe('StatusBanner', () => {
       />,
     );
     expect(screen.getByRole('status').textContent).toContain('Offline');
+  });
+});
+
+describe('StatusBanner: a silent ETW trace', () => {
+  it('says how long ETW has been silent, so the reader knows what is being lost and for how long', () => {
+    render(<StatusBanner health={health({ state: 'degraded', message: 'ETW is silent', etwSilentSecs: 4000 })} />);
+    expect(screen.getByRole('status').textContent).toContain('ETW silent 1 h 6 min');
+  });
+
+  it('says nothing about ETW silence while it is only a few seconds', () => {
+    render(<StatusBanner health={health({ etwSilentSecs: 8 })} />);
+    expect(screen.getByRole('status').textContent).not.toContain('silent');
   });
 });

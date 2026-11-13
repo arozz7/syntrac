@@ -58,13 +58,14 @@ fn published_totals_and_etw_health_appear_in_the_status() {
         max_ahead_ms: 0,
         future_events: 0,
     };
-    board.publish(totals, Some(&etw), Timestamp::from_micros(130 * SEC));
+    board.publish(totals, Some(&etw), 240, Timestamp::from_micros(130 * SEC));
 
     let report = status(&board);
     assert_eq!((report.totals.ticks, report.totals.events_stored, report.totals.flows_stored), (10, 55, 7));
     assert_eq!(report.last_tick_at_micros, Some(130 * SEC));
     let etw = report.etw.expect("etw health is published when ETW is on");
     assert_eq!((etw.received, etw.dropped, etw.parse_errors, etw.max_lag_ms), (900, 3, 2, 1014));
+    assert_eq!(etw.silent_secs, 240);
     assert!(report.etw_enabled);
 }
 
@@ -96,7 +97,7 @@ fn the_text_rendering_makes_dropped_events_impossible_to_miss() {
         max_ahead_ms: 0,
         future_events: 0,
     };
-    board.publish(Totals::default(), Some(&etw), Timestamp::from_micros(101 * SEC));
+    board.publish(Totals::default(), Some(&etw), 0, Timestamp::from_micros(101 * SEC));
     let text = syntrac_service::format_status(&status(&board));
     assert!(text.contains("4 DROPPED"), "{text}");
     assert!(text.contains("9.9.9") && text.contains("4242"), "{text}");
@@ -107,4 +108,27 @@ fn the_text_rendering_says_when_etw_is_not_running() {
     let clock = ManualClock::new(Timestamp::from_micros(100 * SEC));
     let text = syntrac_service::format_status(&status(&board(&clock, false)));
     assert!(text.contains("not running"), "{text}");
+}
+
+#[test]
+fn the_text_rendering_says_when_etw_has_gone_quiet_and_stays_calm_when_it_has_not() {
+    let clock = ManualClock::new(Timestamp::from_micros(100 * SEC));
+    let board = board(&clock, true);
+    let etw = EtwReport {
+        received: 0,
+        dropped: 0,
+        parse_errors: vec![],
+        parse_errors_total: 0,
+        max_lag_ms: 0,
+        max_ahead_ms: 0,
+        future_events: 0,
+    };
+
+    board.publish(Totals::default(), Some(&etw), 12, Timestamp::from_micros(101 * SEC));
+    let calm = syntrac_service::format_status(&status(&board));
+    assert!(!calm.to_uppercase().contains("SILENT"), "a few quiet seconds are normal: {calm}");
+
+    board.publish(Totals::default(), Some(&etw), 600, Timestamp::from_micros(102 * SEC));
+    let quiet = syntrac_service::format_status(&status(&board));
+    assert!(quiet.contains("SILENT for 600 s"), "{quiet}");
 }

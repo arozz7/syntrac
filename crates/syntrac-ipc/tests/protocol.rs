@@ -23,7 +23,29 @@ fn sample_status() -> StatusReport {
             metrics_errors: 0,
             storage_errors: 0,
         },
-        etw: Some(EtwStatus { received: 9000, dropped: 0, parse_errors: 0, max_lag_ms: 1014, future_events: 0 }),
+        etw: Some(EtwStatus {
+            received: 9000,
+            dropped: 0,
+            parse_errors: 0,
+            max_lag_ms: 1014,
+            future_events: 0,
+            silent_secs: 240,
+        }),
+    }
+}
+
+#[test]
+fn the_etw_silence_is_on_the_wire_and_a_reply_from_an_older_service_without_it_still_parses() {
+    let value: serde_json::Value =
+        serde_json::from_str(encode_response(&Response::Status(sample_status())).trim_end()).expect("valid json");
+    assert_eq!(value["etw"]["silent_secs"], 240, "{value}");
+
+    let mut old = value;
+    old["etw"].as_object_mut().expect("object").remove("silent_secs");
+    let decoded = decode_response(old.to_string().as_bytes()).expect("an older reply must still decode");
+    match decoded {
+        Response::Status(status) => assert_eq!(status.etw.expect("etw").silent_secs, 0),
+        other => panic!("expected a status, got {other:?}"),
     }
 }
 

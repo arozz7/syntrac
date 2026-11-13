@@ -72,6 +72,62 @@ pub struct EtwSource {
     stats: Arc<EtwStats>,
     trace: Option<UserTrace>,
     session_name: String,
+    /// Kept so a restarted session can feed the same channel.
+    sink: Sink,
+    paths: Arc<NtPathConverter>,
+}
+
+/// Starts one trace session and the thread that pumps its events into `sink`. Any session of the same name that
+/// a crashed run (or a previous session of this process) left behind is stopped first.
+fn start_session(session_name: &str, sink: &Sink, paths: &Arc<NtPathConverter>) -> Result<UserTrace, SourceError> {
+    // Fails harmlessly when no stale session exists.
+    if stop_trace_by_name(session_name).is_ok() {
+        warn!(session = session_name, "Stopped a trace session left over from a previous run");
+    }
+
+    let process_provider = {
+        let (sink, paths) = (sink.clone(), Arc::clone(paths));
+        Provider::by_guid(KERNEL_PROCESS)
+            .any(KEYWORD_PROCESS)
+            .add_callback(move |record: &EventRecord, locator: &SchemaLocator| {
+                handle_process(record, locator, &sink, &paths);
+            })
+            .build()
+    };
+    let network_provider = {
+        let sink = sink.clone();
+        Provider::by_guid(KERNEL_NETWORK)
+            .add_callback(move |record: &EventRecord, locator: &SchemaLocator| {
+                handle_network(record, locator, &sink);
+            })
+            .build()
+    };
+    let dns_provider = {
+        let sink = sink.clone();
+        Provider::by_guid(DNS_CLIENT)
+            .add_callback(move |record: &EventRecord, locator: &SchemaLocator| {
+                handle_dns(record, locator, &sink);
+            })
+            .build()
+    };
+
+    let (trace, handle) = UserTrace::new()
+        .named(session_name.to_owned())
+        .enable(process_provider)
+        .enable(network_provider)
+        .enable(dns_provider)
+        .start()
+        .map_err(|error| {
+            SourceError::Failed(format!("could not start the ETW trace (is the process elevated?): {error:?}"))
+        })?;
+
+    std::thread::spawn(move || {
+        let status = UserTrace::process_from_handle(handle);
+        info!(?status, "ETW processing thread ended");
+    });
+
+    info!(session = session_name, "ETW trace started");
+    Ok(trace)
 }
 
 impl EtwSource {
@@ -80,56 +136,22 @@ impl EtwSource {
     /// `session_name` must differ between the console and the installed service: starting clears any session
     /// of the SAME name, so sharing one would let a console run kill the service's live trace.
     pub fn start(paths: NtPathConverter, session_name: &str) -> Result<Self, SourceError> {
-        // Fails harmlessly when no stale session exists.
-        if stop_trace_by_name(session_name).is_ok() {
-            warn!(session = session_name, "Stopped a trace session left over from a previous run");
-        }
-
         let (sender, receiver) = sync_channel(CHANNEL_CAPACITY);
         let stats = Arc::new(EtwStats::default());
         let sink = Sink { sender, stats: Arc::clone(&stats) };
         let paths = Arc::new(paths);
 
-        let process_provider = {
-            let (sink, paths) = (sink.clone(), Arc::clone(&paths));
-            Provider::by_guid(KERNEL_PROCESS)
-                .any(KEYWORD_PROCESS)
-                .add_callback(move |record: &EventRecord, locator: &SchemaLocator| {
-                    handle_process(record, locator, &sink, &paths);
-                })
-                .build()
-        };
-        let network_provider = {
-            let sink = sink.clone();
-            Provider::by_guid(KERNEL_NETWORK)
-                .add_callback(move |record: &EventRecord, locator: &SchemaLocator| {
-                    handle_network(record, locator, &sink);
-                })
-                .build()
-        };
-        let dns_provider = Provider::by_guid(DNS_CLIENT)
-            .add_callback(move |record: &EventRecord, locator: &SchemaLocator| {
-                handle_dns(record, locator, &sink);
-            })
-            .build();
+        let trace = start_session(session_name, &sink, &paths)?;
+        Ok(Self { receiver, stats, trace: Some(trace), session_name: session_name.to_owned(), sink, paths })
+    }
 
-        let (trace, handle) = UserTrace::new()
-            .named(session_name.to_owned())
-            .enable(process_provider)
-            .enable(network_provider)
-            .enable(dns_provider)
-            .start()
-            .map_err(|error| {
-                SourceError::Failed(format!("could not start the ETW trace (is the process elevated?): {error:?}"))
-            })?;
-
-        std::thread::spawn(move || {
-            let status = UserTrace::process_from_handle(handle);
-            info!(?status, "ETW processing thread ended");
-        });
-
-        info!(session = session_name, "ETW trace started");
-        Ok(Self { receiver, stats, trace: Some(trace), session_name: session_name.to_owned() })
+    /// Replaces the trace session with a fresh one that feeds the SAME channel and counters, so events already
+    /// buffered are still delivered and the received count carries on from where it was.
+    fn restart_session(&mut self) -> Result<(), SourceError> {
+        warn!(session = self.session_name.as_str(), "Restarting the ETW trace session");
+        self.stop_trace();
+        self.trace = Some(start_session(&self.session_name, &self.sink, &self.paths)?);
+        Ok(())
     }
 
     pub fn stats(&self) -> Arc<EtwStats> {
@@ -177,6 +199,10 @@ impl TelemetrySource for EtwSource {
 
     fn stop(&mut self) {
         self.stop_trace();
+    }
+
+    fn restart(&mut self) -> Result<(), SourceError> {
+        self.restart_session()
     }
 
     fn drain(&mut self) -> Result<Vec<EventEnvelope>, SourceError> {

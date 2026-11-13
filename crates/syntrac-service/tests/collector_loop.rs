@@ -12,7 +12,7 @@ use syntrac_testkit::fixtures::{
 };
 use syntrac_testkit::{
     FailingTelemetrySource, InMemoryRepository, ManualClock, MockMetricsSource, MockTelemetrySource,
-    ScriptedTelemetrySource,
+    RestartableTelemetrySource, ScriptedTelemetrySource,
 };
 
 fn settings() -> CollectorSettings {
@@ -302,4 +302,46 @@ fn totals_accumulate_across_ticks() {
     assert_eq!(collector.totals().events_stored, 1);
     assert_eq!(collector.totals().ticks, 2);
     let _ = Timestamp::from_micros(0);
+}
+
+// ---- restarting a source that has gone silent
+
+#[test]
+fn a_named_source_can_be_restarted_and_only_that_one() {
+    let (etw, etw_restarts) = RestartableTelemetrySource::new("etw");
+    let (other, other_restarts) = RestartableTelemetrySource::new("other");
+    let (mut collector, _clock) =
+        collector_at(1_000, vec![Box::new(etw), Box::new(other)], None, InMemoryRepository::default());
+
+    collector.restart_source("etw").expect("etw can be restarted");
+
+    assert_eq!((etw_restarts.count(), other_restarts.count()), (1, 0));
+}
+
+#[test]
+fn restarting_a_source_that_does_not_exist_is_an_error_not_a_panic() {
+    let (mut collector, _clock) =
+        collector_at(1_000, vec![Box::new(MockTelemetrySource::new(vec![]))], None, InMemoryRepository::default());
+    let error = collector.restart_source("etw").expect_err("no such source");
+    assert!(error.to_string().contains("etw"), "{error}");
+}
+
+#[test]
+fn a_source_that_cannot_be_restarted_says_so_and_collection_carries_on() {
+    // MockTelemetrySource keeps the trait's default `restart`.
+    let (mut collector, _clock) =
+        collector_at(1_000, vec![Box::new(MockTelemetrySource::new(vec![]))], None, InMemoryRepository::default());
+    let error = collector.restart_source("mock").expect_err("the default cannot restart");
+    assert!(error.to_string().contains("cannot be restarted"), "{error}");
+    let report = collector.tick();
+    assert_eq!(report.source_errors, 0, "a refused restart must not poison the next pass");
+}
+
+#[test]
+fn a_failed_restart_is_reported_to_the_caller() {
+    let (mut flaky, restarts) = RestartableTelemetrySource::new("etw");
+    flaky.fail_restarts();
+    let (mut collector, _clock) = collector_at(1_000, vec![Box::new(flaky)], None, InMemoryRepository::default());
+    assert!(collector.restart_source("etw").is_err());
+    assert_eq!(restarts.count(), 1, "it was attempted");
 }

@@ -12,6 +12,9 @@ use syntrac_ipc::serve::Handler;
 
 use crate::Totals;
 
+/// Quiet for this long is worth saying out loud in the text status. (A few quiet seconds are normal.)
+pub const ETW_SILENT_WARNING_SECS: u64 = 60;
+
 /// Facts that never change while the collector runs.
 pub struct BoardInfo {
     pub version: String,
@@ -40,7 +43,7 @@ impl<C: Clock> StatusBoard<C> {
     }
 
     /// Records the state after a collector pass. A poisoned lock is ignored: status is best-effort.
-    pub fn publish(&self, totals: Totals, etw: Option<&EtwReport>, at: Timestamp) {
+    pub fn publish(&self, totals: Totals, etw: Option<&EtwReport>, etw_silent_secs: u64, at: Timestamp) {
         if let Ok(mut latest) = self.latest.write() {
             latest.totals = CollectorTotals {
                 ticks: totals.ticks,
@@ -57,6 +60,7 @@ impl<C: Clock> StatusBoard<C> {
                 parse_errors: report.parse_errors_total,
                 max_lag_ms: report.max_lag_ms,
                 future_events: report.future_events,
+                silent_secs: etw_silent_secs,
             });
             latest.last_tick = Some(at);
         }
@@ -116,6 +120,13 @@ pub fn format_status(report: &StatusReport) -> String {
                 "ETW:              {} received, {} DROPPED, {} parse errors, max lag {} ms",
                 etw.received, etw.dropped, etw.parse_errors, etw.max_lag_ms
             );
+            if etw.silent_secs >= ETW_SILENT_WARNING_SECS {
+                let _ = writeln!(
+                    out,
+                    "                  ETW has been SILENT for {} s: no process or network activity is being recorded",
+                    etw.silent_secs
+                );
+            }
         }
         None => {
             let _ = writeln!(out, "ETW:              {}", if report.etw_enabled { "starting" } else { "not running" });

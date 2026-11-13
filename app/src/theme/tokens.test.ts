@@ -58,6 +58,7 @@ describe('design tokens', () => {
     ['severity-confirmed-fg', 'severity-confirmed-bg'],
     ['status-running-fg', 'status-running-bg'],
     ['status-stale-fg', 'status-stale-bg'],
+    ['status-degraded-fg', 'status-degraded-bg'],
     ['status-offline-fg', 'status-offline-bg'],
     ['status-unknown-fg', 'status-unknown-bg'],
   ];
@@ -83,7 +84,7 @@ describe('design tokens', () => {
 });
 
 describe('collector health colours', () => {
-  const states = ['running', 'stale', 'offline', 'unknown'].map((state) => token(`status-${state}-bg`));
+  const states = ['running', 'stale', 'degraded', 'offline', 'unknown'].map((state) => token(`status-${state}-bg`));
 
   it('keep the four states visually distinct from each other', () => {
     for (let i = 0; i < states.length; i++) {

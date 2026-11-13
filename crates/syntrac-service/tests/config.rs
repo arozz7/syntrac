@@ -15,6 +15,8 @@ fn an_empty_file_gives_the_documented_defaults() {
     assert_eq!(config.retention_days, 30);
     assert_eq!(config.purge_interval_minutes, 60);
     assert_eq!(config.status_interval_secs, 30);
+    assert_eq!(config.etw_silent_restart_secs, 180);
+    assert_eq!(config.etw_max_restarts, 3);
     assert_eq!(config.database_path, None);
 }
 
@@ -48,6 +50,7 @@ fn values_that_would_break_the_loop_are_rejected() {
         "retention_days = 0",
         "purge_interval_minutes = 0",
         "top_processes = 0",
+        "etw_silent_restart_secs = 0",
     ] {
         assert!(ServiceConfig::from_toml_str(bad).is_err(), "{bad} must be rejected");
     }
@@ -72,4 +75,10 @@ fn a_malformed_pipe_sid_is_refused_at_load_time_so_it_can_never_reach_the_access
         let text = format!("pipe_allowed_sid = \"{bad}\"");
         assert!(ServiceConfig::from_toml_str(&text).is_err(), "{bad:?} must be rejected");
     }
+}
+
+#[test]
+fn the_silence_restart_can_be_tuned_or_switched_off_with_a_zero_budget() {
+    let config = ServiceConfig::from_toml_str("etw_silent_restart_secs = 90\netw_max_restarts = 0").unwrap();
+    assert_eq!((config.etw_silent_restart_secs, config.etw_max_restarts), (90, 0));
 }

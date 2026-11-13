@@ -61,6 +61,8 @@
   --status-running-fg: var(--brand-cream);
   --status-stale-bg: var(--brand-warning);
   --status-stale-fg: var(--brand-charcoal);
+  --status-degraded-bg: var(--brand-clay);
+  --status-degraded-fg: var(--brand-charcoal);
   --status-offline-bg: var(--brand-slate);
   --status-offline-fg: var(--brand-cream);
   --status-unknown-bg: var(--brand-info);

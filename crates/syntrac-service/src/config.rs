@@ -36,6 +36,11 @@ pub struct ServiceConfig {
     pub purge_interval_minutes: u64,
     /// How often a status line (events stored, drops, own CPU) is logged.
     pub status_interval_secs: u64,
+    /// If ETW delivers nothing for this long, the trace session is restarted.
+    pub etw_silent_restart_secs: u64,
+    /// How many restarts in a row are tried before giving up (the problem stays visible in the health banner).
+    /// 0 means watch and report only.
+    pub etw_max_restarts: u32,
 }
 
 impl Default for ServiceConfig {
@@ -52,6 +57,8 @@ impl Default for ServiceConfig {
             retention_days: 30,
             purge_interval_minutes: 60,
             status_interval_secs: 30,
+            etw_silent_restart_secs: 180,
+            etw_max_restarts: 3,
         }
     }
 }
@@ -73,6 +80,7 @@ impl ServiceConfig {
             (self.purge_interval_minutes, "purge_interval_minutes"),
             (self.top_processes as u64, "top_processes"),
             (self.status_interval_secs, "status_interval_secs"),
+            (self.etw_silent_restart_secs, "etw_silent_restart_secs"),
         ];
         if let Some(sid) = &self.pipe_allowed_sid {
             syntrac_ipc::sddl::validate_sid(sid).map_err(|e| ConfigError::Invalid(format!("pipe_allowed_sid: {e}")))?;

@@ -162,3 +162,26 @@ processor interrupt/DPC counters.
 ## Next
 
 Overhead-under-load measurement script; then Phase 2 (intelligence).
+## Silent ETW (2026-11-12, found after the UI check)
+
+**Finding.** The installed service had received ZERO ETW events since 02:11:55 UTC (over an hour), yet the pipe answered,
+metrics kept flowing and the banner said Running. The network destinations and connection rows I first reported as
+"verified live" were history from before that restart. An ordinary restart (30 s later: still 0 received) ruled out a
+fast-restart race. The installed binary is byte-identical to the one that delivered 290,000 events earlier, so the
+machine's ETW state changed, not the code. Root cause NOT yet established; `scripts/dev/etw-probe.ps1` (elevated)
+separates "Windows ETW is stuck" from "our session is the problem".
+
+**Made visible and self-healing (approved fixes 1-3):**
+- `syntrac_core::silence` (pure, 9 tests): `SilenceWatchdog` turns "the received count stopped moving" into seconds of
+  silence plus a decision (restart, with a capped number of attempts, then give up once). A restart never shortens the
+  reported silence (found while testing: the first draft would have flipped the banner back to Running after a failed restart).
+- Protocol: `EtwStatus.silent_secs` (optional on the wire; an older service's reply still parses).
+- Service: `TelemetrySource::restart` (default: refuse), `Collector::restart_source`, a real `EtwSource` restart that feeds
+  the same channel and counters; the host feeds the watchdog every pass. Config `etw_silent_restart_secs = 180`,
+  `etw_max_restarts = 3` (0 = report only). `--status` prints "ETW has been SILENT for N s".
+- UI: health state `Degraded` (own glyph, word and `--status-degraded-*` token, contrast and distinctness tested) when ETW has
+  been silent for 120 s, shown before the service tries to repair it. Stale (old data) still outranks it.
+- Smoke test: new checks that ETW receives events after the first start and after the restart.
+
+Not yet run against the real service: the installed binary is still the old one. The new build needs reinstalling
+(elevated) to get the watchdog; the real ETW restart code path has only been compiled and linted, not exercised.

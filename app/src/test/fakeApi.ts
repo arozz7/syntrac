@@ -12,6 +12,7 @@ export function health(overrides: Partial<HealthView> = {}): HealthView {
     pid: 4242,
     uptimeSecs: 3600,
     etwDropped: 0,
+    etwSilentSecs: 0,
     dataAgeSecs: 3,
     ...overrides,
   };

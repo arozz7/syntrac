@@ -59,6 +59,10 @@ pub struct EtwStatus {
     pub parse_errors: u64,
     pub max_lag_ms: i64,
     pub future_events: u64,
+    /// Seconds since ETW last delivered an event. A trace can be "started" and still deliver nothing, which no other
+    /// counter reveals. Absent in replies from older services, which reads as 0.
+    #[serde(default)]
+    pub silent_secs: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
