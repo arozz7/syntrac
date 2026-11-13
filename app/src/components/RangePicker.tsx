@@ -11,10 +11,18 @@ export const RANGES: RangeOption[] = [
 ];
 
 /** A row of toggle buttons for choosing how far back to look. */
-export function RangePicker({ value, onChange }: { value: number; onChange: (secs: number) => void }) {
+export function RangePicker({
+  value,
+  onChange,
+  options = RANGES,
+}: {
+  value: number;
+  onChange: (secs: number) => void;
+  options?: RangeOption[];
+}) {
   return (
     <div className="range" role="group" aria-label="Time range">
-      {RANGES.map((range) => (
+      {options.map((range) => (
         <button
           key={range.secs}
           type="button"

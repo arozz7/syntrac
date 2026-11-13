@@ -5,6 +5,7 @@ pub mod backend;
 pub mod commands;
 pub mod db_location;
 pub mod health;
+pub mod history;
 pub mod names;
 pub mod series;
 pub mod settings;
@@ -25,7 +26,8 @@ pub fn run() {
             commands::get_health,
             commands::get_overview,
             commands::list_processes,
-            commands::list_connections
+            commands::list_connections,
+            commands::get_system_history
         ])
         .run(tauri::generate_context!())
         .expect("failed to run the SYNTRAC application");

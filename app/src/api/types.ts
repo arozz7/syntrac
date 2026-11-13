@@ -106,6 +106,31 @@ export interface ConnectionRowView {
   failed: number;
 }
 
+/** One completed hour (UTC) of the machine as a whole, from the hourly rollups. */
+export interface SystemHourView {
+  hourMs: number;
+  /** The samples the hour is built from; used to weight averages when hours are grouped into days. */
+  samples: number;
+  cpuAvgPercent: number;
+  cpuMaxPercent: number;
+  memoryAvgPercent: number;
+  memoryMaxPercent: number;
+  netReceivedBytes: number;
+  netSentBytes: number;
+  diskReadBytes: number;
+  diskWriteBytes: number;
+  othersCpuAvgPercent: number;
+}
+
+export interface SystemHistoryView {
+  fromMs: number;
+  toMs: number;
+  /** Where the history begins (the oldest rollup), whatever range was asked for. */
+  historyStartsMs: number | null;
+  /** Completed hours only, oldest first. A missing hour is a gap, never a zero. */
+  hours: SystemHourView[];
+}
+
 export type StorageLevel = 'ok' | 'trimming' | 'paused';
 
 export interface StorageView {

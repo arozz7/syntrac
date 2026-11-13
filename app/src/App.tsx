@@ -4,15 +4,17 @@ import markUrl from './assets/brand/syntrac-mark.svg';
 import { StatusBanner } from './components/StatusBanner';
 import { usePolled } from './hooks/usePolled';
 import { Connections } from './views/Connections';
+import { History } from './views/History';
 import { Overview } from './views/Overview';
 import { Processes } from './views/Processes';
 
-type ViewId = 'overview' | 'processes' | 'connections';
+type ViewId = 'overview' | 'processes' | 'connections' | 'history';
 
 const VIEWS: Array<{ id: ViewId; nav: string; title: string }> = [
   { id: 'overview', nav: 'Overview', title: 'Workstation Overview' },
   { id: 'processes', nav: 'Processes', title: 'Processes' },
   { id: 'connections', nav: 'Connections', title: 'Connections' },
+  { id: 'history', nav: 'History', title: 'History' },
 ];
 
 const HEALTH_REFRESH_MS = 5000;
@@ -25,6 +27,8 @@ function CurrentView({ view }: { view: ViewId }) {
       return <Processes />;
     case 'connections':
       return <Connections />;
+    case 'history':
+      return <History />;
   }
 }
 

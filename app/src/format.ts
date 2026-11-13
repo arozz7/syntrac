@@ -68,6 +68,12 @@ export function formatClock(ms: number): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
+/** Local date, `YYYY-MM-DD`. */
+export function formatDay(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 /** Local date and time, `YYYY-MM-DD HH:MM`. */
 export function formatDateTime(ms: number): string {
   const d = new Date(ms);

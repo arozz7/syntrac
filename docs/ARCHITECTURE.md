@@ -122,6 +122,14 @@ the minimum. Levels change with a 10% margin so they do not flap. The database u
 at start (a failure is a logged notice and a retry at the next start, never a crash loop); each purge returns freed pages to the
 drive. The pipe's status carries the result (`storage`), and the UI shows it.
 
+## History views (trends)
+
+The app's History screen reads the hourly rollups (read-only, like every other view), so it still works after the detail has been
+purged. `history.rs` builds the view models from `RollupRepository` and `StorageStats` (`system_history`: the stored UTC hours in
+a range, plus where the history begins); the store returns completed hours only, and a missing hour is a gap, never a zero. Grouping
+hours into LOCAL-time days (for ranges beyond 7 days) is done in the UI (`charts/historyBuckets.ts`), which knows the time zone
+and daylight saving; averages are weighted by the samples behind each hour. Plan and slices: `docs/TRENDS-PLAN.md`.
+
 ## Collector adapters (`syntrac-collector`)
 
 Each Windows adapter is split in two: a thin adapter that reads raw values, and a **pure, unit-tested function** that

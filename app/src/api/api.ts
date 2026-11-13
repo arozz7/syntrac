@@ -1,10 +1,20 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { ConnectionRowView, Data, HealthView, OverviewView, ProcessListParams, ProcessRowView } from './types';
+import type {
+  ConnectionRowView,
+  Data,
+  HealthView,
+  OverviewView,
+  ProcessListParams,
+  ProcessRowView,
+  SystemHistoryView,
+} from './types';
 
 /** Everything the UI can ask of the backend. Components depend on this interface, never on Tauri directly. */
 export interface Api {
   health(): Promise<HealthView>;
   overview(rangeSecs: number): Promise<Data<OverviewView>>;
+  /** The machine hour by hour from the rollups, which outlive the detail. */
+  systemHistory(rangeSecs: number): Promise<Data<SystemHistoryView>>;
   processes(params: ProcessListParams): Promise<Data<ProcessRowView[]>>;
   connections(rangeSecs: number, limit?: number): Promise<Data<ConnectionRowView[]>>;
 }
@@ -42,6 +52,7 @@ export const tauriApi: Api = {
     }
   },
   overview: (rangeSecs) => data<OverviewView>('get_overview', { rangeSecs }),
+  systemHistory: (rangeSecs) => data<SystemHistoryView>('get_system_history', { rangeSecs }),
   processes: (params) => data<ProcessRowView[]>('list_processes', { params }),
   connections: (rangeSecs, limit) => data<ConnectionRowView[]>('list_connections', { rangeSecs, limit }),
 };

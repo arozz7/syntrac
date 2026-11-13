@@ -8,6 +8,7 @@ use tauri::State;
 
 use crate::backend::{Backend, Data};
 use crate::health::HealthView;
+use crate::history::SystemHistoryView;
 use crate::views::{ConnectionRowView, OverviewView, ProcessListParams, ProcessRowView};
 
 pub type SharedBackend = Arc<Backend<SystemClock>>;
@@ -30,6 +31,15 @@ pub async fn get_health(backend: State<'_, SharedBackend>) -> Result<HealthView,
 pub async fn get_overview(backend: State<'_, SharedBackend>, range_secs: u64) -> Result<Data<OverviewView>, ()> {
     let backend = Arc::clone(&backend);
     Ok(blocking(move || backend.overview(range_secs)).await.unwrap_or_else(internal))
+}
+
+#[tauri::command]
+pub async fn get_system_history(
+    backend: State<'_, SharedBackend>,
+    range_secs: u64,
+) -> Result<Data<SystemHistoryView>, ()> {
+    let backend = Arc::clone(&backend);
+    Ok(blocking(move || backend.system_history(range_secs)).await.unwrap_or_else(internal))
 }
 
 #[tauri::command]

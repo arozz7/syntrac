@@ -1,6 +1,15 @@
 import { vi } from 'vitest';
 import type { Api } from '../api/api';
-import type { ConnectionRowView, Data, HealthView, OverviewView, ProcessCpuView, ProcessRowView } from '../api/types';
+import type {
+  ConnectionRowView,
+  Data,
+  HealthView,
+  OverviewView,
+  ProcessCpuView,
+  ProcessRowView,
+  SystemHistoryView,
+  SystemHourView,
+} from '../api/types';
 
 export const NOW = new Date(2026, 10, 12, 9, 5, 7).getTime();
 
@@ -111,6 +120,33 @@ export function connectionRow(overrides: Partial<ConnectionRowView> = {}): Conne
   };
 }
 
+export function systemHour(hourMs: number, overrides: Partial<SystemHourView> = {}): SystemHourView {
+  return {
+    hourMs,
+    samples: 120,
+    cpuAvgPercent: 12,
+    cpuMaxPercent: 35,
+    memoryAvgPercent: 52,
+    memoryMaxPercent: 58,
+    netReceivedBytes: 4096,
+    netSentBytes: 1024,
+    diskReadBytes: 2048,
+    diskWriteBytes: 8192,
+    othersCpuAvgPercent: 1,
+    ...overrides,
+  };
+}
+
+export function systemHistory(overrides: Partial<SystemHistoryView> = {}): SystemHistoryView {
+  return {
+    fromMs: NOW - 7 * 86_400_000,
+    toMs: NOW,
+    historyStartsMs: NOW - 5 * 86_400_000,
+    hours: [systemHour(NOW - 3 * 3_600_000), systemHour(NOW - 2 * 3_600_000, { cpuAvgPercent: 20 })],
+    ...overrides,
+  };
+}
+
 const ok = <T>(data: T): Data<T> => ({ state: 'ok', data });
 
 /** An `Api` whose every method is a spy returning sensible sample data. */
@@ -118,6 +154,7 @@ export function makeFakeApi(overrides: Partial<Api> = {}): Api & { [K in keyof A
   return {
     health: vi.fn(async () => health()),
     overview: vi.fn(async () => ok(overview())),
+    systemHistory: vi.fn(async () => ok(systemHistory())),
     processes: vi.fn(async () =>
       ok([
         processRow(),

@@ -39,6 +39,17 @@ describe('App', () => {
     expect(await screen.findByText('browser.exe')).toBeTruthy();
   });
 
+  it('opens the history view from the sidebar', async () => {
+    const api = show();
+    await screen.findByText('chrome.exe');
+
+    await userEvent.click(screen.getByRole('button', { name: 'History' }));
+
+    expect(await screen.findByText('CPU average')).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('History');
+    expect(api.systemHistory).toHaveBeenCalled();
+  });
+
   it('keeps showing an offline collector in the banner while data from the past is still visible', async () => {
     show(
       makeFakeApi({

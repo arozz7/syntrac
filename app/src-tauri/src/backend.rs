@@ -12,6 +12,7 @@ use syntrac_store::SqliteStore;
 
 use crate::db_location::{DbLocation, FileMemory, NoMemory, PathMemory};
 use crate::health::{assess_health, HealthView};
+use crate::history::{system_history, SystemHistoryView};
 use crate::settings::AppSettings;
 use crate::views::{
     connection_list, overview, process_list, ConnectionRowView, OverviewView, ProcessListParams, ProcessRowView,
@@ -117,6 +118,10 @@ impl<C: Clock + Send + Sync> Backend<C> {
 
     pub fn connections(&self, range_secs: u64, limit: Option<usize>) -> Data<Vec<ConnectionRowView>> {
         self.with_store(|store, now| connection_list(store, now, range_secs, limit))
+    }
+
+    pub fn system_history(&self, range_secs: u64) -> Data<SystemHistoryView> {
+        self.with_store(|store, now| system_history(store, now, range_secs))
     }
 
     /// Never fails: every problem is a state.
