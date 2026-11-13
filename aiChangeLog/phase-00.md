@@ -1,6 +1,6 @@
 ﻿# Phase 00: Foundations
 
-Date: 2026-11-12. Status: **complete except the ETW spike measurement, which needs an elevated run by the user.**
+Date: 2026-11-12. Status: **complete.** ETW spike round 2 answered the open questions (see below).
 
 ## Goal
 
@@ -101,26 +101,52 @@ Answers to the Phase 0 questions:
    suggests filtering for volume reasons is not urgent, but filtering is still advisable (the noise events carry no
    value for SYNTRAC).
 
-**Round 2 (needed before Phase 1):** `powershell -ExecutionPolicy Bypass -File scripts/dev/run-etw-spike.ps1 -Seconds 30`
-(default Kernel-Process keyword mask 0x10 = process start/stop; the mask comes from the provider manifest and is not
-yet verified here). **During the run, open and close a few programs (Notepad, Calculator)** so process events occur.
-Output goes to `aiChangeLog/etw-spike-result-kw10.txt`. If the Kernel-Process section shows 0 events, rerun with
-`-ProcessKeywords 0` to get the unfiltered stream with per-event-id samples.
+### Round 2 (run by the owner, 2026-11-12, Kernel-Process keyword mask 0x10)
 
-What to look for in round 2: event 1/2 samples showing `pid`, `parent_pid`, `create_time_raw` and `image`; whether
-`create_time_raw` is a FILETIME (100 ns ticks since 1601) to convert; DNS samples across event ids.
+Raw output: `aiChangeLog/etw-spike-result-kw10.txt`.
 
-Troubleshooting:
-- **A provider reports 0 events:** suspect the keyword mask. Round 2 sets the Kernel-Process mask explicitly.
-- **Trace start fails with "already exists"** (for example after a killed run): `logman stop SyntracSpike -ets`.
-- **The CPU figure is consumer-side only**, so treat the 2% budget as not yet proven even though the number is low.
+| Provider | Result |
+|---|---|
+| Kernel-Process | 1,014 events (33.8/s): event 1 (start) 504, event 2 (stop) 510. **Mask 0x10 isolates exactly process start/stop** |
+| Kernel-Network | 7,646 events (255/s); UDP data events and TCP data events dominate |
+| DNS-Client | 88 events (2.9/s) |
+| Consumer-side CPU | 0.016 s over 30 s on 28 cores = 0.00% (consumer only) |
 
-## Decisions carried into Phase 1
+Answers:
+1. **Process start fields: answered.** Event 1 gives `ProcessID`, `ParentProcessID`, `CreateTime` and `ImageName`.
+   `CreateTime` is a Windows FILETIME (134390031692131159 converts to 2026-11-12, as expected). `ImageName` on start is
+   an **NT device path** (`\Device\HarddiskVolume7\Users\...`), not a drive-letter path. Event 2 (stop) carries
+   `ProcessID`, the same `CreateTime` and a short image name (`jq.exe`), but no parent PID.
+2. **Network: answered.** Byte swap confirmed on many well-known ports (443, 1900 SSDP, 5353 mDNS, 3702 WS-Discovery).
+   IPv6 addresses parse. Event 12/13/15 and loopback traffic appear too.
+3. **DNS: answered.** Events 3006 and 3008 are logged **in the requesting process** (header PID 68428, which also
+   appears in network events to port 443), so they give the real caller. Events 3009/3016/3018/3020 are logged by
+   the DNS Client service (PID 3368). Resolved addresses arrive in `QueryResults` as a semicolon-separated string,
+   including IPv4-mapped IPv6 (`::ffff:34.149.66.165`). The caller attribution is consistent with the data but was not
+   independently proven.
+4. **Overhead:** consumer-side cost is negligible with filtering.
 
-- `ferrisetw` works on this machine and parses fields, so it stays the first choice, behind `TelemetrySource`.
-- Network ports must be byte-swapped. Add a test for that in the Phase 1 network source.
-- Do not subscribe to unfiltered Kernel-Process in production.
+### Decisions carried into Phase 1
+
+1. **Identity uses the event's real `CreateTime`**, not the start event's timestamp. Add the creation time to the
+   `ProcessStarted` and `ProcessExited` payloads and derive `ProcessInstanceId` from it directly. This removes the
+   "resolve by timestamp" guess for exits and for out-of-order delivery. (Tests first; this changes `syntrac-core`.)
+2. **Convert NT device paths to drive-letter paths** (volume mapping via `QueryDosDevice`) before storing.
+3. **Subscribe to Kernel-Process with keyword mask 0x10 only.** Never unfiltered in production.
+4. **Aggregate network data events into flows.** About 255 events/s of per-packet-ish data events must not be stored
+   one by one; store connection open/close and per-flow byte totals per time window.
+5. **Byte-swap ports**, with a unit test.
+6. **Direction matters.** On receive events the `daddr`/`dport` fields look like the local endpoint (for example a
+   192.168.x.x address). The remote endpoint is probably in `saddr`/`sport`. Verify from the manifest before relying
+   on it. Also map network event ids to meanings (connect, send, receive, close, TCP vs UDP, v4 vs v6) from the manifest.
+7. **DNS:** use the caller-side events (3006/3008) for process attribution and `QueryResults` for name-to-IP links.
+8. `ferrisetw` stays the first choice behind `TelemetrySource`.
+
+Open for Phase 1 to verify: the `ExitCode` field name on event 2, and the receive-direction fields above.
+
+Privacy note: the two spike result files contain real hostnames you visited and your user profile path. The repository
+has no remote; scrub or drop them before ever publishing it.
 
 ## Next
 
-Round 2 of the spike, then Phase 1 (Visibility).
+Phase 1 (Visibility). A task-level plan is proposed for approval before any code.

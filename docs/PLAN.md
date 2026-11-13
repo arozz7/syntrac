@@ -1,6 +1,6 @@
 ﻿# SYNTRAC: Master Implementation Plan
 
-Status: **Approved** (v1.1, 2026-11-12). Phase 0 built; awaiting ETW spike measurement (user-run, elevated).
+Status: **Approved** (v1.1, 2026-11-12). Phase 0 complete. Phase 1 task plan awaiting approval.
 
 SYNTRAC is a personal workstation intelligence platform for Windows. It answers three questions:
 
@@ -112,11 +112,12 @@ Each phase ends with an `aiChangeLog/phase-XX.md` entry, updated docs and README
 - [x] Tauri 2 + React/TS shell with theme tokens and an automated contrast test (shell only, no dashboard features)
 - [x] `scripts/dev/verify.ps1` and file-size checker (Windows PowerShell 5.1 compatible)
 - [x] `ARCHITECTURE.md`, `SCHEMA.md`, `THREAT-MODEL.md`
-- [ ] ETW spike: per-provider event counts and CPU overhead. **Requires an elevated terminal; the user runs it.** Round 1 done (network and overhead answered; process-start fields not yet seen). Round 2 pending, see `aiChangeLog/phase-00.md`.
+- [x] ETW spike: per-provider event counts and CPU overhead. Two rounds run by the owner; process, network and DNS fields confirmed. Findings and Phase 1 consequences in `aiChangeLog/phase-00.md`.
 
 ### Phase 1: Visibility
 Service install and run, ETW process and network sources, metrics sampler, startup process snapshot, parent/child tracking, SQLite schema and migrations, retention job, named-pipe protocol. UI: dashboard, process list, connections list.
 Done when the UI can close and reopen with no data loss, and a connection links to the correct process even after PID reuse.
+Real-world acceptance check (owner's workstation, 2026-11-12): the owner sees sustained ~30% CPU with no obvious cause, and the dashboard's top-consumers view over history must show which processes contribute. Collector overhead is measured with the service running, both idle and under load, against the 2% budget.
 
 ### Phase 2: Intelligence
 SHA-256 (cached by path, size, mtime), Authenticode/publisher via `WinVerifyTrust`, DNS-to-IP linking, first/last seen, Process Tree Explorer, Application DNA, connection map, day timeline with before/after context, global search, config change monitors (services, scheduled tasks, startup, Run keys).
@@ -126,6 +127,10 @@ YAML rules engine with starter rules (exe in temp path, unsigned new exe, unusua
 
 ### Phase 4: AI investigation (local only)
 `LLMService` adapter for llama-server, prompts in config, natural-language questions answered through a fixed set of **read-only query tools** (not raw SQL), event explanations from correlated context. The adapter refuses non-loopback endpoints by default.
+
+When the LLM is used (owner-confirmed 2026-11-12): **on demand, for deeper analysis only.** Detection (collection, correlation, rules, baselines, risk scores) is deterministic and never calls the LLM, so a stopped or slow server cannot blind the tool. Triggers are user-initiated: an "Investigate" action on an alert or timeline event, and questions in the investigation assistant. Optional extras are off by default: a scheduled daily summary, and automatic explanation of high-severity alerts.
+
+Privacy option (owner decision: make it a setting and test it): SYNTRAC gets `llm.context_detail = "summary" | "full"`, default `summary` (aggregated, redacted facts). `full` sends richer detail (for example command lines) and is only for deliberate use. The local model server's own `log_conversations` stays a setting in that project, which SYNTRAC does not change. Phase 4 should check whether its admin status endpoint reports that flag so SYNTRAC can warn when prompts are being logged.
 
 Target backend (the owner's own local model server, read on 2026-11-12, not running at that time):
 - SYNTRAC talks to **the server's proxy**, `http://127.0.0.1:<port>/v1` (OpenAI-compatible: `/v1/chat/completions`, `/v1/models`, `/health`), not to the raw llama-server behind it. These values come from the server's own config and may change, so they live in SYNTRAC's `config/`, not in code.
@@ -150,7 +155,6 @@ Sysmon adapter, DuckDB analytics, installer and signing, file/registry ETW.
 ## 8. Open questions
 
 - **Phase 4 (answered):** host, port and model found in the local model server's config (see Phase 4 above).
-  Still to decide before Phase 4: whether to turn off `log_conversations` in the local model server (a setting in the other
-  project, which only the owner should change) or accept plaintext prompt logging, and whether SYNTRAC may start the
-  server itself or only connect to it when the owner has started it.
+  `log_conversations` handling decided: an option, tested both ways (see the privacy option under Phase 4). Still to
+  decide before Phase 4: whether SYNTRAC may start the server itself or only connect to it when the owner has started it.
 - Retention defaults (30 days raw) to be revisited after measuring real event volume in the Phase 0/1 spike.
