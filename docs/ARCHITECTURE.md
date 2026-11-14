@@ -147,6 +147,12 @@ again only if they differ. `exe_location.rs` derives, from the path alone, a loc
 user profile, Temporary, Network, Other) and a product key (signer or company, plus install root) that groups the four
 Acme programs into one product. Plan and slices: `docs/IDENTITY-PLAN.md`.
 
+The Windows adapter (`syntrac-collector`: `file_inspector`, `file_trust`, `file_version`, `file_hash`, with the pure meaning of raw
+values in `file_parse`) opens each file once, read-only, with full sharing, and never follows a link; the hash and the signature come
+from that handle. Signatures are checked offline (revocation off, cache-only URL retrieval). The service runs it in an
+`IdentityWorker` on its own thread with its own database connection (`identity_worker.rs`, started in `host.rs`), paced by
+`identity_*` config keys, so reading files cannot delay ETW draining.
+
 ## Collector adapters (`syntrac-collector`)
 
 Each Windows adapter is split in two: a thin adapter that reads raw values, and a **pure, unit-tested function** that

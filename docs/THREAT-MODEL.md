@@ -36,6 +36,9 @@ lines, network destinations, activity history) and runs a privileged component, 
 | Event flood exhausts disk or CPU | Provider filtering, batching, retention, measured CPU budget (ETW spike) |
 | Supply-chain compromise of dependencies | Lockfiles committed (`Cargo.lock`, `pnpm-lock.yaml`), `--frozen-lockfile`, minimal dependency set |
 | False positives erode trust | Tiered severities, explanation per alert, allowlists |
+| The SYSTEM service reads files at paths an ordinary user can influence (identity worker, `docs/IDENTITY-PLAN.md`) | Only absolute local-drive paths are opened (bare names, device and network paths are refused before the disk is touched); regular files only, a link or other reparse point is refused, never followed; opened read-only with full sharing so a running program or its updater is never blocked; hash and signature from the same handle; a hash size cap and a stop flag checked between 1 MB chunks; runs on its own thread so it cannot delay collection. Tested on real files. Residual: the version resource is parsed by the operating system's loader inside the service (a malformed file could exploit that loader); hardening path is a low-privilege helper process |
+| Signer, company and description text come from the file and can be crafted (control characters, direction overrides, very long text) | One sanitiser for every string read from a file: control and direction-override characters removed, trimmed, capped at 256 characters; stored and shown as text only; given to the LLM (Phase 4) as quoted data only |
+| Signature checks reach out to certificate authorities (revocation lists, intermediate certificates), leaking which programs run | Revocation checking is off and URL retrieval is cache-only, so nothing leaves the machine (owner decision 3). Cost: a certificate revoked since signing is not noticed, and a chain that needs a missing intermediate is reported as untrusted rather than fetched |
 
 ## Out of scope (for now)
 

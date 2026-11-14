@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 use syntrac_collector::drive_space::DriveFreeSpace;
 use syntrac_collector::etw::EtwSource;
 use syntrac_collector::etw_stats::{EtwReport, EtwStats};
+use syntrac_collector::file_inspector::{InspectorSettings, WindowsFileInspector};
 use syntrac_collector::orphan_guard::clean_up_orphans;
 use syntrac_collector::snapshot::SnapshotSource;
 use syntrac_collector::sysmetrics::SysinfoMetricsSource;
@@ -20,6 +21,7 @@ use syntrac_collector::volumes::system_path_converter;
 use syntrac_core::retention::GuardLimits;
 use syntrac_core::silence::{SilenceAction, SilencePolicy, SilenceVerdict, SilenceWatchdog};
 use syntrac_core::storage_guard::StorageStats;
+use syntrac_core::IdentitySettings;
 use syntrac_core::{
     Clock, EventRepository, MetricsRepository, MetricsSource, ProcessRepository, Retention, RollupRepository,
     RollupSettings, TelemetrySource,
@@ -28,7 +30,9 @@ use syntrac_ipc::pipe::{PipeServer, PipeServerConfig};
 use syntrac_store::SqliteStore;
 use tracing::{error, info, warn};
 
-use crate::{BoardInfo, Collector, CollectorSettings, ServiceConfig, StatusBoard};
+use crate::{
+    BoardInfo, Collector, CollectorSettings, IdentityWorker, IdentityWorkerSettings, ServiceConfig, StatusBoard,
+};
 
 /// Teardown (stopping sources, final drain, summary) must finish within this long, or `on_stall` runs.
 pub const DEFAULT_SHUTDOWN_LIMIT: Duration = Duration::from_secs(20);
@@ -160,6 +164,9 @@ pub fn run_host(
     ));
     let pipe = options.pipe.as_ref().and_then(|pipe| start_pipe(pipe, Arc::clone(&board)));
 
+    let worker_stop = Arc::new(AtomicBool::new(false));
+    let identity_thread = start_identity_worker(options, &worker_stop);
+
     let started = Instant::now();
     let cpu_at_start = own_cpu_time();
     let deadline = options.run_for.map(|span| started + span);
@@ -213,9 +220,50 @@ pub fn run_host(
     drop(pipe); // stop answering status requests first; they are not worth delaying shutdown for
     info!("Stopping: stopping sources, draining them and flushing open flow windows");
     spawn_shutdown_watchdog(on_stall, options.shutdown_limit);
+    worker_stop.store(true, Ordering::SeqCst);
     collector.shutdown();
+    if let Some(thread) = identity_thread {
+        let _ = thread.join();
+    }
     let summary = render_summary(&collector, etw_stats.as_deref(), started.elapsed(), own_cpu_time() - cpu_at_start);
     Ok(HostOutcome { summary })
+}
+
+/// Starts the identity worker on its own thread with its own database connection, so reading files can never delay the
+/// collector. If it cannot start, collection carries on without it: identities are evidence, not the telemetry itself.
+fn start_identity_worker(options: &HostOptions, stop: &Arc<AtomicBool>) -> Option<std::thread::JoinHandle<()>> {
+    let config = &options.config;
+    let store = match SqliteStore::open(&options.database_path) {
+        Ok(store) => store,
+        Err(error) => {
+            warn!(%error, "The identity worker could not open the database; collecting without it");
+            return None;
+        }
+    };
+    let inspector = WindowsFileInspector::new(
+        InspectorSettings { max_hash_bytes: config.identity_max_hash_mb.saturating_mul(1024 * 1024) },
+        Arc::clone(stop),
+    );
+    let settings = IdentityWorkerSettings {
+        interval: Duration::from_secs(config.identity_interval_minutes * 60),
+        backlog_pause: Duration::from_secs(config.identity_backlog_pause_secs),
+        pass: IdentitySettings { max_per_pass: config.identity_files_per_pass, ..IdentitySettings::default() },
+    };
+    let worker = IdentityWorker::new(store, inspector, SystemClock, settings);
+    let stop = Arc::clone(stop);
+    let spawned = std::thread::Builder::new()
+        .name("syntrac-identity".into())
+        .spawn(move || worker.run(&stop, Duration::from_millis(500)));
+    match spawned {
+        Ok(handle) => {
+            info!("Identity worker started");
+            Some(handle)
+        }
+        Err(error) => {
+            warn!(%error, "The identity worker thread could not start; collecting without it");
+            None
+        }
+    }
 }
 
 /// Name of the ETW source, as `EtwSource` reports it.

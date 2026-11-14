@@ -46,6 +46,14 @@ pub struct ServiceConfig {
     pub hard_floor_free_gb: u64,
     /// How often completed hours are rolled up into the permanent summaries (a backlog is worked off sooner).
     pub rollup_interval_minutes: u64,
+    /// Identity worker (docs/IDENTITY-PLAN.md): how often it looks for executables whose files have not been read yet.
+    pub identity_interval_minutes: u64,
+    /// Identity worker: files read per pass (a backlog is worked off at this many every identity_backlog_pause_secs).
+    pub identity_files_per_pass: usize,
+    /// Identity worker: seconds between two passes while a backlog remains.
+    pub identity_backlog_pause_secs: u64,
+    /// Identity worker: a file larger than this many MB is not hashed (its size is still recorded).
+    pub identity_max_hash_mb: u64,
     /// How often a status line (events stored, drops, own CPU) is logged.
     pub status_interval_secs: u64,
     /// If ETW delivers nothing for this long, the trace session is restarted.
@@ -72,6 +80,10 @@ impl Default for ServiceConfig {
             min_free_space_gb: 20,
             hard_floor_free_gb: 5,
             rollup_interval_minutes: 5,
+            identity_interval_minutes: 5,
+            identity_files_per_pass: 5,
+            identity_backlog_pause_secs: 30,
+            identity_max_hash_mb: 512,
             status_interval_secs: 30,
             etw_silent_restart_secs: 180,
             etw_max_restarts: 3,
@@ -98,6 +110,10 @@ impl ServiceConfig {
             (self.hard_floor_free_gb, "hard_floor_free_gb"),
             (self.purge_interval_minutes, "purge_interval_minutes"),
             (self.rollup_interval_minutes, "rollup_interval_minutes"),
+            (self.identity_interval_minutes, "identity_interval_minutes"),
+            (self.identity_files_per_pass as u64, "identity_files_per_pass"),
+            (self.identity_backlog_pause_secs, "identity_backlog_pause_secs"),
+            (self.identity_max_hash_mb, "identity_max_hash_mb"),
             (self.top_processes as u64, "top_processes"),
             (self.status_interval_secs, "status_interval_secs"),
             (self.etw_silent_restart_secs, "etw_silent_restart_secs"),

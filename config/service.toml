@@ -41,3 +41,11 @@ etw_max_restarts = 3
 max_database_gb = 10
 min_free_space_gb = 20
 hard_floor_free_gb = 5
+
+# Identity worker: reads the files of programs SYNTRAC has seen (signature, version information, SHA-256) on its own thread,
+# a few at a time so the disk is never hit hard. Nothing leaves the machine. A backlog (the first run) is worked off at
+# identity_files_per_pass files every identity_backlog_pause_secs; otherwise a pass runs every identity_interval_minutes.
+identity_interval_minutes = 5
+identity_files_per_pass = 5
+identity_backlog_pause_secs = 30
+identity_max_hash_mb = 512     # a larger file is not hashed (its size is still recorded)

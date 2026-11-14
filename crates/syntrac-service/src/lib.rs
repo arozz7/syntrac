@@ -7,6 +7,7 @@ mod config;
 mod db_check;
 mod guard;
 mod host;
+mod identity_worker;
 mod service_paths;
 mod status_board;
 
@@ -19,6 +20,7 @@ pub use host::{
     run_host, HostError, HostOptions, HostOutcome, PipeOptions, CONSOLE_PIPE_NAME, DEFAULT_SHUTDOWN_LIMIT,
     SERVICE_PIPE_NAME,
 };
+pub use identity_worker::{IdentityWorker, IdentityWorkerSettings, WorkerTick};
 pub use service_paths::{
     check_data_drives, service_config_path, validate_service_paths, ServicePathError, ServicePaths,
 };

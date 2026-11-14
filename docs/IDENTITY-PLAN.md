@@ -87,7 +87,7 @@ the program drill-down. Where the same `exe_id` has no identity yet the UI says 
 - **I1a Core and store.** Types, `classify_location`, `product_key`, `needs_inspection`, the two ports, in-memory fakes, the
   worker loop as a pure function over the ports, migration v6, SQLite `IdentityRepository`, contract suite run against both
   stores plus a parity test. No Windows code yet.
-- **I1b Windows adapter and service wiring.** `WindowsFileInspector`, the worker started by the service, backfill of the
+- **I1b Windows adapter and service wiring (done; see `aiChangeLog/phase-I1b.md` for the measurements).** `WindowsFileInspector`, the worker started by the service, backfill of the
   existing executables (throttled, one pass), a rehearsal that inspects the live executable list (counts of signed, unsigned,
   catalog-signed, errors, time per file, CPU of the worker, database growth) and a check against known files (a Microsoft
   binary, the service's own binary, Acme).

@@ -62,6 +62,10 @@ hard_floor_free_gb = 5",
         "rollup_interval_minutes = 0",
         "top_processes = 0",
         "etw_silent_restart_secs = 0",
+        "identity_interval_minutes = 0",
+        "identity_files_per_pass = 0",
+        "identity_backlog_pause_secs = 0",
+        "identity_max_hash_mb = 0",
     ] {
         assert!(ServiceConfig::from_toml_str(bad).is_err(), "{bad} must be rejected");
     }
@@ -108,4 +112,22 @@ fn the_storage_limits_can_be_tuned() {
     let config =
         ServiceConfig::from_toml_str("max_database_gb = 4\nmin_free_space_gb = 12\nhard_floor_free_gb = 3").unwrap();
     assert_eq!((config.max_database_gb, config.min_free_space_gb, config.hard_floor_free_gb), (4, 12, 3));
+}
+
+#[test]
+fn the_identity_worker_has_gentle_defaults_and_can_be_tuned() {
+    let defaults = ServiceConfig::default();
+    assert_eq!(
+        (
+            defaults.identity_interval_minutes,
+            defaults.identity_files_per_pass,
+            defaults.identity_backlog_pause_secs,
+            defaults.identity_max_hash_mb
+        ),
+        (5, 5, 30, 512)
+    );
+
+    let tuned = ServiceConfig::from_toml_str("identity_files_per_pass = 2\nidentity_max_hash_mb = 64").unwrap();
+    assert_eq!((tuned.identity_files_per_pass, tuned.identity_max_hash_mb), (2, 64));
+    assert_eq!(tuned.identity_interval_minutes, 5, "the rest stay default");
 }

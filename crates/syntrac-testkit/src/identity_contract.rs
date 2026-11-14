@@ -331,3 +331,14 @@ fn every_field_survives_storage<R: IdentitySubject>(mut repo: R) {
     let listed = repo.identity_entries().unwrap();
     assert_eq!(listed[0].record.as_ref().unwrap().facts, Some(full), "the listing reads the same fields");
 }
+
+/// Gives a repository these executables, each seen running once and rolled up, and returns an instant after all of it (the
+/// "now" for a test that inspects them). Used by tests of code that works through `IdentityRepository`.
+pub fn seed_executables<R: IdentitySubject>(repo: &mut R, paths: &[&str]) -> Timestamp {
+    for (index, path) in paths.iter().enumerate() {
+        run_in_hour(repo, 10 + index as u32, path, index as i64);
+    }
+    let last_hour = paths.len() as i64 + 2;
+    roll_through(repo, last_hour);
+    t(last_hour + 1, 0)
+}
