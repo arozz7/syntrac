@@ -7,6 +7,7 @@ pub mod exe_location;
 pub mod flow;
 pub mod identity;
 pub mod identity_run;
+pub mod known;
 pub mod metrics;
 pub mod pipeline;
 pub mod ports;
@@ -30,6 +31,9 @@ pub use exe_location::{classify_location, install_root, product_key, LocationCla
 pub use flow::{Destination, FlowAggregator, FlowRow};
 pub use identity::ProcessInstanceId;
 pub use identity_run::{inspect_due, retry_after, IdentityPass, IdentitySettings};
+pub use known::{
+    KnownError, KnownIndex, KnownProduct, KnownProductRepository, LookalikeReason, NewKnownProduct, Standing,
+};
 pub use metrics::{
     CpuBreakdown, CpuContribution, MetricsSample, OtherProcesses, ProcessMetric, PurgeCounts, SystemMetrics,
     SystemPoint,

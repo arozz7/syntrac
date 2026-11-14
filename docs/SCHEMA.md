@@ -94,6 +94,15 @@ facts, all NULL until a first successful read: `size`, `modified`, `sha256` (NUL
 mark of the web; 3 = Internet). Anything derivable from the path alone (location class, product) is NOT stored: it is computed
 by `syntrac_core::exe_location` when shown. Plan: `docs/IDENTITY-PLAN.md`.
 
+## Known products (v7)
+
+`known_products` (migration v7, additive): the products the user has confirmed. `label` and `note` are the user's words;
+`publisher` (lower case, '' for a product with no signer and no company) and `root` (the install folder, lower case) are exactly a
+`product_key` and together are unique; `product_name` is the version-information product name when it was confirmed.
+`created_at` is when it was first confirmed and does not move when the label is edited; `updated_at` does. Ids are never
+reused (AUTOINCREMENT). Permanent: the purge of detail never touches it. Written only by the service, on request over the pipe.
+Design: `docs/KNOWN-PROGRAMS-DESIGN.md`.
+
 ## Retention
 
 `Retention::purge_before(cutoff)` removes events, flows, metrics older than the cutoff, and ended processes that ended

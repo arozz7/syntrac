@@ -176,11 +176,26 @@ export interface IdentityDetailView extends IdentityBadgeView {
   failure: IdentityFailureView | null;
 }
 
+/** Where a program stands against the user's list of known programs. Evidence, not a verdict. */
+export interface StandingView {
+  state: 'unlisted' | 'known' | 'lookalike';
+  id: number | null;
+  /** The known product's label (known and lookalike). */
+  label: string | null;
+  /** What the known product is signed by, lower case (lookalike, when it has a publisher). */
+  expectedPublisher: string | null;
+  /** The folder the known product lives in, lower case (lookalike). */
+  expectedFolder: string | null;
+  /** Why a lookalike looks like the known product, as sentences. */
+  reasons: string[];
+}
+
 /** One program inside a product row. */
 export interface ProgramMemberView {
   name: string;
   path: string;
   identity: IdentityBadgeView;
+  standing: StandingView;
 }
 
 export interface ProgramRowView {
@@ -200,6 +215,7 @@ export interface ProgramRowView {
   firstSeenMs: number | null;
   lastSeenMs: number | null;
   identity: IdentityBadgeView;
+  standing: StandingView;
   /** The programs of a product row, which has no path. Empty for an ordinary row. */
   members: ProgramMemberView[];
 }
@@ -232,7 +248,41 @@ export interface ProgramHistoryView {
   firstSeenMs: number | null;
   lastSeenMs: number | null;
   identity: IdentityDetailView;
+  standing: StandingView;
   hours: ProgramHourView[];
+}
+
+export interface KnownProductView {
+  id: number;
+  label: string;
+  publisher: string | null;
+  folder: string;
+  productName: string | null;
+  note: string | null;
+  createdMs: number;
+  /** File names of its programs seen on this machine. */
+  programs: string[];
+}
+
+export interface LookalikeView {
+  name: string;
+  path: string;
+  standing: StandingView;
+  signature: IdentityBadgeView['signature'];
+  publisher: string | null;
+  location: LocationClass;
+}
+
+export interface KnownProgramsView {
+  products: KnownProductView[];
+  lookalikes: LookalikeView[];
+}
+
+/** The answer to a change request: the service's own words when it refuses. */
+export interface WriteOutcome {
+  ok: boolean;
+  id: number | null;
+  message: string | null;
 }
 
 export type StorageLevel = 'ok' | 'trimming' | 'paused';

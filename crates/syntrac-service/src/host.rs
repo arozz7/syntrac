@@ -3,7 +3,7 @@
 //! exactly the same code; only how they start, stop and log differs.
 
 use std::fmt::Write as _;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -27,11 +27,14 @@ use syntrac_core::{
     RollupSettings, TelemetrySource,
 };
 use syntrac_ipc::pipe::{PipeServer, PipeServerConfig};
+use syntrac_ipc::protocol::{Request, Response};
+use syntrac_ipc::serve::Handler;
 use syntrac_store::SqliteStore;
 use tracing::{error, info, warn};
 
 use crate::{
-    BoardInfo, Collector, CollectorSettings, IdentityWorker, IdentityWorkerSettings, ServiceConfig, StatusBoard,
+    BoardInfo, Collector, CollectorSettings, IdentityWorker, IdentityWorkerSettings, KnownProductsAdmin, ServiceConfig,
+    ServiceHandler, StatusBoard,
 };
 
 /// Teardown (stopping sources, final drain, summary) must finish within this long, or `on_stall` runs.
@@ -162,7 +165,7 @@ pub fn run_host(
         },
         SystemClock,
     ));
-    let pipe = options.pipe.as_ref().and_then(|pipe| start_pipe(pipe, Arc::clone(&board)));
+    let pipe = options.pipe.as_ref().and_then(|pipe| start_pipe(pipe, Arc::clone(&board), &options.database_path));
 
     let worker_stop = Arc::new(AtomicBool::new(false));
     let identity_thread = start_identity_worker(options, &worker_stop);
@@ -294,10 +297,29 @@ where
     }
 }
 
-fn start_pipe(options: &PipeOptions, board: Arc<StatusBoard<SystemClock>>) -> Option<PipeServer> {
+/// The status board as the pipe's read-only handler.
+struct BoardHandler(Arc<StatusBoard<SystemClock>>);
+
+impl Handler for BoardHandler {
+    fn handle(&self, request: Request) -> Response {
+        self.0.handle(request)
+    }
+}
+
+/// Starts the pipe. Besides status, it answers the write commands of the known-programs list, which need their own database
+/// connection; if that cannot be opened the pipe still serves status (the write commands then answer that they are not handled).
+fn start_pipe(options: &PipeOptions, board: Arc<StatusBoard<SystemClock>>, database_path: &Path) -> Option<PipeServer> {
     let mut config = PipeServerConfig::new(&options.name);
     config.allowed_sids = options.allowed_sids.clone();
-    match PipeServer::start(config, board) {
+    let status = BoardHandler(board);
+    let handler: Arc<dyn Handler> = match SqliteStore::open(database_path) {
+        Ok(store) => Arc::new(ServiceHandler::new(status, KnownProductsAdmin::new(store, SystemClock))),
+        Err(error) => {
+            warn!(%error, "The known-programs list could not open the database; the pipe answers status only");
+            Arc::new(status)
+        }
+    };
+    match PipeServer::start(config, handler) {
         Ok(server) => {
             info!(pipe = options.name.as_str(), "Status pipe listening");
             Some(server)

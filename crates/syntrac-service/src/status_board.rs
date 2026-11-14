@@ -115,6 +115,10 @@ impl<C: Clock + Send + Sync> Handler for StatusBoard<C> {
         match request {
             Request::Ping => Response::Pong { version: self.info.version.clone() },
             Request::Status => Response::Status(self.report()),
+            // The status board only reports; the write commands are answered by the service's own handler, which wraps it.
+            Request::KnownProductAdd { .. } | Request::KnownProductRemove { .. } => {
+                Response::Error { message: "this endpoint only answers status requests".into() }
+            }
         }
     }
 }

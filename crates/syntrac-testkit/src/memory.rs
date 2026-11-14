@@ -15,6 +15,9 @@ pub struct InMemoryRepository {
     pub(crate) events: Vec<EventEnvelope>,
     pub(crate) metrics: Vec<MetricsSample>,
     pub(crate) rollups: crate::memory_rollup::RollupState,
+    pub(crate) known: Vec<syntrac_core::KnownProduct>,
+    /// How many ids have been handed out: an id that was removed is never issued again.
+    pub(crate) known_issued: i64,
 }
 
 impl ProcessRepository for InMemoryRepository {

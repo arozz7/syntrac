@@ -1,4 +1,4 @@
-import type { IdentityBadgeView } from '../api/types';
+import type { IdentityBadgeView, StandingView } from '../api/types';
 import { locationNote, signatureLabel } from '../identityLabels';
 
 /** The signature state as a small label. The words say what is known; the tooltip says what it can and cannot prove. */
@@ -18,12 +18,28 @@ function publisherHint(identity: IdentityBadgeView): string {
     : 'Signed by this name.';
 }
 
+/** Where a program stands against the user's known programs. Nothing is shown for a program that is not on the list. */
+export function StandingBadge({ standing }: { standing: StandingView }) {
+  if (standing.state === 'known') {
+    return <span className="badge badge--good">Known: {standing.label}</span>;
+  }
+  if (standing.state === 'lookalike') {
+    return (
+      <span className="badge badge--alert" title={standing.reasons.join('; ')}>
+        Looks like {standing.label}
+      </span>
+    );
+  }
+  return null;
+}
+
 /** For a table cell: the signature label, who made the program, and a note when it runs from an unusual place. */
-export function IdentityCell({ identity }: { identity: IdentityBadgeView }) {
+export function IdentityCell({ identity, standing }: { identity: IdentityBadgeView; standing?: StandingView }) {
   const note = locationNote(identity.location);
   return (
     <div className="identity-cell">
       <SignatureBadge identity={identity} />
+      {standing !== undefined && <StandingBadge standing={standing} />}
       {identity.publisher !== null && (
         <span className="identity-cell__publisher" title={publisherHint(identity)}>
           {identity.publisher}

@@ -218,3 +218,8 @@ fn sqlite_store_satisfies_the_trend_contract() {
 fn sqlite_store_satisfies_the_identity_contract() {
     syntrac_testkit::identity_contract::identity_contract(in_memory_store);
 }
+
+#[test]
+fn sqlite_store_satisfies_the_known_products_contract() {
+    syntrac_testkit::known_contract::known_contract(in_memory_store);
+}

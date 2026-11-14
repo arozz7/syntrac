@@ -3,6 +3,7 @@ import type {
   ConnectionRowView,
   Data,
   HealthView,
+  KnownProgramsView,
   OverviewView,
   ProcessListParams,
   ProcessRowView,
@@ -10,6 +11,7 @@ import type {
   ProgramMetric,
   ProgramsView,
   SystemHistoryView,
+  WriteOutcome,
 } from './types';
 
 /** Everything the UI can ask of the backend. Components depend on this interface, never on Tauri directly. */
@@ -27,6 +29,11 @@ export interface Api {
   ): Promise<Data<ProgramsView>>;
   /** One program, hour by hour. `path` is the program's image path as listed by `topPrograms`. */
   programHistory(rangeSecs: number, path: string): Promise<Data<ProgramHistoryView>>;
+  /** The user's known programs, and programs that look like one without being it. */
+  knownPrograms(): Promise<Data<KnownProgramsView>>;
+  /** Asks the service to mark the product of the program at path as known. Never throws: a refusal is in the outcome. */
+  markKnown(path: string, label: string, note?: string): Promise<WriteOutcome>;
+  unmarkKnown(id: number): Promise<WriteOutcome>;
   processes(params: ProcessListParams): Promise<Data<ProcessRowView[]>>;
   connections(rangeSecs: number, limit?: number): Promise<Data<ConnectionRowView[]>>;
 }
@@ -42,6 +49,15 @@ async function data<T>(command: string, args?: Record<string, unknown>): Promise
     return await invoke<Data<T>>(command, args);
   } catch (error) {
     return { state: 'error', message: failure(error) };
+  }
+}
+
+/** A failed write is an outcome with a message, so the screen can say what happened. */
+async function write(command: string, args: Record<string, unknown>): Promise<WriteOutcome> {
+  try {
+    return await invoke<WriteOutcome>(command, args);
+  } catch (error) {
+    return { ok: false, id: null, message: failure(error) };
   }
 }
 
@@ -68,6 +84,9 @@ export const tauriApi: Api = {
   topPrograms: (rangeSecs, metric, limit, groupByProduct) =>
     data<ProgramsView>('get_top_programs', { rangeSecs, metric, limit, groupByProduct }),
   programHistory: (rangeSecs, path) => data<ProgramHistoryView>('get_program_history', { rangeSecs, path }),
+  knownPrograms: () => data<KnownProgramsView>('get_known_programs'),
+  markKnown: (path, label, note) => write('mark_known_program', { path, label, note }),
+  unmarkKnown: (id) => write('unmark_known_program', { id }),
   processes: (params) => data<ProcessRowView[]>('list_processes', { params }),
   connections: (rangeSecs, limit) => data<ConnectionRowView[]>('list_connections', { rangeSecs, limit }),
 };

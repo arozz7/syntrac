@@ -3,8 +3,10 @@
 pub mod contract;
 pub mod fixtures;
 pub mod identity_contract;
+pub mod known_contract;
 pub mod memory;
 mod memory_identity;
+mod memory_known;
 mod memory_rollup;
 pub mod mocks;
 pub mod rollup_contract;

@@ -23,6 +23,7 @@ impl Handler for FixedHandler {
                 etw: None,
                 storage: None,
             }),
+            other => Response::Error { message: format!("not handled: {other:?}") },
         }
     }
 }

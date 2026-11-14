@@ -21,14 +21,21 @@ use crate::history_programs::{
     program_history, range_totals, rank_range, Grouping, ProgramHistoryView, ProgramMetricParam, ProgramsView,
     RangeTotals, DEFAULT_PROGRAM_ROWS,
 };
+use crate::known_view::{known_programs, KnownProgramsView};
 use crate::settings::AppSettings;
 use crate::views::{
     connection_list, overview, process_list, ConnectionRowView, OverviewView, ProcessListParams, ProcessRowView,
 };
 
 const PIPE_TIMEOUT: Duration = Duration::from_millis(1500);
+/// A write waits for the service to save it, which can take longer than a status check.
+const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 /// How far back to look for the newest metrics sample when judging data freshness.
 const FRESHNESS_LOOKBACK_SECS: i64 = 600;
+
+fn unexpected(response: &Response) -> String {
+    format!("The collector answered something unexpected: {response:?}")
+}
 
 /// What a data call produced. `state` tells the UI which screen to show.
 #[derive(Debug, Serialize)]
@@ -178,6 +185,41 @@ impl<C: Clock + Send + Sync> Backend<C> {
 
     pub fn program_history(&self, range_secs: u64, path: String) -> Data<ProgramHistoryView> {
         self.with_store(|store, now| program_history(store, now, range_secs, &path))
+    }
+
+    pub fn known_programs(&self) -> Data<KnownProgramsView> {
+        self.with_store(|store, _| known_programs(store))
+    }
+
+    /// Asks the service to mark the product of the program at path as known. The service decides (it checks the file's own
+    /// identity); a refusal comes back in its own words.
+    pub fn mark_known(&self, path: String, label: String, note: Option<String>) -> Result<i64, String> {
+        match self.write(&Request::KnownProductAdd { path, label, note })? {
+            Response::KnownProductSaved { id } => Ok(id),
+            other => Err(unexpected(&other)),
+        }
+    }
+
+    pub fn unmark_known(&self, id: i64) -> Result<(), String> {
+        match self.write(&Request::KnownProductRemove { id })? {
+            Response::Done => Ok(()),
+            other => Err(unexpected(&other)),
+        }
+    }
+
+    /// Sends a write request to the service. The app never writes the database itself.
+    fn write(&self, wanted: &Request) -> Result<Response, String> {
+        match request(&self.pipe_name, wanted, WRITE_TIMEOUT) {
+            Ok(Response::Error { message }) => Err(message),
+            Ok(response) => Ok(response),
+            Err(syntrac_ipc::pipe::ClientError::NotRunning) => {
+                Err("The SYNTRAC collector is not running, so the change could not be saved.".to_owned())
+            }
+            Err(syntrac_ipc::pipe::ClientError::AccessDenied) => {
+                Err("This user is not allowed to change the collector's settings.".to_owned())
+            }
+            Err(other) => Err(format!("The collector could not be reached: {other}")),
+        }
     }
 
     /// Never fails: every problem is a state.

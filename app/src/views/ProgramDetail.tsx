@@ -14,7 +14,7 @@ import { usePolled } from '../hooks/usePolled';
 
 const REFRESH_MS = 60_000;
 
-function DetailBody({ data }: { data: ProgramHistoryView }) {
+function DetailBody({ data, name, onChanged }: { data: ProgramHistoryView; name: string; onChanged: () => void }) {
   const granularity = granularityFor((data.toMs - data.fromMs) / 1000);
   const buckets = useMemo(() => bucketProgramHours(data.hours, granularity), [data.hours, granularity]);
   const palette = useMemo(() => readPalette(), []);
@@ -61,7 +61,13 @@ function DetailBody({ data }: { data: ProgramHistoryView }) {
       </dl>
       <Chart option={cpu} label="Program CPU over time" />
       <Chart option={memory} label="Program memory over time" />
-      <IdentityPanel identity={data.identity} path={data.path} />
+      <IdentityPanel
+        identity={data.identity}
+        standing={data.standing}
+        name={name}
+        path={data.path}
+        onChanged={onChanged}
+      />
     </>
   );
 }
@@ -72,14 +78,24 @@ export function ProgramDetail({
   path,
   rangeSecs,
   onClose,
+  onChanged,
+  version = 0,
 }: {
   name: string;
   path: string;
   rangeSecs: number;
   onClose: () => void;
+  /** Called after the user changed something about this program (for example marked it as known). */
+  onChanged: () => void;
+  /** Changes whenever the list of known programs changed, so the screen is read again. */
+  version?: number;
 }) {
   const api = useApi();
-  const result = usePolled(() => api.programHistory(rangeSecs, path), REFRESH_MS, `program:${path}:${rangeSecs}`);
+  const result = usePolled(
+    () => api.programHistory(rangeSecs, path),
+    REFRESH_MS,
+    `program:${path}:${rangeSecs}:${version}`,
+  );
   return (
     <section className="card card--wide">
       <div className="card__head">
@@ -89,7 +105,7 @@ export function ProgramDetail({
         </button>
       </div>
       <p className="muted">{path}</p>
-      <DataGate result={result}>{(data) => <DetailBody data={data} />}</DataGate>
+      <DataGate result={result}>{(data) => <DetailBody data={data} name={name} onChanged={onChanged} />}</DataGate>
     </section>
   );
 }

@@ -28,6 +28,16 @@ pub enum Request {
     Ping,
     /// A snapshot of what the collector is doing.
     Status,
+    /// Confirm the product of the program at path as a known one (docs/KNOWN-PROGRAMS-DESIGN.md). The service builds the
+    /// product from the identity it measured for that file, never from anything the client says about the signer.
+    KnownProductAdd {
+        path: String,
+        label: String,
+        #[serde(default)]
+        note: Option<String>,
+    },
+    /// Remove a known product.
+    KnownProductRemove { id: i64 },
 }
 
 // A status reply is one small message every few seconds; boxing the report would only add noise at every use.
@@ -35,9 +45,19 @@ pub enum Request {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "response", rename_all = "snake_case")]
 pub enum Response {
-    Pong { version: String },
+    Pong {
+        version: String,
+    },
     Status(StatusReport),
-    Error { message: String },
+    /// The known product was saved (or updated); its id.
+    KnownProductSaved {
+        id: i64,
+    },
+    /// The request was carried out.
+    Done,
+    Error {
+        message: String,
+    },
 }
 
 /// Counters since the collector started. Plain data, independent of the collector's own types.

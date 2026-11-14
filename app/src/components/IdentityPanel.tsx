@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
-import type { IdentityDetailView } from '../api/types';
+import type { IdentityDetailView, StandingView } from '../api/types';
 import { formatBytes, formatDateTime } from '../format';
 import { locationLabel, signatureLabel, wasRenamed } from '../identityLabels';
 import { SignatureBadge } from './IdentityBadge';
+import { KnownSection } from './KnownSection';
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -31,7 +32,19 @@ function FailureNote({ identity }: { identity: IdentityDetailView }) {
 }
 
 /** What SYNTRAC found out about one program's file, with plain words for what each fact can and cannot prove. */
-export function IdentityPanel({ identity, path }: { identity: IdentityDetailView; path: string }) {
+export function IdentityPanel({
+  identity,
+  standing,
+  name,
+  path,
+  onChanged,
+}: {
+  identity: IdentityDetailView;
+  standing: StandingView;
+  name: string;
+  path: string;
+  onChanged: () => void;
+}) {
   const label = signatureLabel(identity);
   const known = identity.state === 'known';
   return (
@@ -79,6 +92,7 @@ export function IdentityPanel({ identity, path }: { identity: IdentityDetailView
         </p>
       )}
       <FailureNote identity={identity} />
+      <KnownSection name={name} path={path} identity={identity} standing={standing} onChanged={onChanged} />
       <p className="muted">
         The signature is the strongest of these signals; the company and product names can be written by anyone, and a
         program can copy itself into a normal-looking folder. None of this proves a program is safe or unsafe: it is

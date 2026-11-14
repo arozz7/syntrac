@@ -418,3 +418,27 @@
   overflow-wrap: anywhere;
   font-size: 0.85rem;
 }
+
+/* Known programs: the user's own list, and a program that imitates one of them. */
+.identity__warning {
+  margin: 0.75rem 0;
+  padding: 0.5rem 0.9rem;
+  border-left: 4px solid var(--status-degraded-bg);
+  background: var(--color-surface);
+}
+
+.identity__warning p,
+.identity__warning ul {
+  margin: 0.25rem 0;
+}
+
+.mark-form p {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mark-form input {
+  min-width: 18rem;
+}

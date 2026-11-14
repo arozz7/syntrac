@@ -116,6 +116,11 @@ fn run_client(args: &CliArgs) -> ExitCode {
             eprintln!("error: the collector refused the request: {message}");
             ExitCode::from(EXIT_FAILURE)
         }
+        // The command line only sends ping and status; these answer other requests.
+        Ok(Response::KnownProductSaved { .. } | Response::Done) => {
+            eprintln!("error: the collector sent an answer that does not belong to this request");
+            ExitCode::from(EXIT_FAILURE)
+        }
         Err(ClientError::NotRunning) => {
             eprintln!("The collector is not running (no pipe named {pipe}).");
             ExitCode::from(EXIT_NOT_RUNNING)

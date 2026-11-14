@@ -8,14 +8,15 @@ use syntrac_core::rollup::hour_start;
 use syntrac_core::storage_guard::StorageStats;
 use syntrac_core::{
     all_programs, collect_totals, group_programs, install_root, product_key, rank_groups, rank_totals,
-    IdentityRepository, ProgramMetric, ProgramSummary, ProgramTotals, RepoError, RollupRepository, Timestamp,
-    TrendRepository,
+    IdentityRepository, KnownProductRepository, ProgramMetric, ProgramSummary, ProgramTotals, RepoError,
+    RollupRepository, Timestamp, TrendRepository,
 };
 
 use crate::history::{clamp_history_secs, ms, range_start};
 use crate::identity_view::{
     badge, detail, merged_badge, product_name, Identities, IdentityBadgeView, IdentityDetailView,
 };
+use crate::known_view::{merged_standing, StandingView};
 use crate::names::display_name;
 
 pub const UNKNOWN_PROGRAM: &str = "Unknown program";
@@ -58,6 +59,8 @@ pub struct ProgramMemberView {
     pub name: String,
     pub path: String,
     pub identity: IdentityBadgeView,
+    /// Where it stands against the user's known programs.
+    pub standing: StandingView,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -80,6 +83,8 @@ pub struct ProgramRowView {
     pub last_seen_ms: Option<i64>,
     /// Who made it and where it runs from, as far as the service has looked at the file.
     pub identity: IdentityBadgeView,
+    /// Where it stands against the user's known programs.
+    pub standing: StandingView,
     /// The programs of a product row (empty for an ordinary row). A product row has no path.
     pub members: Vec<ProgramMemberView>,
 }
@@ -88,6 +93,7 @@ pub struct ProgramRowView {
 fn plain_row(program: ProgramSummary, identities: &Identities) -> ProgramRowView {
     let path = program.exe.map(|exe| exe.path);
     let identity = path.as_deref().map_or_else(|| badge("", None), |p| badge(p, identities.of(p)));
+    let standing = path.as_deref().map_or_else(StandingView::unlisted, |p| identities.standing(p));
     ProgramRowView {
         name: path.as_deref().map_or_else(|| UNKNOWN_PROGRAM.to_owned(), |p| display_name(p, 0)),
         path,
@@ -102,6 +108,7 @@ fn plain_row(program: ProgramSummary, identities: &Identities) -> ProgramRowView
         first_seen_ms: program.ledger.map(|l| ms(l.first_seen)),
         last_seen_ms: program.ledger.map(|l| ms(l.last_seen)),
         identity,
+        standing,
         members: Vec::new(),
     }
 }
@@ -114,6 +121,7 @@ fn product_row(merged: ProgramSummary, members: Vec<ProgramSummary>, identities:
         .map(|exe| ProgramMemberView {
             name: display_name(&exe.path, 0),
             identity: badge(&exe.path, identities.of(&exe.path)),
+            standing: identities.standing(&exe.path),
             path: exe.path,
         })
         .collect();
@@ -122,6 +130,8 @@ fn product_row(merged: ProgramSummary, members: Vec<ProgramSummary>, identities:
     let mut row = plain_row(merged, identities);
     row.name = product_name(&paths, &badges);
     row.identity = merged_badge(&badges);
+    let standings: Vec<StandingView> = member_rows.iter().map(|m| m.standing.clone()).collect();
+    row.standing = merged_standing(&standings);
     row.members = member_rows;
     row
 }
@@ -230,7 +240,7 @@ pub fn rank_range<R>(
     grouping: Grouping,
 ) -> Result<ProgramsView, RepoError>
 where
-    R: RollupRepository + StorageStats + IdentityRepository,
+    R: RollupRepository + StorageStats + IdentityRepository + KnownProductRepository,
 {
     let limit = limit.clamp(1, MAX_PROGRAM_ROWS);
     let identities = Identities::load(repo)?;
@@ -253,7 +263,7 @@ pub fn program_ranking<R>(
     grouping: Grouping,
 ) -> Result<ProgramsView, RepoError>
 where
-    R: RollupRepository + TrendRepository + StorageStats + IdentityRepository,
+    R: RollupRepository + TrendRepository + StorageStats + IdentityRepository + KnownProductRepository,
 {
     rank_range(repo, &range_totals(repo, now, range_secs)?, metric, limit, grouping)
 }
@@ -284,6 +294,8 @@ pub struct ProgramHistoryView {
     pub last_seen_ms: Option<i64>,
     /// What the service found out about the file (or that it has not looked yet).
     pub identity: IdentityDetailView,
+    /// Where it stands against the user's known programs.
+    pub standing: StandingView,
     pub hours: Vec<ProgramHourView>,
 }
 
@@ -294,7 +306,7 @@ pub fn program_history<R>(
     path: &str,
 ) -> Result<ProgramHistoryView, RepoError>
 where
-    R: RollupRepository + IdentityRepository,
+    R: RollupRepository + IdentityRepository + KnownProductRepository,
 {
     let from = range_start(now, clamp_history_secs(range_secs));
     let rows = repo.executable_hours(path, from, now)?;
@@ -327,6 +339,7 @@ where
         first_seen_ms: ledger.map(|l| ms(l.first_seen)),
         last_seen_ms: ledger.map(|l| ms(l.last_seen)),
         identity: detail(path, repo.identity(path)?.as_ref()),
+        standing: Identities::load(repo)?.standing(path),
         hours,
     })
 }

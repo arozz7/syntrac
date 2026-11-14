@@ -3,6 +3,8 @@
 
 use std::sync::Arc;
 
+use serde::Serialize;
+
 use syntrac_core::SystemClock;
 use tauri::State;
 
@@ -10,6 +12,7 @@ use crate::backend::{Backend, Data};
 use crate::health::HealthView;
 use crate::history::SystemHistoryView;
 use crate::history_programs::{Grouping, ProgramHistoryView, ProgramMetricParam, ProgramsView};
+use crate::known_view::KnownProgramsView;
 use crate::views::{ConnectionRowView, OverviewView, ProcessListParams, ProcessRowView};
 
 pub type SharedBackend = Arc<Backend<SystemClock>>;
@@ -64,6 +67,49 @@ pub async fn get_program_history(
 ) -> Result<Data<ProgramHistoryView>, ()> {
     let backend = Arc::clone(&backend);
     Ok(blocking(move || backend.program_history(range_secs, path)).await.unwrap_or_else(internal))
+}
+
+#[tauri::command]
+pub async fn get_known_programs(backend: State<'_, SharedBackend>) -> Result<Data<KnownProgramsView>, ()> {
+    let backend = Arc::clone(&backend);
+    Ok(blocking(move || backend.known_programs()).await.unwrap_or_else(internal))
+}
+
+/// The result of a change request: the service's own words when it refuses.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WriteOutcome {
+    pub ok: bool,
+    pub id: Option<i64>,
+    pub message: Option<String>,
+}
+
+impl WriteOutcome {
+    fn from_result(result: Result<Option<i64>, String>) -> Self {
+        match result {
+            Ok(id) => Self { ok: true, id, message: None },
+            Err(message) => Self { ok: false, id: None, message: Some(message) },
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn mark_known_program(
+    backend: State<'_, SharedBackend>,
+    path: String,
+    label: String,
+    note: Option<String>,
+) -> Result<WriteOutcome, ()> {
+    let backend = Arc::clone(&backend);
+    let result = blocking(move || backend.mark_known(path, label, note).map(Some)).await;
+    Ok(WriteOutcome::from_result(result.unwrap_or_else(|| Err("The request could not be run.".to_owned()))))
+}
+
+#[tauri::command]
+pub async fn unmark_known_program(backend: State<'_, SharedBackend>, id: i64) -> Result<WriteOutcome, ()> {
+    let backend = Arc::clone(&backend);
+    let result = blocking(move || backend.unmark_known(id).map(|()| None)).await;
+    Ok(WriteOutcome::from_result(result.unwrap_or_else(|| Err("The request could not be run.".to_owned()))))
 }
 
 #[tauri::command]

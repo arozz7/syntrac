@@ -116,6 +116,7 @@ impl Handler for FixedStatus {
                 etw: None,
                 storage: None,
             }),
+            other => Response::Error { message: format!("not handled: {other:?}") },
         }
     }
 }
@@ -165,6 +166,7 @@ impl Handler for ReportsDatabase {
                 etw: None,
                 storage: None,
             }),
+            other => Response::Error { message: format!("not handled: {other:?}") },
         }
     }
 }

@@ -151,3 +151,64 @@ fn the_storage_level_uses_stable_lowercase_names() {
     assert_eq!(serde_json::to_string(&StorageLevel::Trimming).unwrap(), "\"trimming\"");
     assert_eq!(serde_json::to_string(&StorageLevel::Paused).unwrap(), "\"paused\"");
 }
+
+#[test]
+fn marking_a_program_as_known_is_a_request_with_a_path_a_label_and_an_optional_note() {
+    let request = Request::KnownProductAdd {
+        path: r"C:\Program Files (x86)\Acme\acmeserv.exe".into(),
+        label: "Acme".into(),
+        note: Some("my cloud backup".into()),
+    };
+
+    let line = encode_request(&request);
+
+    let value: serde_json::Value = serde_json::from_str(line.trim_end()).unwrap();
+    assert_eq!(value["request"], "known_product_add");
+    assert_eq!(value["path"], r"C:\Program Files (x86)\Acme\acmeserv.exe");
+    assert_eq!(value["label"], "Acme");
+    assert_eq!(decode_request(line.as_bytes()).unwrap(), request);
+}
+
+#[test]
+fn the_note_may_be_left_out() {
+    let decoded = decode_request(br#"{"request":"known_product_add","path":"C:\\a.exe","label":"A"}"#).unwrap();
+
+    assert_eq!(decoded, Request::KnownProductAdd { path: r"C:\a.exe".into(), label: "A".into(), note: None });
+}
+
+#[test]
+fn removing_a_known_product_names_it_by_id() {
+    let request = Request::KnownProductRemove { id: 7 };
+
+    assert_eq!(encode_request(&request), "{\"request\":\"known_product_remove\",\"id\":7}\n");
+    assert_eq!(decode_request(encode_request(&request).as_bytes()).unwrap(), request);
+}
+
+#[test]
+fn a_write_request_without_its_required_fields_is_malformed() {
+    assert!(matches!(
+        decode_request(br#"{"request":"known_product_add","label":"A"}"#),
+        Err(ProtocolError::Malformed(_))
+    ));
+    assert!(matches!(decode_request(br#"{"request":"known_product_remove"}"#), Err(ProtocolError::Malformed(_))));
+    assert!(matches!(
+        decode_request(br#"{"request":"known_product_remove","id":"seven"}"#),
+        Err(ProtocolError::Malformed(_))
+    ));
+}
+
+#[test]
+fn the_replies_to_the_write_commands_round_trip() {
+    for response in [Response::KnownProductSaved { id: 3 }, Response::Done] {
+        assert_eq!(decode_response(encode_response(&response).as_bytes()).unwrap(), response);
+    }
+    assert_eq!(encode_response(&Response::Done), "{\"response\":\"done\"}\n");
+}
+
+#[test]
+fn a_write_request_over_the_size_cap_is_refused_before_it_is_parsed() {
+    let long_note = "x".repeat(MAX_REQUEST_BYTES);
+    let line = format!(r#"{{"request":"known_product_add","path":"C:\\a.exe","label":"A","note":"{long_note}"}}"#);
+
+    assert!(matches!(decode_request(line.as_bytes()), Err(ProtocolError::TooLarge { .. })));
+}

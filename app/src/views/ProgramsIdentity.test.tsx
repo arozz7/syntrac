@@ -10,6 +10,7 @@ import {
   programHistoryView,
   programRow,
   programsView,
+  standing,
 } from '../test/fakeApi';
 import { ProgramsHistory } from './ProgramsHistory';
 
@@ -44,11 +45,13 @@ const ACME = programRow({
       name: 'acmeserv.exe',
       path: 'C:\\Program Files (x86)\\Acme\\acmeserv.exe',
       identity: identityBadge({ publisher: 'ACME SOFTWARE, INC.' }),
+      standing: standing(),
     },
     {
       name: 'acmetransmit64.exe',
       path: 'C:\\Program Files (x86)\\Acme\\x64\\acmetransmit64.exe',
       identity: identityBadge({ publisher: 'ACME SOFTWARE, INC.' }),
+      standing: standing(),
     },
   ],
 });

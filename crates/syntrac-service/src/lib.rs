@@ -8,6 +8,7 @@ mod db_check;
 mod guard;
 mod host;
 mod identity_worker;
+mod known_admin;
 mod service_paths;
 mod status_board;
 
@@ -21,6 +22,7 @@ pub use host::{
     SERVICE_PIPE_NAME,
 };
 pub use identity_worker::{IdentityWorker, IdentityWorkerSettings, WorkerTick};
+pub use known_admin::{KnownProductsAdmin, ServiceHandler};
 pub use service_paths::{
     check_data_drives, service_config_path, validate_service_paths, ServicePathError, ServicePaths,
 };

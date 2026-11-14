@@ -159,6 +159,17 @@ from that handle. Signatures are checked offline (revocation off, cache-only URL
 `IdentityWorker` on its own thread with its own database connection (`identity_worker.rs`, started in `host.rs`), paced by
 `identity_*` config keys, so reading files cannot delay ETW draining.
 
+## Known programs
+
+The user confirms a product from a program's drill-down (Mark as known); the app never writes the database. It sends
+`known_product_add { path, label, note }` over the service pipe, and `syntrac_service::KnownProductsAdmin` (behind a
+`ServiceHandler` that sends ping and status to the status board) builds the product from the identity the service itself measured
+(`syntrac_core::known::new_known_product`: refuses unread, unreadable and altered files) and stores it in `known_products` (schema
+v7). The pipe has its own database connection, like the identity worker. The read side is pure: `KnownIndex` judges any program as
+known (its `product_key` is on the list), a lookalike (it names a known product, or has the file name of a known program without a
+valid signature, with two exceptions that keep the real thing quiet) or unlisted. The app attaches that standing to ranking rows,
+product rows and the drill-down, and the History > Known programs tab lists the products and the lookalikes.
+
 ## Collector adapters (`syntrac-collector`)
 
 Each Windows adapter is split in two: a thin adapter that reads raw values, and a **pure, unit-tested function** that

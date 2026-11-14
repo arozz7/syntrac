@@ -8,6 +8,7 @@ pub mod health;
 pub mod history;
 pub mod history_programs;
 pub mod identity_view;
+pub mod known_view;
 pub mod names;
 pub mod series;
 pub mod settings;
@@ -31,6 +32,9 @@ pub fn run() {
             commands::list_connections,
             commands::get_system_history,
             commands::get_top_programs,
+            commands::get_known_programs,
+            commands::mark_known_program,
+            commands::unmark_known_program,
             commands::get_program_history
         ])
         .run(tauri::generate_context!())

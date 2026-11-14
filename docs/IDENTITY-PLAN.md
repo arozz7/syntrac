@@ -94,7 +94,7 @@ the program drill-down. Where the same `exe_id` has no identity yet the UI says 
 - **I2 Show it (done; see `aiChangeLog/phase-I2.md`).** Programs tab: publisher, a signed / unsigned / invalid badge, location class; drill-down gets an "Identity"
   panel (signer, thumbprint, version info, hash, file size and date, first seen, downloaded-from-internet, location) with plain
   labels for what each signal can and cannot prove. Rows gain a "Group by product" switch using `product_key`.
-- **I3 Known programs.** A list of products the user has confirmed, each with a label, a note, and the signer and install root
+- **I3 Known programs (done; design in `docs/KNOWN-PROGRAMS-DESIGN.md`, log in `aiChangeLog/phase-I3.md`).** A list of products the user has confirmed, each with a label, a note, and the signer and install root
   that were confirmed. SYNTRAC then marks a program as "known", and flags an executable that matches a known product's name
   but not its signer or location ("looks like Acme but is not signed by Acme Software, Inc."). Starts from the entries already
   in memory (`project-known-programs`: Acme). This list later feeds the Phase 3 "unusual for this program" baselines.

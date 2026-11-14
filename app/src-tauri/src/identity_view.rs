@@ -8,9 +8,13 @@ use std::collections::HashMap;
 
 use serde::Serialize;
 use syntrac_core::rollup::executable_key;
-use syntrac_core::{classify_location, install_root, IdentityRecord, IdentityRepository, RepoError};
+use syntrac_core::{
+    classify_location, install_root, IdentityRecord, IdentityRepository, KnownIndex, KnownProduct,
+    KnownProductRepository, RepoError,
+};
 
 use crate::history::ms;
+use crate::known_view::{standing_view, StandingView};
 
 /// A short summary for a row of a table.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -106,21 +110,46 @@ pub fn detail(path: &str, record: Option<&IdentityRecord>) -> IdentityDetailView
     }
 }
 
-/// All the identity records, by executable key: read once per request, so a ranking of 200 rows costs one query.
-pub struct Identities(HashMap<String, IdentityRecord>);
+/// All the identity records, by executable key, and the user's known products with an index over them: read once per request,
+/// so a ranking of 200 rows costs two queries.
+pub struct Identities {
+    records: HashMap<String, IdentityRecord>,
+    products: Vec<KnownProduct>,
+    index: KnownIndex,
+}
 
 impl Identities {
-    pub fn load<R: IdentityRepository + ?Sized>(repo: &R) -> Result<Self, RepoError> {
-        let map = repo
+    pub fn load<R: IdentityRepository + KnownProductRepository + ?Sized>(repo: &R) -> Result<Self, RepoError> {
+        let records: HashMap<String, IdentityRecord> = repo
             .identity_entries()?
             .into_iter()
             .filter_map(|entry| entry.record.map(|record| (entry.exe.key, record)))
             .collect();
-        Ok(Self(map))
+        let products = repo.known_products()?;
+        let index = KnownIndex::build(
+            products.clone(),
+            records.values().map(|record| (record.exe.path.as_str(), record.facts.as_ref())),
+        );
+        Ok(Self { records, products, index })
     }
 
     pub fn of(&self, path: &str) -> Option<&IdentityRecord> {
-        executable_key(path).and_then(|key| self.0.get(&key))
+        executable_key(path).and_then(|key| self.records.get(&key))
+    }
+
+    /// Every program that has an identity record.
+    pub fn all(&self) -> Vec<&IdentityRecord> {
+        self.records.values().collect()
+    }
+
+    pub fn products(&self) -> &[KnownProduct] {
+        &self.products
+    }
+
+    /// Where a program stands against the known products (a program whose file has not been read is not judged).
+    pub fn standing(&self, path: &str) -> StandingView {
+        let facts = self.of(path).and_then(|record| record.facts.as_ref());
+        standing_view(self.index.standing(path, facts), &self.products)
     }
 }
 

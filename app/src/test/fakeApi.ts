@@ -9,6 +9,9 @@ import type {
   ProcessRowView,
   IdentityBadgeView,
   IdentityDetailView,
+  KnownProgramsView,
+  StandingView,
+  WriteOutcome,
   ProgramHistoryView,
   ProgramRowView,
   ProgramsView,
@@ -185,6 +188,22 @@ export function identityDetail(overrides: Partial<IdentityDetailView> = {}): Ide
   };
 }
 
+export function standing(overrides: Partial<StandingView> = {}): StandingView {
+  return {
+    state: 'unlisted',
+    id: null,
+    label: null,
+    expectedPublisher: null,
+    expectedFolder: null,
+    reasons: [],
+    ...overrides,
+  };
+}
+
+export function knownProgramsView(overrides: Partial<KnownProgramsView> = {}): KnownProgramsView {
+  return { products: [], lookalikes: [], ...overrides };
+}
+
 export function programRow(overrides: Partial<ProgramRowView> = {}): ProgramRowView {
   return {
     name: 'chrome.exe',
@@ -200,6 +219,7 @@ export function programRow(overrides: Partial<ProgramRowView> = {}): ProgramRowV
     firstSeenMs: NOW - 86_400_000,
     lastSeenMs: NOW - 3_600_000,
     identity: identityBadge(),
+    standing: standing(),
     members: [],
     ...overrides,
   };
@@ -228,6 +248,7 @@ export function programHistoryView(overrides: Partial<ProgramHistoryView> = {}):
     firstSeenMs: NOW - 86_400_000,
     lastSeenMs: NOW - 3_600_000,
     identity: identityDetail(),
+    standing: standing(),
     hours: [
       {
         hourMs: NOW - 3 * 3_600_000,
@@ -262,6 +283,9 @@ export function makeFakeApi(overrides: Partial<Api> = {}): Api & { [K in keyof A
     systemHistory: vi.fn(async () => ok(systemHistory())),
     topPrograms: vi.fn(async () => ok(programsView())),
     programHistory: vi.fn(async () => ok(programHistoryView())),
+    knownPrograms: vi.fn(async () => ok(knownProgramsView())),
+    markKnown: vi.fn(async (): Promise<WriteOutcome> => ({ ok: true, id: 1, message: null })),
+    unmarkKnown: vi.fn(async (): Promise<WriteOutcome> => ({ ok: true, id: null, message: null })),
     processes: vi.fn(async () =>
       ok([
         processRow(),

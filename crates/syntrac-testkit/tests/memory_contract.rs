@@ -58,3 +58,8 @@ fn in_memory_repository_satisfies_the_trend_contract() {
 fn in_memory_repository_satisfies_the_identity_contract() {
     syntrac_testkit::identity_contract::identity_contract(InMemoryRepository::default);
 }
+
+#[test]
+fn in_memory_repository_satisfies_the_known_products_contract() {
+    syntrac_testkit::known_contract::known_contract(InMemoryRepository::default);
+}

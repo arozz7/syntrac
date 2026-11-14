@@ -269,6 +269,21 @@ pub const MIGRATIONS: &[&str] = &[
         zone_id          INTEGER
     );
     ",
+    // 7: products the user has confirmed (docs/KNOWN-PROGRAMS-DESIGN.md, I3). Additive. publisher is '' for a product with
+    // no publisher, so (publisher, root) is unique for those too. Permanent: the purge of detail never touches it.
+    "
+    CREATE TABLE known_products (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        label        TEXT NOT NULL,
+        publisher    TEXT NOT NULL DEFAULT '',
+        root         TEXT NOT NULL,
+        product_name TEXT,
+        note         TEXT,
+        created_at   INTEGER NOT NULL,
+        updated_at   INTEGER NOT NULL,
+        UNIQUE (publisher, root)
+    );
+    ",
 ];
 
 /// The migration (1-based number) that rewrites every table. An existing database gets a backup copy before it is applied

@@ -93,7 +93,7 @@ function ProgramsTable({ view, onSelect }: { view: ProgramsView; onSelect: (choi
                 <ProgramName program={program} expanded={expanded} onSelect={onSelect} onToggle={() => toggle(key)} />
               </td>
               <td>
-                <IdentityCell identity={program.identity} />
+                <IdentityCell identity={program.identity} standing={program.standing} />
               </td>
               <td className="num">{formatPercent(program.cpuAvgPercent)}</td>
               <td className="num">{formatPercent(program.cpuPeakPercent)}</td>
@@ -120,7 +120,7 @@ function ProgramsTable({ view, onSelect }: { view: ProgramsView; onSelect: (choi
                     </button>
                   </td>
                   <td>
-                    <IdentityCell identity={member.identity} />
+                    <IdentityCell identity={member.identity} standing={member.standing} />
                   </td>
                   <td colSpan={8} />
                 </tr>
@@ -140,10 +140,12 @@ export function ProgramsHistory() {
   const [metric, setMetric] = useState<ProgramMetric>('cpu');
   const [grouped, setGrouped] = useState(false);
   const [selected, setSelected] = useState<Choice | null>(null);
+  // Bumped when the user changes the list of known programs, so the ranking and the open detail are read again at once.
+  const [version, setVersion] = useState(0);
   const result = usePolled(
     () => api.topPrograms(rangeSecs, metric, undefined, grouped),
     REFRESH_MS,
-    `programs:${rangeSecs}:${metric}:${grouped}`,
+    `programs:${rangeSecs}:${metric}:${grouped}:${version}`,
   );
 
   return (
@@ -196,6 +198,8 @@ export function ProgramsHistory() {
           path={selected.path}
           rangeSecs={rangeSecs}
           onClose={() => setSelected(null)}
+          onChanged={() => setVersion((current) => current + 1)}
+          version={version}
         />
       )}
       <p className="muted">
