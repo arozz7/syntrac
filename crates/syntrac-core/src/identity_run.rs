@@ -15,7 +15,7 @@ use std::cmp::Reverse;
 use std::time::Duration;
 
 use crate::exe_identity::{
-    FileInspector, IdentityEntry, IdentityFailure, IdentityRecord, IdentityRepository, InspectError,
+    FileInspector, IdentityEntry, IdentityFailure, IdentityRecord, IdentityRepository, InspectError, InspectErrorKind,
 };
 use crate::ports::RepoError;
 use crate::time::Timestamp;
@@ -41,6 +41,8 @@ pub struct IdentityPass {
     /// Files whose size and time had not changed: nothing was read.
     pub unchanged: usize,
     pub failed: usize,
+    /// The inspector reported a stop request: the pass ended early, and the file it was on was NOT recorded.
+    pub stopped: bool,
     /// More executables are already due: run again soon instead of waiting for the usual interval.
     pub backlog: bool,
 }
@@ -101,8 +103,13 @@ where
 
     let mut pass = IdentityPass { backlog: due.len() > settings.max_per_pass, ..IdentityPass::default() };
     for entry in due.into_iter().take(settings.max_per_pass) {
-        let record = look_at(&entry, inspector, now, &mut pass);
-        repo.save_identity(&record)?;
+        match look_at(&entry, inspector, now, &mut pass) {
+            Some(record) => repo.save_identity(&record)?,
+            None => {
+                pass.stopped = true;
+                break;
+            }
+        }
     }
     Ok(pass)
 }
@@ -112,7 +119,7 @@ fn look_at<I: FileInspector + ?Sized>(
     inspector: &I,
     now: Timestamp,
     pass: &mut IdentityPass,
-) -> IdentityRecord {
+) -> Option<IdentityRecord> {
     let path = entry.exe.path.as_str();
     let previous = entry.record.as_ref();
     let known_facts = previous.and_then(|record| record.facts.as_ref());
@@ -138,16 +145,18 @@ fn look_at<I: FileInspector + ?Sized>(
     match outcome {
         Ok(Some(facts)) => {
             pass.inspected += 1;
-            attempt(Some(facts), Some(now), None)
+            Some(attempt(Some(facts), Some(now), None))
         }
         Ok(None) => {
             pass.unchanged += 1;
-            attempt(kept_facts, kept_time, None)
+            Some(attempt(kept_facts, kept_time, None))
         }
+        // A stop request says nothing about the file: it is not a failure, so nothing is recorded.
+        Err(InspectError { kind: InspectErrorKind::Cancelled, .. }) => None,
         Err(InspectError { kind, message }) => {
             pass.failed += 1;
             let earlier = previous.and_then(|record| record.failure.as_ref()).map_or(0, |failure| failure.attempts);
-            attempt(kept_facts, kept_time, Some(IdentityFailure { kind, message, attempts: earlier + 1 }))
+            Some(attempt(kept_facts, kept_time, Some(IdentityFailure { kind, message, attempts: earlier + 1 })))
         }
     }
 }

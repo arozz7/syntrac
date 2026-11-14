@@ -109,6 +109,8 @@ pub enum InspectErrorKind {
     /// A bare name, a directory, a device, a link or a network path: not something we read.
     NotAFile,
     TimedOut,
+    /// The service is stopping. Says NOTHING about the file: never stored, never counted as a failure.
+    Cancelled,
     Other,
 }
 
@@ -119,12 +121,13 @@ impl InspectErrorKind {
             Self::AccessDenied => "access_denied",
             Self::NotAFile => "not_a_file",
             Self::TimedOut => "timed_out",
+            Self::Cancelled => "cancelled",
             Self::Other => "other",
         }
     }
 
     pub fn parse(text: &str) -> Option<Self> {
-        [Self::NotFound, Self::AccessDenied, Self::NotAFile, Self::TimedOut, Self::Other]
+        [Self::NotFound, Self::AccessDenied, Self::NotAFile, Self::TimedOut, Self::Cancelled, Self::Other]
             .into_iter()
             .find(|k| k.as_str() == text)
     }

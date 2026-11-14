@@ -41,6 +41,7 @@ pub fn identity_contract<R: IdentitySubject>(make: impl Fn() -> R) {
     identities_survive_the_purge_of_detail(make());
     paths_are_matched_without_regard_to_case(make());
     every_field_survives_storage(make());
+    a_look_cut_short_by_a_stop_is_not_saved_and_ends_the_pass(make());
 }
 
 fn run_in_hour<R: IdentitySubject>(repo: &mut R, pid: u32, exe: &str, hour: i64) {
@@ -341,4 +342,40 @@ pub fn seed_executables<R: IdentitySubject>(repo: &mut R, paths: &[&str]) -> Tim
     let last_hour = paths.len() as i64 + 2;
     roll_through(repo, last_hour);
     t(last_hour + 1, 0)
+}
+
+fn a_look_cut_short_by_a_stop_is_not_saved_and_ends_the_pass<R: IdentitySubject>(mut repo: R) {
+    run_in_hour(&mut repo, 10, A, 0);
+    run_in_hour(&mut repo, 11, B, 1);
+    run_in_hour(&mut repo, 12, C, 2);
+    roll_through(&mut repo, 6);
+    let inspector = FakeInspector::default();
+    inspector.set(A, Err(denied()));
+    inspector.set(B, Err(denied()));
+    inspector.set(C, Ok(facts(1, "c")));
+    pass(&mut repo, &inspector, t(8, 0), 10);
+    let log_before = inspector.full_inspections().len();
+
+    // The service is stopped while the next pass is on A (the first failure due again, then B).
+    inspector.set(A, Err(InspectError { kind: InspectErrorKind::Cancelled, message: "stopping".into() }));
+    inspector.set(B, Ok(facts(2, "b")));
+    let result = pass(&mut repo, &inspector, t(30, 0), 10);
+
+    assert!(result.stopped, "the pass says it was cut short");
+    assert_eq!((result.inspected, result.failed), (0, 0), "a stop is not counted as anything");
+    let a = repo.identity(A).unwrap().unwrap();
+    assert_eq!(a.failure.unwrap().attempts, 1, "a stop is not a failure of the file");
+    assert_eq!(a.last_attempt, t(8, 0), "the cut-short look was not recorded at all");
+    assert_eq!(
+        inspector.full_inspections().split_off(log_before),
+        vec![A.to_owned()],
+        "nothing after the stop was read"
+    );
+    assert!(repo.identity(B).unwrap().unwrap().failure.is_some(), "B was not reached");
+
+    inspector.set(A, Ok(facts(1, "a")));
+    let later = pass(&mut repo, &inspector, t(31, 0), 10);
+    assert!(!later.stopped);
+    assert_eq!(later.inspected, 2, "the next pass looks again at both");
+    assert_eq!(repo.identity(A).unwrap().unwrap().failure, None);
 }

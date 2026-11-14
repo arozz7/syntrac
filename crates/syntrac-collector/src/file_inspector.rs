@@ -64,6 +64,11 @@ fn error(kind: InspectErrorKind, message: impl Into<String>) -> InspectError {
     InspectError { kind, message: message.into() }
 }
 
+/// The service is stopping. Not a verdict on the file: the pass drops it without recording anything.
+fn stopped() -> InspectError {
+    error(InspectErrorKind::Cancelled, "the service is stopping")
+}
+
 /// The operating system's own error number decides the kind: a file that is gone, a file we may not read, anything else.
 fn from_io(failure: &std::io::Error) -> InspectError {
     const NOT_FOUND: [i32; 2] = [2, 3]; // file not found, path not found
@@ -133,12 +138,16 @@ impl FileInspector for WindowsFileInspector {
     }
 
     fn inspect(&self, path: &str) -> Result<FileFacts, InspectError> {
+        // Checked before anything is opened, so a stopping service starts no new file, whatever its size.
+        if self.stop.load(Ordering::SeqCst) {
+            return Err(stopped());
+        }
         let (mut file, metadata) = open_regular(path)?;
         let stamp = stamp_of(&metadata);
 
         let sha256 = if stamp.size <= self.settings.max_hash_bytes {
             let hash = sha256_hex(&mut file, || self.stop.load(Ordering::SeqCst)).map_err(|e| match e {
-                HashError::Stopped => error(InspectErrorKind::TimedOut, "stopped while reading the file"),
+                HashError::Stopped => stopped(),
                 HashError::Io(io) => from_io(&io),
             })?;
             file.rewind().map_err(|e| from_io(&e))?;

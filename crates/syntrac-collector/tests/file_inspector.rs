@@ -102,14 +102,24 @@ fn a_file_larger_than_the_cap_is_not_hashed_but_is_still_checked() {
 }
 
 #[test]
-fn a_stop_request_ends_the_read_with_a_timed_out_error() {
+fn a_stop_request_ends_the_read_with_a_cancelled_error() {
     let stop = Arc::new(AtomicBool::new(false));
     let stopping = WindowsFileInspector::new(InspectorSettings::default(), Arc::clone(&stop));
     stop.store(true, Ordering::SeqCst);
 
     let error = stopping.inspect(&system_file("cmd.exe")).unwrap_err();
 
-    assert_eq!(error.kind, InspectErrorKind::TimedOut);
+    assert_eq!(error.kind, InspectErrorKind::Cancelled);
+}
+
+#[test]
+fn a_stopping_service_starts_no_new_file_even_one_too_large_to_hash() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = temp_file(dir.path(), "big.exe", &[1_u8; 100]);
+    let stop = Arc::new(AtomicBool::new(true));
+    let stopping = WindowsFileInspector::new(InspectorSettings { max_hash_bytes: 50 }, stop);
+
+    assert_eq!(stopping.inspect(path.to_str().unwrap()).unwrap_err().kind, InspectErrorKind::Cancelled);
 }
 
 #[test]

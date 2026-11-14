@@ -57,11 +57,19 @@ files can never delay draining ETW, and stops it with the service. New config ke
   and Intel launchers (`IntelGraphicsSoftware.exe` whose original name is `IntelGraphicsSoftware.dll`), PowerToys, Git's `bash.exe`,
   and even Windows' own `audiodg.exe` (original name `audioadg.exe`). It will be shown as information, never as an alert.
 
+## Deviations from the plan (recorded)
+- The plan's per-file TIME LIMIT is not implemented. The size cap and the stop flag bound only the SHA-256 loop; the signature checks (WinVerifyTrust, the catalog hash) read the whole file and cannot be interrupted. The rehearsal found no file over the cap, so nothing depends on it today; recorded in the threat model with the fix (skip the signature check above the cap).
+- Stopping: a stop request is a distinct InspectErrorKind::Cancelled, checked before each file is opened. The pass drops that file WITHOUT recording anything and ends (IdentityPass.stopped), so restarting the service never marks files as failed or puts them on a back-off. (Found in review before install; covered by a contract scenario on both stores and two adapter tests.)
+
 ## Deployment (important)
 The new service migrates the database to schema v6 the first time it starts. The app opens the database read-only and refuses any
 schema that is not exactly the one it was built for, so the installed app (built for v5) will show a schema error from that moment.
 Reinstall the service AND rebuild the app (`cd app; pnpm tauri dev`) together. Going back to the old service later is not possible
 without a backup, because it refuses a newer schema (the v6 migration itself is additive and needs no backup).
+
+## Scratch files for the user to delete
+
+<scratch folder>\identity.db (336 MB, a copy of the live database, already migrated to v6: it is NOT a v5 backup).
 
 ## Not in I1b
 The UI (I2), known programs and the pipe's write commands (I3), run-as account (I4). The one-off backfill is not a separate step: the
