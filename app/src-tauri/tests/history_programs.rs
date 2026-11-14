@@ -2,7 +2,7 @@
 
 use syntrac_app_lib::backend::{Backend, Data};
 use syntrac_app_lib::history_programs::{
-    program_history, program_ranking, ProgramMetricParam, MAX_PROGRAM_ROWS, UNKNOWN_PROGRAM,
+    program_history, program_ranking, Grouping, ProgramMetricParam, MAX_PROGRAM_ROWS, UNKNOWN_PROGRAM,
 };
 use syntrac_app_lib::settings::AppSettings;
 use syntrac_core::{roll_up_due, EventRepository, MetricsRepository, ProcessRepository, RollupSettings, Timestamp};
@@ -53,7 +53,7 @@ fn scenario<R: ProcessRepository + MetricsRepository + EventRepository + syntrac
 fn ranked(metric: ProgramMetricParam) -> syntrac_app_lib::history_programs::ProgramsView {
     let mut repo = InMemoryRepository::default();
     scenario(&mut repo);
-    program_ranking(&repo, now(), 7 * 24 * 3600, metric, 10).unwrap()
+    program_ranking(&repo, now(), 7 * 24 * 3600, metric, 10, Grouping::None).unwrap()
 }
 
 #[test]
@@ -87,7 +87,7 @@ fn the_unattributed_bucket_is_called_unknown_program_and_has_no_path() {
     let settings = RollupSettings { settle: std::time::Duration::from_secs(300), max_hours_per_pass: 10 };
     roll_up_due(&mut repo, at_secs(secs(5, 0)), &settings).unwrap();
 
-    let view = program_ranking(&repo, now(), 7 * 24 * 3600, ProgramMetricParam::Cpu, 10).unwrap();
+    let view = program_ranking(&repo, now(), 7 * 24 * 3600, ProgramMetricParam::Cpu, 10, Grouping::None).unwrap();
 
     assert_eq!(view.programs[0].name, UNKNOWN_PROGRAM);
     assert_eq!(view.programs[0].path, None);
@@ -98,13 +98,13 @@ fn the_number_of_rows_is_limited() {
     let view = {
         let mut repo = InMemoryRepository::default();
         scenario(&mut repo);
-        program_ranking(&repo, now(), 7 * 24 * 3600, ProgramMetricParam::Cpu, 1).unwrap()
+        program_ranking(&repo, now(), 7 * 24 * 3600, ProgramMetricParam::Cpu, 1, Grouping::None).unwrap()
     };
     assert_eq!(view.programs.len(), 1);
     let huge = {
         let mut repo = InMemoryRepository::default();
         scenario(&mut repo);
-        program_ranking(&repo, now(), 7 * 24 * 3600, ProgramMetricParam::Cpu, usize::MAX).unwrap()
+        program_ranking(&repo, now(), 7 * 24 * 3600, ProgramMetricParam::Cpu, usize::MAX, Grouping::None).unwrap()
     };
     assert!(huge.programs.len() <= MAX_PROGRAM_ROWS);
 }
@@ -157,7 +157,7 @@ fn the_backend_serves_programs_from_a_real_database_and_reports_missing_ones() {
     };
     let backend = Backend::new(settings(&path), ManualClock::new(now()));
 
-    match backend.top_programs(7 * 24 * 3600, ProgramMetricParam::Cpu, Some(10)) {
+    match backend.top_programs(7 * 24 * 3600, ProgramMetricParam::Cpu, Some(10), Grouping::None) {
         Data::Ok { data } => assert_eq!(data.programs[0].name, "chrome.exe"),
         other => panic!("unexpected {}", serde_json::to_string(&other).unwrap()),
     }
@@ -167,7 +167,10 @@ fn the_backend_serves_programs_from_a_real_database_and_reports_missing_ones() {
     }
 
     let missing = Backend::new(settings(&dir.path().join("nope.db")), ManualClock::new(now()));
-    assert!(matches!(missing.top_programs(3600, ProgramMetricParam::Cpu, None), Data::NoDatabase { .. }));
+    assert!(matches!(
+        missing.top_programs(3600, ProgramMetricParam::Cpu, None, Grouping::None),
+        Data::NoDatabase { .. }
+    ));
 }
 
 #[test]
@@ -183,7 +186,12 @@ fn a_newly_rolled_up_hour_shows_up_even_though_the_sums_of_a_range_are_kept() {
         AppSettings::for_database(path.clone(), &format!("syntrac-cache-test-{}", std::process::id())),
         ManualClock::new(now()),
     );
-    let names = |backend: &Backend<ManualClock>, metric| match backend.top_programs(7 * 24 * 3600, metric, Some(10)) {
+    let names = |backend: &Backend<ManualClock>, metric| match backend.top_programs(
+        7 * 24 * 3600,
+        metric,
+        Some(10),
+        Grouping::None,
+    ) {
         Data::Ok { data } => data.programs.into_iter().map(|p| p.name).collect::<Vec<_>>(),
         other => panic!("unexpected {}", serde_json::to_string(&other).unwrap()),
     };

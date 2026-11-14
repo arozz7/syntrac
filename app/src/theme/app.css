@@ -359,3 +359,62 @@
   justify-content: space-between;
   gap: 1rem;
 }
+
+/* Identity: who made a program and whether it is signed. Evidence, so the colours are restrained: only a file that no
+   longer matches its signature is loud. */
+.badge {
+  display: inline-block;
+  padding: 0.05rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badge--good {
+  background: var(--status-running-bg);
+  border-color: var(--status-running-bg);
+  color: var(--status-running-fg);
+}
+
+.badge--caution {
+  background: var(--status-stale-bg);
+  border-color: var(--status-stale-bg);
+  color: var(--status-stale-fg);
+}
+
+.badge--alert {
+  background: var(--status-degraded-bg);
+  border-color: var(--status-degraded-bg);
+  color: var(--status-degraded-fg);
+}
+
+.badge--quiet {
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+}
+
+.identity-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.6rem;
+}
+
+.table__member td {
+  background: var(--color-surface);
+}
+
+.table__member td:first-child {
+  padding-left: 1.5rem;
+}
+
+.identity {
+  margin-top: 1rem;
+}
+
+.hash {
+  overflow-wrap: anywhere;
+  font-size: 0.85rem;
+}

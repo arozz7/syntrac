@@ -8,6 +8,7 @@ import { buildProgramCpuChartOption } from '../charts/programChart';
 import { readPalette } from '../charts/readPalette';
 import { Chart } from '../components/Chart';
 import { DataGate } from '../components/DataGate';
+import { IdentityPanel } from '../components/IdentityPanel';
 import { formatBytes, formatDateTime } from '../format';
 import { usePolled } from '../hooks/usePolled';
 
@@ -60,6 +61,7 @@ function DetailBody({ data }: { data: ProgramHistoryView }) {
       </dl>
       <Chart option={cpu} label="Program CPU over time" />
       <Chart option={memory} label="Program memory over time" />
+      <IdentityPanel identity={data.identity} path={data.path} />
     </>
   );
 }

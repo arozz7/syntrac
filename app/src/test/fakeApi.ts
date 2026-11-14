@@ -7,6 +7,8 @@ import type {
   OverviewView,
   ProcessCpuView,
   ProcessRowView,
+  IdentityBadgeView,
+  IdentityDetailView,
   ProgramHistoryView,
   ProgramRowView,
   ProgramsView,
@@ -150,6 +152,39 @@ export function systemHistory(overrides: Partial<SystemHistoryView> = {}): Syste
   };
 }
 
+export function identityBadge(overrides: Partial<IdentityBadgeView> = {}): IdentityBadgeView {
+  return {
+    state: 'known',
+    signature: 'valid',
+    publisher: 'Google LLC',
+    product: 'Google Chrome',
+    location: 'program_files',
+    ...overrides,
+  };
+}
+
+export function identityDetail(overrides: Partial<IdentityDetailView> = {}): IdentityDetailView {
+  return {
+    ...identityBadge(),
+    signer: 'Google LLC',
+    signatureKind: 'embedded',
+    thumbprint: 'AB12CD34',
+    company: 'Google LLC',
+    description: 'Google Chrome',
+    originalFilename: 'chrome.exe',
+    fileVersion: '126.0.1',
+    sha256: 'ab'.repeat(32),
+    sizeBytes: 1024 ** 2,
+    modifiedMs: NOW - 10 * 86_400_000,
+    inspectedAtMs: NOW - 86_400_000,
+    lastAttemptMs: NOW - 86_400_000,
+    downloaded: false,
+    installRoot: 'c:\\program files\\google',
+    failure: null,
+    ...overrides,
+  };
+}
+
 export function programRow(overrides: Partial<ProgramRowView> = {}): ProgramRowView {
   return {
     name: 'chrome.exe',
@@ -164,6 +199,8 @@ export function programRow(overrides: Partial<ProgramRowView> = {}): ProgramRowV
     destinations: 3,
     firstSeenMs: NOW - 86_400_000,
     lastSeenMs: NOW - 3_600_000,
+    identity: identityBadge(),
+    members: [],
     ...overrides,
   };
 }
@@ -190,6 +227,7 @@ export function programHistoryView(overrides: Partial<ProgramHistoryView> = {}):
     toMs: NOW,
     firstSeenMs: NOW - 86_400_000,
     lastSeenMs: NOW - 3_600_000,
+    identity: identityDetail(),
     hours: [
       {
         hourMs: NOW - 3 * 3_600_000,

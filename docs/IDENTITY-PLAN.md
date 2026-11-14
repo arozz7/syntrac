@@ -91,7 +91,7 @@ the program drill-down. Where the same `exe_id` has no identity yet the UI says 
   existing executables (throttled, one pass), a rehearsal that inspects the live executable list (counts of signed, unsigned,
   catalog-signed, errors, time per file, CPU of the worker, database growth) and a check against known files (a Microsoft
   binary, the service's own binary, Acme).
-- **I2 Show it.** Programs tab: publisher, a signed / unsigned / invalid badge, location class; drill-down gets an "Identity"
+- **I2 Show it (done; see `aiChangeLog/phase-I2.md`).** Programs tab: publisher, a signed / unsigned / invalid badge, location class; drill-down gets an "Identity"
   panel (signer, thumbprint, version info, hash, file size and date, first seen, downloaded-from-internet, location) with plain
   labels for what each signal can and cannot prove. Rows gain a "Group by product" switch using `product_key`.
 - **I3 Known programs.** A list of products the user has confirmed, each with a label, a note, and the signer and install root

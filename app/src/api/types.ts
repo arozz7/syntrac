@@ -133,6 +133,56 @@ export interface SystemHistoryView {
 
 export type ProgramMetric = 'cpu' | 'memory' | 'starts' | 'network';
 
+/** Where a program runs from, as the backend classifies the path. */
+export type LocationClass =
+  'system' | 'program_files' | 'program_data' | 'user_profile' | 'temporary' | 'network' | 'other' | 'unknown';
+
+/** What the service learned about a program's file. Evidence, never a verdict. */
+export interface IdentityBadgeView {
+  /** pending: not looked at yet. known: the file was read. unreadable: it could not be read, nothing is known. */
+  state: 'pending' | 'known' | 'unreadable';
+  signature: 'valid' | 'untrusted' | 'altered' | 'unsigned' | null;
+  /** The signer, else the company in the version information. */
+  publisher: string | null;
+  product: string | null;
+  location: LocationClass;
+}
+
+export interface IdentityFailureView {
+  kind: string;
+  message: string;
+  attempts: number;
+}
+
+export interface IdentityDetailView extends IdentityBadgeView {
+  /** Who signed the file (the certificate's name), when it is signed. */
+  signer: string | null;
+  signatureKind: 'embedded' | 'catalog' | null;
+  thumbprint: string | null;
+  company: string | null;
+  description: string | null;
+  originalFilename: string | null;
+  fileVersion: string | null;
+  sha256: string | null;
+  sizeBytes: number | null;
+  modifiedMs: number | null;
+  /** When the facts were measured. */
+  inspectedAtMs: number | null;
+  lastAttemptMs: number | null;
+  /** The file carries the "downloaded from the Internet" mark. */
+  downloaded: boolean;
+  installRoot: string | null;
+  /** The last look failed (any facts above are from an earlier look). */
+  failure: IdentityFailureView | null;
+}
+
+/** One program inside a product row. */
+export interface ProgramMemberView {
+  name: string;
+  path: string;
+  identity: IdentityBadgeView;
+}
+
 export interface ProgramRowView {
   name: string;
   /** Null for the bucket of processes whose program is unknown. */
@@ -149,6 +199,9 @@ export interface ProgramRowView {
   destinations: number;
   firstSeenMs: number | null;
   lastSeenMs: number | null;
+  identity: IdentityBadgeView;
+  /** The programs of a product row, which has no path. Empty for an ordinary row. */
+  members: ProgramMemberView[];
 }
 
 export interface ProgramsView {
@@ -178,6 +231,7 @@ export interface ProgramHistoryView {
   toMs: number;
   firstSeenMs: number | null;
   lastSeenMs: number | null;
+  identity: IdentityDetailView;
   hours: ProgramHourView[];
 }
 

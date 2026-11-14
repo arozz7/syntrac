@@ -7,11 +7,15 @@ use serde::{Deserialize, Serialize};
 use syntrac_core::rollup::hour_start;
 use syntrac_core::storage_guard::StorageStats;
 use syntrac_core::{
-    collect_totals, rank_totals, ProgramMetric, ProgramSummary, ProgramTotals, RepoError, RollupRepository, Timestamp,
+    all_programs, collect_totals, group_programs, install_root, product_key, rank_groups, rank_totals,
+    IdentityRepository, ProgramMetric, ProgramSummary, ProgramTotals, RepoError, RollupRepository, Timestamp,
     TrendRepository,
 };
 
 use crate::history::{clamp_history_secs, ms, range_start};
+use crate::identity_view::{
+    badge, detail, merged_badge, product_name, Identities, IdentityBadgeView, IdentityDetailView,
+};
 use crate::names::display_name;
 
 pub const UNKNOWN_PROGRAM: &str = "Unknown program";
@@ -39,6 +43,23 @@ impl From<ProgramMetricParam> for ProgramMetric {
     }
 }
 
+/// Whether programs of one product (the four Acme executables) are shown as one row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Grouping {
+    #[default]
+    None,
+    ByProduct,
+}
+
+/// One program of a product row: enough to name it and open it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProgramMemberView {
+    pub name: String,
+    pub path: String,
+    pub identity: IdentityBadgeView,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProgramRowView {
@@ -57,26 +78,52 @@ pub struct ProgramRowView {
     pub destinations: u32,
     pub first_seen_ms: Option<i64>,
     pub last_seen_ms: Option<i64>,
+    /// Who made it and where it runs from, as far as the service has looked at the file.
+    pub identity: IdentityBadgeView,
+    /// The programs of a product row (empty for an ordinary row). A product row has no path.
+    pub members: Vec<ProgramMemberView>,
 }
 
-impl From<ProgramSummary> for ProgramRowView {
-    fn from(program: ProgramSummary) -> Self {
-        let path = program.exe.map(|exe| exe.path);
-        Self {
-            name: path.as_deref().map_or_else(|| UNKNOWN_PROGRAM.to_owned(), |p| display_name(p, 0)),
-            path,
-            cpu_avg_percent: program.cpu_avg_percent,
-            cpu_peak_percent: program.cpu_peak_percent,
-            memory_peak_bytes: program.memory_peak_bytes,
-            starts: program.starts,
-            hours_present: program.hours_present,
-            bytes_sent: program.bytes_sent,
-            bytes_received: program.bytes_received,
-            destinations: program.destinations,
-            first_seen_ms: program.ledger.map(|l| ms(l.first_seen)),
-            last_seen_ms: program.ledger.map(|l| ms(l.last_seen)),
-        }
+/// An ordinary row: one program (or the unknown-program bucket).
+fn plain_row(program: ProgramSummary, identities: &Identities) -> ProgramRowView {
+    let path = program.exe.map(|exe| exe.path);
+    let identity = path.as_deref().map_or_else(|| badge("", None), |p| badge(p, identities.of(p)));
+    ProgramRowView {
+        name: path.as_deref().map_or_else(|| UNKNOWN_PROGRAM.to_owned(), |p| display_name(p, 0)),
+        path,
+        cpu_avg_percent: program.cpu_avg_percent,
+        cpu_peak_percent: program.cpu_peak_percent,
+        memory_peak_bytes: program.memory_peak_bytes,
+        starts: program.starts,
+        hours_present: program.hours_present,
+        bytes_sent: program.bytes_sent,
+        bytes_received: program.bytes_received,
+        destinations: program.destinations,
+        first_seen_ms: program.ledger.map(|l| ms(l.first_seen)),
+        last_seen_ms: program.ledger.map(|l| ms(l.last_seen)),
+        identity,
+        members: Vec::new(),
     }
+}
+
+/// A product row: the members added up, named by what they agree on.
+fn product_row(merged: ProgramSummary, members: Vec<ProgramSummary>, identities: &Identities) -> ProgramRowView {
+    let member_rows: Vec<ProgramMemberView> = members
+        .into_iter()
+        .filter_map(|member| member.exe)
+        .map(|exe| ProgramMemberView {
+            name: display_name(&exe.path, 0),
+            identity: badge(&exe.path, identities.of(&exe.path)),
+            path: exe.path,
+        })
+        .collect();
+    let badges: Vec<IdentityBadgeView> = member_rows.iter().map(|m| m.identity.clone()).collect();
+    let paths: Vec<&str> = member_rows.iter().map(|m| m.path.as_str()).collect();
+    let mut row = plain_row(merged, identities);
+    row.name = product_name(&paths, &badges);
+    row.identity = merged_badge(&badges);
+    row.members = member_rows;
+    row
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -115,19 +162,79 @@ where
     })
 }
 
+/// The rows of a ranking: one per program, or (grouped) one per product with several programs.
+fn ranked_rows<R>(
+    repo: &R,
+    totals: &ProgramTotals,
+    metric: ProgramMetric,
+    limit: usize,
+    grouping: Grouping,
+    identities: &Identities,
+) -> Result<Vec<ProgramRowView>, RepoError>
+where
+    R: RollupRepository,
+{
+    if grouping == Grouping::None {
+        let top = rank_totals(repo, totals, metric, limit)?;
+        return Ok(top.into_iter().map(|program| plain_row(program, identities)).collect());
+    }
+    // A program whose file has not been read has no known maker: a shared folder alone is only a guess, and folding on it
+    // would come apart again as the files are read. It stays on its own row until it has facts.
+    let product_of = |exe: &syntrac_core::Executable| {
+        let facts = identities.of(&exe.path).and_then(|record| record.facts.as_ref())?;
+        product_key(&exe.path, Some(facts))
+    };
+    let groups = rank_groups(group_programs(all_programs(repo, totals)?, product_of), metric, limit);
+    let rows: Vec<ProgramRowView> = groups
+        .into_iter()
+        .map(|group| {
+            if group.members.len() > 1 {
+                product_row(group.summary, group.members, identities)
+            } else {
+                plain_row(group.summary, identities)
+            }
+        })
+        .collect();
+    Ok(tell_apart(rows))
+}
+
+/// Two product rows can share a name (Windows programs signed under two different signer names are both Microsoft Windows
+/// Operating System). A row that shares its name says who made it, or else where it lives, so the rows can be told apart.
+fn tell_apart(mut rows: Vec<ProgramRowView>) -> Vec<ProgramRowView> {
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    for row in rows.iter().filter(|row| !row.members.is_empty()) {
+        *seen.entry(row.name.clone()).or_default() += 1;
+    }
+    for row in rows.iter_mut().filter(|row| !row.members.is_empty()) {
+        if seen.get(&row.name).copied().unwrap_or(0) < 2 {
+            continue;
+        }
+        let qualifier = row
+            .identity
+            .publisher
+            .clone()
+            .or_else(|| row.members.first().and_then(|member| install_root(&member.path)));
+        if let Some(qualifier) = qualifier {
+            row.name = format!("{} ({qualifier})", row.name);
+        }
+    }
+    rows
+}
+
 /// Ranks collected sums by one metric.
 pub fn rank_range<R>(
     repo: &R,
     range: &RangeTotals,
     metric: ProgramMetricParam,
     limit: usize,
+    grouping: Grouping,
 ) -> Result<ProgramsView, RepoError>
 where
-    R: RollupRepository + StorageStats,
+    R: RollupRepository + StorageStats + IdentityRepository,
 {
     let limit = limit.clamp(1, MAX_PROGRAM_ROWS);
-    let programs =
-        rank_totals(repo, &range.totals, metric.into(), limit)?.into_iter().map(ProgramRowView::from).collect();
+    let identities = Identities::load(repo)?;
+    let programs = ranked_rows(repo, &range.totals, metric.into(), limit, grouping, &identities)?;
     Ok(ProgramsView {
         from_ms: ms(range.from),
         to_ms: ms(range.to),
@@ -143,11 +250,12 @@ pub fn program_ranking<R>(
     range_secs: u64,
     metric: ProgramMetricParam,
     limit: usize,
+    grouping: Grouping,
 ) -> Result<ProgramsView, RepoError>
 where
-    R: RollupRepository + TrendRepository + StorageStats,
+    R: RollupRepository + TrendRepository + StorageStats + IdentityRepository,
 {
-    rank_range(repo, &range_totals(repo, now, range_secs)?, metric, limit)
+    rank_range(repo, &range_totals(repo, now, range_secs)?, metric, limit, grouping)
 }
 
 /// One hour of one program. Present in every hour that has system data: a program that was not recorded in an hour has
@@ -174,6 +282,8 @@ pub struct ProgramHistoryView {
     pub to_ms: i64,
     pub first_seen_ms: Option<i64>,
     pub last_seen_ms: Option<i64>,
+    /// What the service found out about the file (or that it has not looked yet).
+    pub identity: IdentityDetailView,
     pub hours: Vec<ProgramHourView>,
 }
 
@@ -184,7 +294,7 @@ pub fn program_history<R>(
     path: &str,
 ) -> Result<ProgramHistoryView, RepoError>
 where
-    R: RollupRepository,
+    R: RollupRepository + IdentityRepository,
 {
     let from = range_start(now, clamp_history_secs(range_secs));
     let rows = repo.executable_hours(path, from, now)?;
@@ -216,6 +326,7 @@ where
         to_ms: ms(now),
         first_seen_ms: ledger.map(|l| ms(l.first_seen)),
         last_seen_ms: ledger.map(|l| ms(l.last_seen)),
+        identity: detail(path, repo.identity(path)?.as_ref()),
         hours,
     })
 }

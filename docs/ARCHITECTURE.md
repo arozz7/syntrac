@@ -147,6 +147,12 @@ again only if they differ. `exe_location.rs` derives, from the path alone, a loc
 user profile, Temporary, Network, Other) and a product key (signer or company, plus install root) that groups the four
 Acme programs into one product. Plan and slices: `docs/IDENTITY-PLAN.md`.
 
+The app shows identity as evidence in the Programs history: each ranking row has a badge (signature state, publisher, a note when the
+program runs from a temporary, user or network folder), the drill-down has an Identity panel, and a "Group by product" switch folds the
+programs of one product into one row (`syntrac_core::program_group`, pure; the app builds product keys from the signature or company
+and the install folder, and does not fold programs whose files have not been read yet). Identities are read once per request
+(`identity_view::Identities`), so a 200-row ranking costs one query.
+
 The Windows adapter (`syntrac-collector`: `file_inspector`, `file_trust`, `file_version`, `file_hash`, with the pure meaning of raw
 values in `file_parse`) opens each file once, read-only, with full sharing, and never follows a link; the hash and the signature come
 from that handle. Signatures are checked offline (revocation off, cache-only URL retrieval). The service runs it in an

@@ -36,7 +36,7 @@ describe('ProgramsHistory', () => {
   it('opens on the last 7 days ranked by CPU', async () => {
     const api = show();
     await screen.findByText('chrome.exe');
-    expect(api.topPrograms).toHaveBeenLastCalledWith(7 * 24 * 3600, 'cpu');
+    expect(api.topPrograms).toHaveBeenLastCalledWith(7 * 24 * 3600, 'cpu', undefined, false);
     expect(screen.getByRole('button', { name: '7 days' }).getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByRole('button', { name: 'CPU' }).getAttribute('aria-pressed')).toBe('true');
   });
@@ -47,7 +47,7 @@ describe('ProgramsHistory', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Network' }));
 
-    await waitFor(() => expect(api.topPrograms).toHaveBeenLastCalledWith(7 * 24 * 3600, 'network'));
+    await waitFor(() => expect(api.topPrograms).toHaveBeenLastCalledWith(7 * 24 * 3600, 'network', undefined, false));
     expect(screen.getByRole('button', { name: 'Network' }).getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByRole('button', { name: 'CPU' }).getAttribute('aria-pressed')).toBe('false');
   });
@@ -58,7 +58,7 @@ describe('ProgramsHistory', () => {
 
     await userEvent.click(screen.getByRole('button', { name: '30 days' }));
 
-    await waitFor(() => expect(api.topPrograms).toHaveBeenLastCalledWith(30 * 24 * 3600, 'cpu'));
+    await waitFor(() => expect(api.topPrograms).toHaveBeenLastCalledWith(30 * 24 * 3600, 'cpu', undefined, false));
   });
 
   it('shows one program hour by hour when its row is chosen', async () => {

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useApi } from '../api/ApiContext';
 import type { ProgramMetric, ProgramRowView, ProgramsView } from '../api/types';
 import { DataGate } from '../components/DataGate';
+import { IdentityCell } from '../components/IdentityBadge';
 import { DEFAULT_HISTORY_RANGE_SECS, HISTORY_RANGES } from '../components/historyRanges';
 import { RangePicker } from '../components/RangePicker';
 import { formatBytes, formatDateTime, formatDay, formatPercent } from '../format';
@@ -17,23 +18,61 @@ const METRICS: Array<{ id: ProgramMetric; label: string }> = [
   { id: 'network', label: 'Network' },
 ];
 
-function ProgramName({ program, onSelect }: { program: ProgramRowView; onSelect: (program: ProgramRowView) => void }) {
+/** A program whose history can be opened. */
+interface Choice {
+  name: string;
+  path: string;
+}
+
+function ProgramName({
+  program,
+  expanded,
+  onSelect,
+  onToggle,
+}: {
+  program: ProgramRowView;
+  expanded: boolean;
+  onSelect: (choice: Choice) => void;
+  onToggle: () => void;
+}) {
+  if (program.members.length > 0) {
+    return (
+      <>
+        <button type="button" className="linklike" aria-expanded={expanded} onClick={onToggle}>
+          {program.name}
+        </button>{' '}
+        <span className="muted">{program.members.length} programs</span>
+      </>
+    );
+  }
   if (program.path === null) {
     return <>{program.name}</>;
   }
+  const path = program.path;
   return (
-    <button type="button" className="linklike" onClick={() => onSelect(program)}>
+    <button type="button" className="linklike" onClick={() => onSelect({ name: program.name, path })}>
       {program.name}
     </button>
   );
 }
 
-function ProgramsTable({ view, onSelect }: { view: ProgramsView; onSelect: (program: ProgramRowView) => void }) {
+function ProgramsTable({ view, onSelect }: { view: ProgramsView; onSelect: (choice: Choice) => void }) {
+  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (name: string) =>
+    setOpen((current) => {
+      const next = new Set(current);
+      if (!next.delete(name)) {
+        next.add(name);
+      }
+      return next;
+    });
+
   return (
     <table className="table">
       <thead>
         <tr>
           <th>Program</th>
+          <th>Identity</th>
           <th className="num">CPU average</th>
           <th className="num">CPU peak</th>
           <th className="num">Memory peak</th>
@@ -45,23 +84,50 @@ function ProgramsTable({ view, onSelect }: { view: ProgramsView; onSelect: (prog
         </tr>
       </thead>
       <tbody>
-        {view.programs.map((program) => (
-          <tr key={program.path ?? 'unknown'}>
-            <td>
-              <ProgramName program={program} onSelect={onSelect} />
-            </td>
-            <td className="num">{formatPercent(program.cpuAvgPercent)}</td>
-            <td className="num">{formatPercent(program.cpuPeakPercent)}</td>
-            <td className="num">{formatBytes(program.memoryPeakBytes)}</td>
-            <td className="num">{program.starts}</td>
-            <td className="num">{formatBytes(program.bytesReceived)}</td>
-            <td className="num">{formatBytes(program.bytesSent)}</td>
-            <td className="num">
-              {program.hoursPresent} of {view.hoursInRange} h
-            </td>
-            <td>{program.lastSeenMs === null ? '—' : formatDateTime(program.lastSeenMs)}</td>
-          </tr>
-        ))}
+        {view.programs.flatMap((program) => {
+          const key = program.path ?? program.name;
+          const expanded = open.has(key);
+          const row = (
+            <tr key={key}>
+              <td>
+                <ProgramName program={program} expanded={expanded} onSelect={onSelect} onToggle={() => toggle(key)} />
+              </td>
+              <td>
+                <IdentityCell identity={program.identity} />
+              </td>
+              <td className="num">{formatPercent(program.cpuAvgPercent)}</td>
+              <td className="num">{formatPercent(program.cpuPeakPercent)}</td>
+              <td className="num">{formatBytes(program.memoryPeakBytes)}</td>
+              <td className="num">{program.starts}</td>
+              <td className="num">{formatBytes(program.bytesReceived)}</td>
+              <td className="num">{formatBytes(program.bytesSent)}</td>
+              <td className="num">
+                {program.hoursPresent} of {view.hoursInRange} h
+              </td>
+              <td>{program.lastSeenMs === null ? '—' : formatDateTime(program.lastSeenMs)}</td>
+            </tr>
+          );
+          const members = expanded
+            ? program.members.map((member) => (
+                <tr key={`${key}|${member.path}`} className="table__member">
+                  <td>
+                    <button
+                      type="button"
+                      className="linklike"
+                      onClick={() => onSelect({ name: member.name, path: member.path })}
+                    >
+                      {member.name}
+                    </button>
+                  </td>
+                  <td>
+                    <IdentityCell identity={member.identity} />
+                  </td>
+                  <td colSpan={8} />
+                </tr>
+              ))
+            : [];
+          return [row, ...members];
+        })}
       </tbody>
     </table>
   );
@@ -72,8 +138,13 @@ export function ProgramsHistory() {
   const api = useApi();
   const [rangeSecs, setRangeSecs] = useState(DEFAULT_HISTORY_RANGE_SECS);
   const [metric, setMetric] = useState<ProgramMetric>('cpu');
-  const [selected, setSelected] = useState<ProgramRowView | null>(null);
-  const result = usePolled(() => api.topPrograms(rangeSecs, metric), REFRESH_MS, `programs:${rangeSecs}:${metric}`);
+  const [grouped, setGrouped] = useState(false);
+  const [selected, setSelected] = useState<Choice | null>(null);
+  const result = usePolled(
+    () => api.topPrograms(rangeSecs, metric, undefined, grouped),
+    REFRESH_MS,
+    `programs:${rangeSecs}:${metric}:${grouped}`,
+  );
 
   return (
     <>
@@ -92,6 +163,16 @@ export function ProgramsHistory() {
             </button>
           ))}
         </div>
+        <div className="range" role="group" aria-label="Grouping">
+          <button
+            type="button"
+            className="range__button"
+            aria-pressed={grouped}
+            onClick={() => setGrouped((current) => !current)}
+          >
+            Group by product
+          </button>
+        </div>
       </div>
       <DataGate result={result}>
         {(data) => (
@@ -109,7 +190,7 @@ export function ProgramsHistory() {
           </>
         )}
       </DataGate>
-      {selected && selected.path !== null && (
+      {selected && (
         <ProgramDetail
           name={selected.name}
           path={selected.path}
@@ -120,7 +201,10 @@ export function ProgramsHistory() {
       <p className="muted">
         CPU and memory are recorded only while a program is among the 25 busiest processes, so small programs can look
         absent. The CPU average counts those times as zero. Network excludes traffic to this machine itself, and the
-        unknown-program row holds processes whose program could not be identified.
+        unknown-program row holds processes whose program could not be identified. The identity column is evidence read
+        from each program&apos;s file, not a verdict: a signature shows who signed a file, not that it is safe. When
+        grouped, CPU averages, starts and traffic of a product are added up; its peaks are the highest of any one
+        program.
       </p>
     </>
   );

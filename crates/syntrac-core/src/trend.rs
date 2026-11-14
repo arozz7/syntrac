@@ -93,7 +93,8 @@ impl ProgramSummary {
         }
     }
 
-    fn value(&self, metric: ProgramMetric) -> f64 {
+    /// The number this program is ranked by for metric.
+    pub fn value(&self, metric: ProgramMetric) -> f64 {
         match metric {
             ProgramMetric::CpuAverage => self.cpu_avg_percent,
             ProgramMetric::MemoryPeak => self.memory_peak_bytes as f64,
@@ -190,6 +191,19 @@ pub fn rank_totals<R: RollupRepository>(
         };
     }
     Ok(top)
+}
+
+/// Every program in already-collected sums (none left out for having nothing of one metric), with when each was first and last
+/// seen, ordered by path. For callers that fold programs together before ranking.
+pub fn all_programs<R: RollupRepository>(repo: &R, totals: &ProgramTotals) -> Result<Vec<ProgramSummary>, RepoError> {
+    let mut programs = merge_programs(totals.system_samples, totals.process.clone(), totals.traffic.clone());
+    for program in &mut programs {
+        program.ledger = match &program.exe {
+            Some(exe) => repo.executable_ledger(&exe.path)?,
+            None => None,
+        };
+    }
+    Ok(programs)
 }
 
 /// The programs that used the most of `metric` between `from` and `to`, with when each was first and last seen.

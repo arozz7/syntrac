@@ -10,6 +10,7 @@ pub mod identity_run;
 pub mod metrics;
 pub mod pipeline;
 pub mod ports;
+pub mod program_group;
 pub mod retention;
 pub mod rollup;
 pub mod rollup_ledger;
@@ -38,11 +39,12 @@ pub use ports::{
     EventQuery, EventRepository, FlowQueries, MetricsRepository, MetricsSource, ProcessFilter, ProcessQueries,
     ProcessRecord, ProcessRepository, RepoError, Retention, SourceError, TelemetrySource,
 };
+pub use program_group::{group_programs, rank_groups, GroupKey, ProgramGroup};
 pub use rollup::{Executable, HourInput, HourRollup, LedgerEntry, ProcessHour, SystemHour, TrafficHour};
 pub use rollup_ledger::LedgerObservations;
 pub use rollup_run::{roll_up_due, RollupPass, RollupRepository, RollupSettings};
 pub use time::{Clock, SystemClock, Timestamp};
 pub use trend::{
-    collect_totals, rank_totals, top_programs, ProcessTotals, ProgramMetric, ProgramSummary, ProgramTotals,
-    TrafficTotals, TrendRepository,
+    all_programs, collect_totals, rank_totals, top_programs, ProcessTotals, ProgramMetric, ProgramSummary,
+    ProgramTotals, TrafficTotals, TrendRepository,
 };

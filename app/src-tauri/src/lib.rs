@@ -7,6 +7,7 @@ pub mod db_location;
 pub mod health;
 pub mod history;
 pub mod history_programs;
+pub mod identity_view;
 pub mod names;
 pub mod series;
 pub mod settings;

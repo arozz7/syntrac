@@ -18,8 +18,8 @@ use crate::health::{assess_health, HealthView};
 use crate::history::range_start;
 use crate::history::{system_history, SystemHistoryView};
 use crate::history_programs::{
-    program_history, range_totals, rank_range, ProgramHistoryView, ProgramMetricParam, ProgramsView, RangeTotals,
-    DEFAULT_PROGRAM_ROWS,
+    program_history, range_totals, rank_range, Grouping, ProgramHistoryView, ProgramMetricParam, ProgramsView,
+    RangeTotals, DEFAULT_PROGRAM_ROWS,
 };
 use crate::settings::AppSettings;
 use crate::views::{
@@ -168,10 +168,11 @@ impl<C: Clock + Send + Sync> Backend<C> {
         range_secs: u64,
         metric: ProgramMetricParam,
         limit: Option<usize>,
+        grouping: Grouping,
     ) -> Data<ProgramsView> {
         self.with_store(|store, now| {
             let range = self.cached_totals(store, now, range_secs)?;
-            rank_range(store, &range, metric, limit.unwrap_or(DEFAULT_PROGRAM_ROWS))
+            rank_range(store, &range, metric, limit.unwrap_or(DEFAULT_PROGRAM_ROWS), grouping)
         })
     }
 

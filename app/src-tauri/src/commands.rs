@@ -9,7 +9,7 @@ use tauri::State;
 use crate::backend::{Backend, Data};
 use crate::health::HealthView;
 use crate::history::SystemHistoryView;
-use crate::history_programs::{ProgramHistoryView, ProgramMetricParam, ProgramsView};
+use crate::history_programs::{Grouping, ProgramHistoryView, ProgramMetricParam, ProgramsView};
 use crate::views::{ConnectionRowView, OverviewView, ProcessListParams, ProcessRowView};
 
 pub type SharedBackend = Arc<Backend<SystemClock>>;
@@ -49,9 +49,11 @@ pub async fn get_top_programs(
     range_secs: u64,
     metric: ProgramMetricParam,
     limit: Option<usize>,
+    group_by_product: Option<bool>,
 ) -> Result<Data<ProgramsView>, ()> {
     let backend = Arc::clone(&backend);
-    Ok(blocking(move || backend.top_programs(range_secs, metric, limit)).await.unwrap_or_else(internal))
+    let grouping = if group_by_product.unwrap_or(false) { Grouping::ByProduct } else { Grouping::None };
+    Ok(blocking(move || backend.top_programs(range_secs, metric, limit, grouping)).await.unwrap_or_else(internal))
 }
 
 #[tauri::command]

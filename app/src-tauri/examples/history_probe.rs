@@ -37,7 +37,8 @@ fn main() {
         ("network", ProgramMetricParam::Network),
     ] {
         let started = Instant::now();
-        let view = rank_range(&store, &range, metric, 5).expect("programs");
+        let view =
+            rank_range(&store, &range, metric, 5, syntrac_app_lib::history_programs::Grouping::None).expect("programs");
         println!(
             "programs by {label:>7}: {} listed of {} hours, {:?}",
             view.programs.len(),
