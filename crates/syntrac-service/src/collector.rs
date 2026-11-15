@@ -11,9 +11,9 @@ use syntrac_core::retention::{purge_cutoff, purge_step, GuardLevel, GuardLimits}
 use syntrac_core::storage_guard::{FreeSpace, StorageStats};
 use syntrac_core::EventCategory;
 use syntrac_core::{
-    ingest_metrics, roll_up_due, Clock, EventRepository, IngestError, MetricsRepository, MetricsSource, Pipeline,
-    ProcessRepository, PurgeCounts, Retention, RollupRepository, RollupSettings, SourceError, TelemetrySource,
-    Timestamp,
+    backfill_names, ingest_metrics, roll_up_due, Clock, EventRepository, IngestError, MetricsRepository, MetricsSource,
+    Pipeline, ProcessRepository, PurgeCounts, Retention, RollupRepository, RollupSettings, SourceError,
+    TelemetrySource, Timestamp,
 };
 use tracing::{error, info, warn};
 
@@ -282,6 +282,18 @@ where
             return;
         }
         self.next_rollup_at = after(now, self.settings.rollup_interval);
+
+        // Before any hour is rolled: the names of lookups already in the detail (hours rolled before names were kept cannot be
+        // rolled again). Done once; a failure is counted and retried at the next pass.
+        match backfill_names(&mut self.repo, now) {
+            Ok(done) if done.ran => info!(names = done.names, "Kept the names of the retained DNS lookups"),
+            Ok(_) => {}
+            Err(error) => {
+                error!(%error, "Could not keep the names of the retained DNS lookups");
+                report.storage_errors += 1;
+                return;
+            }
+        }
 
         match roll_up_due(&mut self.repo, now, &self.settings.rollup) {
             Ok(pass) => {

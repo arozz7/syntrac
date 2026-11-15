@@ -205,6 +205,11 @@ fn sqlite_store_satisfies_the_rollup_contract() {
 }
 
 #[test]
+fn sqlite_store_satisfies_the_names_contract() {
+    syntrac_testkit::names_contract::names_contract(in_memory_store);
+}
+
+#[test]
 fn sqlite_store_satisfies_the_storage_stats_contract() {
     syntrac_testkit::storage_contract::storage_stats_contract(in_memory_store);
 }

@@ -91,7 +91,8 @@ range picker component and chart wrapper, no new dependencies, light theme only.
   therefore keeps the sums per range until the collector rolls up another hour (key: range start and rollup watermark), so
   switching metric is instant and polling does not re-read. Seven days (about 20 hours of rollups today) takes milliseconds.
   If a one-year first view ever feels slow, the next step is a daily summary table (schema v6), not a different query.
-- **T3 Network.** `top_destinations`, `new_destinations`, `destination_trend`, the Network tab.
+- **T3 Network.** Full design in `docs/NETWORK-PLAN.md` (approved 2026-11-15). T3a (permanent address names, schema v8) is done;
+  T3b (queries and the Network tab) and the layout fix T3-0 follow; the IP-owner levels (T3c) wait for a source and licence decision.
 
 ## Tests first (per slice)
 

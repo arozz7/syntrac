@@ -9,6 +9,7 @@ mod memory_identity;
 mod memory_known;
 mod memory_rollup;
 pub mod mocks;
+pub mod names_contract;
 pub mod rollup_contract;
 pub mod storage_contract;
 pub mod trend_contract;

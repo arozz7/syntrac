@@ -6,6 +6,7 @@
 use std::net::IpAddr;
 use std::time::Duration;
 
+use crate::dns_names::{AddressName, DnsAnswerRow};
 use crate::ports::RepoError;
 use crate::rollup::{
     hour_start, next_hour, roll_up_hour, HourInput, HourRollup, LedgerEntry, ProcessHour, SystemHour, TrafficHour,
@@ -44,6 +45,19 @@ pub trait RollupRepository {
 
     /// When this executable was first and last seen talking to this address.
     fn pair_ledger(&self, path: &str, addr: IpAddr) -> Result<Option<LedgerEntry>, RepoError>;
+
+    /// Whether the one-time backfill of names from the retained DNS lookups has been done.
+    fn names_backfilled(&self) -> Result<bool, RepoError>;
+
+    /// The DNS lookups with `from <= ts < to`, oldest first.
+    fn load_dns_answers(&self, from: Timestamp, to: Timestamp) -> Result<Vec<DnsAnswerRow>, RepoError>;
+
+    /// ONE atomic step: widens the stored names with these pairs (keeping at most `MAX_NAMES_PER_ADDRESS` per address) and
+    /// records that the backfill is done.
+    fn store_backfilled_names(&mut self, names: &[AddressName]) -> Result<(), RepoError>;
+
+    /// The names asked for when `addr` was reached, most recently seen first (a tie: by name). Permanent.
+    fn address_names(&self, addr: IpAddr) -> Result<Vec<AddressName>, RepoError>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

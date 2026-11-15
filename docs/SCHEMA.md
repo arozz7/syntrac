@@ -103,6 +103,15 @@ by `syntrac_core::exe_location` when shown. Plan: `docs/IDENTITY-PLAN.md`.
 reused (AUTOINCREMENT). Permanent: the purge of detail never touches it. Written only by the service, on request over the pipe.
 Design: `docs/KNOWN-PROGRAMS-DESIGN.md`.
 
+## Address names (v8)
+
+`address_names` (migration v8, additive): one row per (`addr`, `name`) pair ever seen in a DNS answer, with `first_seen` and
+`last_seen` only (no counters, so storing the same answers again changes nothing). `addr` is canonical text (an IPv4-mapped IPv6
+address is the IPv4 address); `name` is lower case without a trailing dot. At most 50 names are kept per address (the most
+recently seen; a tie keeps the name that sorts first). Written in the same transaction as the hourly rollup, plus once by the
+backfill of the retained DNS events, which `names_progress` (one row, present when done) remembers. Permanent: the purge of
+detail never touches either table. A name is what a program asked for, not who owns the address. Plan: `docs/NETWORK-PLAN.md`.
+
 ## Retention
 
 `Retention::purge_before(cutoff)` removes events, flows, metrics older than the cutoff, and ended processes that ended
@@ -116,5 +125,4 @@ create the `-shm` file, so the database folder must let the reading user create 
 
 ## Planned (not yet migrated)
 
-Remote endpoints (first/last seen), DNS index table, config snapshots
-and diffs, baselines, application profiles, alerts, hourly/daily rollups.
+Config snapshots and diffs, baselines, application profiles, alerts.

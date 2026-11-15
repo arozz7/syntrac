@@ -401,6 +401,22 @@ fn rollups_wait_for_their_interval_unless_a_backlog_is_waiting() {
     assert_eq!(collector.tick().rollup_hours, 1, "hour 4 on the next scheduled pass");
 }
 
+#[test]
+fn the_first_rollup_pass_keeps_the_names_of_the_lookups_still_retained_and_does_it_once() {
+    let mut f = EventFactory::default();
+    let mut repo = InMemoryRepository::default();
+    repo.append(&[f.make(at_secs(60), dns_query(10, "Example.org", &[BEACON_TARGET]))]).unwrap();
+    let (mut collector, _) = collector_at(3 * 3600, vec![], None, repo);
+    let addr = std::net::IpAddr::V4(BEACON_TARGET);
+    assert!(!collector.repository().names_backfilled().unwrap());
+
+    collector.tick();
+
+    assert!(collector.repository().names_backfilled().unwrap());
+    let names = collector.repository().address_names(addr).unwrap();
+    assert_eq!(names.iter().map(|n| n.name.as_str()).collect::<Vec<_>>(), ["example.org"]);
+}
+
 // ---- retention gate and storage guard
 
 #[test]

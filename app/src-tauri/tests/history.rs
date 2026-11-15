@@ -29,7 +29,7 @@ fn hour_row(start_secs: i64, cpu_avg: f64, memory_used: u64) -> SystemHour {
 }
 
 fn roll(start_secs: i64, row: Option<SystemHour>) -> HourRollup {
-    HourRollup { hour: at_secs(start_secs), system: row, processes: Vec::new(), traffic: Vec::new() }
+    HourRollup { hour: at_secs(start_secs), system: row, processes: Vec::new(), traffic: Vec::new(), names: Vec::new() }
 }
 
 fn store_hours(repo: &mut impl RollupRepository, hours: &[(i64, f64)]) {

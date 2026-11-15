@@ -16,7 +16,10 @@ mod migration_v5_tests;
 mod migration_v6_tests;
 #[cfg(test)]
 mod migration_v7_tests;
+#[cfg(test)]
+mod migration_v8_tests;
 mod migrations;
+mod names;
 mod processes;
 mod rollups;
 mod storage;

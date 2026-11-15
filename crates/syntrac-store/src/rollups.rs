@@ -7,12 +7,13 @@ use std::net::IpAddr;
 use rusqlite::{params, Connection, OptionalExtension, Row, Transaction};
 use syntrac_core::rollup::{executable_key, next_hour, FlowInputRow, ProcessSampleRow, StartRow};
 use syntrac_core::{
-    Executable, HourInput, HourRollup, LedgerEntry, OtherProcesses, ProcessHour, RepoError, RollupRepository,
-    SystemHour, SystemMetrics, SystemPoint, Timestamp, TrafficHour,
+    AddressName, DnsAnswerRow, Executable, HourInput, HourRollup, LedgerEntry, OtherProcesses, ProcessHour, RepoError,
+    RollupRepository, SystemHour, SystemMetrics, SystemPoint, Timestamp, TrafficHour,
 };
 
 use crate::codec::{to_i64, to_u64};
 use crate::connection::{backend, SqliteStore};
+use crate::names;
 
 /// The `executables` row that stands for "owner or path unknown".
 const UNATTRIBUTED: i64 = 1;
@@ -278,6 +279,8 @@ impl RollupRepository for SqliteStore {
                 bytes_received: to_u64(row.get(5).map_err(backend)?),
             });
         }
+
+        input.dns = names::load_dns(&self.conn, hour, next_hour(hour))?;
         Ok(input)
     }
 
@@ -293,6 +296,7 @@ impl RollupRepository for SqliteStore {
         let mut ids = HashMap::new();
         insert_rows(&tx, rollup, &mut ids)?;
         widen_ledgers(&tx, rollup, &mut ids)?;
+        names::store(&tx, &rollup.names)?;
         tx.execute(
             "INSERT INTO rollup_progress (id, hours_done_before) VALUES (1, ?1)
              ON CONFLICT(id) DO UPDATE SET hours_done_before = MAX(hours_done_before, excluded.hours_done_before)",
@@ -436,5 +440,24 @@ impl RollupRepository for SqliteStore {
             .optional()
             .map_err(backend)?;
         Ok(found.and_then(|(first, last)| ledger_from(Some(first), Some(last))))
+    }
+
+    fn names_backfilled(&self) -> Result<bool, RepoError> {
+        names::backfilled(&self.conn)
+    }
+
+    fn load_dns_answers(&self, from: Timestamp, to: Timestamp) -> Result<Vec<DnsAnswerRow>, RepoError> {
+        names::load_dns(&self.conn, from, to)
+    }
+
+    fn store_backfilled_names(&mut self, rows: &[AddressName]) -> Result<(), RepoError> {
+        let tx = self.conn.transaction().map_err(backend)?;
+        names::store(&tx, rows)?;
+        names::mark_backfilled(&tx)?;
+        tx.commit().map_err(backend)
+    }
+
+    fn address_names(&self, addr: IpAddr) -> Result<Vec<AddressName>, RepoError> {
+        names::read(&self.conn, addr)
     }
 }

@@ -1,6 +1,7 @@
 //! SYNTRAC core: domain types, interfaces and pure logic. No I/O, no vendor imports.
 
 pub mod correlator;
+pub mod dns_names;
 pub mod event;
 pub mod exe_identity;
 pub mod exe_location;
@@ -22,6 +23,7 @@ pub mod time;
 pub mod trend;
 
 pub use correlator::correlate;
+pub use dns_names::{backfill_names, AddressName, DnsAnswerRow, NamesBackfill};
 pub use event::{EventCategory, EventEnvelope, EventPayload, NetAction, NetProtocol, Severity};
 pub use exe_identity::{
     FileFacts, FileInspector, FileStamp, IdentityEntry, IdentityFailure, IdentityRecord, IdentityRepository,

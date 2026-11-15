@@ -15,6 +15,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::IpAddr;
 
+use crate::dns_names::{AddressName, DnsAnswerRow};
 use crate::metrics::SystemPoint;
 use crate::time::Timestamp;
 
@@ -89,11 +90,20 @@ pub struct HourInput {
     pub process_samples: Vec<ProcessSampleRow>,
     pub starts: Vec<StartRow>,
     pub flows: Vec<FlowInputRow>,
+    /// The DNS lookups of the hour (see `dns_names`).
+    pub dns: Vec<DnsAnswerRow>,
 }
 
 impl HourInput {
     pub fn empty(hour: Timestamp) -> Self {
-        Self { hour, system: Vec::new(), process_samples: Vec::new(), starts: Vec::new(), flows: Vec::new() }
+        Self {
+            hour,
+            system: Vec::new(),
+            process_samples: Vec::new(),
+            starts: Vec::new(),
+            flows: Vec::new(),
+            dns: Vec::new(),
+        }
     }
 }
 
@@ -170,6 +180,8 @@ pub struct HourRollup {
     pub processes: Vec<ProcessHour>,
     /// Sorted by executable (unattributed first), then address.
     pub traffic: Vec<TrafficHour>,
+    /// The (address, name) pairs asked for in the hour, sorted by address then name. Stored with the rollup, permanently.
+    pub names: Vec<AddressName>,
 }
 
 fn in_hour(hour: Timestamp, ts: Timestamp) -> bool {
@@ -371,5 +383,6 @@ pub fn roll_up_hour(input: &HourInput) -> HourRollup {
         system,
         processes: process_hours(input, hour_samples),
         traffic: traffic_hours(input),
+        names: input.address_names(),
     }
 }

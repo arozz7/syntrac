@@ -284,6 +284,23 @@ pub const MIGRATIONS: &[&str] = &[
         UNIQUE (publisher, root)
     );
     ",
+    // 8: which names were asked for when an address was reached (docs/NETWORK-PLAN.md, T3a). Additive. One row per (address,
+    // name) pair ever seen in a DNS answer, with first and last seen only (so writing is idempotent). The raw DNS events are
+    // purged after the retention window; this is what stays. `names_progress` has a row once the one-time backfill from the
+    // retained DNS events has been done. Permanent: the purge of detail never touches either table.
+    "
+    CREATE TABLE address_names (
+        addr        TEXT NOT NULL,
+        name        TEXT NOT NULL,
+        first_seen  INTEGER NOT NULL,
+        last_seen   INTEGER NOT NULL,
+        PRIMARY KEY (addr, name)
+    ) WITHOUT ROWID;
+
+    CREATE TABLE names_progress (
+        id          INTEGER PRIMARY KEY CHECK (id = 1)
+    );
+    ",
 ];
 
 /// The migration (1-based number) that rewrites every table. An existing database gets a backup copy before it is applied
