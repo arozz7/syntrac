@@ -40,6 +40,11 @@ export function IdentityCell({ identity, standing }: { identity: IdentityBadgeVi
     <div className="identity-cell">
       <SignatureBadge identity={identity} />
       {standing !== undefined && <StandingBadge standing={standing} />}
+      {identity.service && (
+        <span className="badge badge--quiet" title="This program has been seen hosting a Windows service.">
+          Service
+        </span>
+      )}
       {identity.publisher !== null && (
         <span className="identity-cell__publisher" title={publisherHint(identity)}>
           {identity.publisher}

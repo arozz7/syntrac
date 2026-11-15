@@ -146,6 +146,30 @@ export interface IdentityBadgeView {
   publisher: string | null;
   product: string | null;
   location: LocationClass;
+  /** The kinds of account it has been SEEN running as, most recent first. Empty: never observed running (not "none"). */
+  runsAs: AccountKind[];
+  /** It has been seen hosting a Windows service. */
+  service: boolean;
+}
+
+/** What kind of account a program runs as, from its SID. Evidence of how it was started, not of whether it is safe. */
+export type AccountKind = 'system' | 'local_service' | 'network_service' | 'service_account' | 'user' | 'other';
+
+/** One account a program has been seen running as. */
+export interface AccountView {
+  /** As Windows names it (for example NT AUTHORITY\SYSTEM), when it could. */
+  name: string | null;
+  kind: AccountKind;
+  firstSeenMs: number;
+  lastSeenMs: number;
+}
+
+/** One Windows service a program has been seen hosting. */
+export interface ServiceView {
+  name: string;
+  displayName: string | null;
+  firstSeenMs: number;
+  lastSeenMs: number;
 }
 
 export interface IdentityFailureView {
@@ -174,6 +198,10 @@ export interface IdentityDetailView extends IdentityBadgeView {
   installRoot: string | null;
   /** The last look failed (any facts above are from an earlier look). */
   failure: IdentityFailureView | null;
+  /** The accounts it has been seen running as, most recent first. Empty when it was never observed running. */
+  accounts: AccountView[];
+  /** The Windows services it has been seen hosting, most recent first. */
+  services: ServiceView[];
 }
 
 /** Where a program stands against the user's list of known programs. Evidence, not a verdict. */

@@ -54,6 +54,12 @@ pub struct ServiceConfig {
     pub identity_backlog_pause_secs: u64,
     /// Identity worker: a file larger than this many MB is not hashed (its size is still recorded).
     pub identity_max_hash_mb: u64,
+    /// Context worker (docs/RUNAS-PLAN.md): whether to record which account each program runs as and which services it hosts.
+    pub context_enabled: bool,
+    /// Context worker: seconds between two looks at the running programs.
+    pub context_interval_secs: u64,
+    /// Context worker: a program that keeps running has its "last seen" moved this often (minutes), not every look.
+    pub context_refresh_minutes: u64,
     /// How often a status line (events stored, drops, own CPU) is logged.
     pub status_interval_secs: u64,
     /// If ETW delivers nothing for this long, the trace session is restarted.
@@ -84,6 +90,9 @@ impl Default for ServiceConfig {
             identity_files_per_pass: 5,
             identity_backlog_pause_secs: 30,
             identity_max_hash_mb: 512,
+            context_enabled: true,
+            context_interval_secs: 30,
+            context_refresh_minutes: 10,
             status_interval_secs: 30,
             etw_silent_restart_secs: 180,
             etw_max_restarts: 3,
@@ -114,6 +123,8 @@ impl ServiceConfig {
             (self.identity_files_per_pass as u64, "identity_files_per_pass"),
             (self.identity_backlog_pause_secs, "identity_backlog_pause_secs"),
             (self.identity_max_hash_mb, "identity_max_hash_mb"),
+            (self.context_interval_secs, "context_interval_secs"),
+            (self.context_refresh_minutes, "context_refresh_minutes"),
             (self.top_processes as u64, "top_processes"),
             (self.status_interval_secs, "status_interval_secs"),
             (self.etw_silent_restart_secs, "etw_silent_restart_secs"),

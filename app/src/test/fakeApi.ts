@@ -167,6 +167,8 @@ export function identityBadge(overrides: Partial<IdentityBadgeView> = {}): Ident
     publisher: 'Google LLC',
     product: 'Google Chrome',
     location: 'program_files',
+    runsAs: [],
+    service: false,
     ...overrides,
   };
 }
@@ -189,6 +191,8 @@ export function identityDetail(overrides: Partial<IdentityDetailView> = {}): Ide
     downloaded: false,
     installRoot: 'c:\\program files\\google',
     failure: null,
+    accounts: [],
+    services: [],
     ...overrides,
   };
 }

@@ -1,4 +1,4 @@
-import type { IdentityBadgeView, LocationClass } from './api/types';
+import type { AccountKind, IdentityBadgeView, LocationClass } from './api/types';
 
 /** How loudly to show a label: `alert` is for a file that no longer matches its signature, never for merely unsigned. */
 export type Tone = 'good' | 'caution' | 'alert' | 'quiet';
@@ -89,4 +89,33 @@ export function wasRenamed(path: string, originalFilename: string | null): boole
   }
   const onDisk = path.split(/[\\/]/).pop() ?? path;
   return onDisk.toLowerCase() !== originalFilename.toLowerCase();
+}
+
+const ACCOUNT_NAMES: Record<AccountKind, string> = {
+  system: 'SYSTEM account',
+  local_service: 'Local Service account',
+  network_service: 'Network Service account',
+  service_account: 'Service account',
+  user: 'user account',
+  other: 'other account',
+};
+
+export function accountLabel(kind: AccountKind): string {
+  return ACCOUNT_NAMES[kind];
+}
+
+const PRIVILEGED: ReadonlySet<AccountKind> = new Set(['system', 'local_service', 'network_service', 'service_account']);
+const UNUSUAL_FOR_PRIVILEGED: ReadonlySet<LocationClass> = new Set(['temporary', 'user_profile', 'network']);
+
+/**
+ * A sentence for the odd combination of a system or service account with a temporary folder, a user folder or a network
+ * share (system software normally lives in Windows or Program Files). A thing to look at, never a verdict: installers and
+ * updaters do this legitimately.
+ */
+export function accountConcern(identity: IdentityBadgeView): string | null {
+  const privileged = identity.runsAs.some((kind) => PRIVILEGED.has(kind));
+  if (!privileged || !UNUSUAL_FOR_PRIVILEGED.has(identity.location)) {
+    return null;
+  }
+  return `Runs as a system or service account from ${locationLabel(identity.location).toLowerCase()}: worth a look. Installers and updaters do this legitimately, but system software normally lives in the Windows or Program Files folders.`;
 }

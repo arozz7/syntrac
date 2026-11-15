@@ -3,6 +3,7 @@
 
 mod codec;
 mod connection;
+mod contexts;
 mod destinations;
 mod events;
 mod identities;
@@ -19,6 +20,8 @@ mod migration_v6_tests;
 mod migration_v7_tests;
 #[cfg(test)]
 mod migration_v8_tests;
+#[cfg(test)]
+mod migration_v9_tests;
 mod migrations;
 mod names;
 mod processes;

@@ -65,6 +65,7 @@ Client: `syntrac-service --status` / `--ping` (`--pipe <name>`), exit codes 0 ok
 | `StorageStats` / `FreeSpace` / `DetailStore` | Memory + Tool | Implemented (SQLite, in-memory; Windows `GetDiskFreeSpaceExW`): size accounting, space recovery and the narrow view the storage guard works on |
 | `RollupRepository` | Memory | Implemented (SQLite, in-memory; shared contract suite): loads one hour of detail, stores its rollup + ledgers + watermark atomically, reads history and ledgers. The maths is the pure `syntrac_core::rollup::roll_up_hour` |
 | `DestinationTrendRepository` | Memory | Implemented (SQLite, in-memory; shared contract suite): per-destination sums over a range, destinations first seen after an instant (with the first program), and the programs of one destination. Ranking, scope and the "new" rule are pure (`destination_trend.rs`, `addr_class.rs`) |
+| `ContextRepository` / `ProcessContextSource` | Memory + Tool | Implemented (SQLite, in-memory; shared contract suite; Windows adapter and a test fake): which account each program has been seen running as and which services it hosts, per executable. The rules are pure (`exe_context.rs`, `context_run.rs`) |
 | `TelemetrySource` | Tool | Implemented: `EtwSource`, `SnapshotSource` (Windows), `MockTelemetrySource` |
 | `MetricsSource` | Tool | Implemented: `SysinfoMetricsSource`, `MockMetricsSource` |
 | `Clock` | Tool | Implemented: `SystemClock`, `ManualClock` |
@@ -147,6 +148,17 @@ per address. Second, the existing rollups and ledgers: `DestinationTrendReposito
 with the pure `addr_class.rs`) BEFORE the limit, and decides what is new: first seen after the window start, but never inside the
 first 24 hours of history (the baseline). A name is what a program ASKED for, never an owner, and the screen says so. The backend
 (`history_network.rs`) keeps each range's sums until the rollup watermark moves, like the Programs ranking. Plan: `docs/NETWORK-PLAN.md`.
+
+## How programs run (run-as account and services)
+
+A worker of its own (`syntrac-service/src/context_worker.rs`, own thread and database connection, like the identity worker) looks
+at the running programs every `context_interval_secs` (30). The Windows adapter (`syntrac-collector/src/process_context.rs`) takes
+one process snapshot, reads each process's token (opened with the least right that works, query only) and lists the running
+services once; a SID is resolved to a name once and cached. The pure core merges instances of one program under one account,
+classifies the SID (`classify_sid`), and a `ContextTracker` makes sure a program that keeps running is written only when it is new,
+its set of services changed, or `context_refresh_minutes` (10) have passed: about 15 ms of CPU per look and a few thousand row
+writes a day instead of a million. No event schema change and nothing in the ETW path. The identity panel shows "Runs as" and
+"Services"; the table shows a quiet "Service" badge. Plan: `docs/RUNAS-PLAN.md`.
 
 ## Executable identity
 

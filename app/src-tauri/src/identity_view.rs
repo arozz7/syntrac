@@ -9,8 +9,8 @@ use std::collections::HashMap;
 use serde::Serialize;
 use syntrac_core::rollup::executable_key;
 use syntrac_core::{
-    classify_location, install_root, IdentityRecord, IdentityRepository, KnownIndex, KnownProduct,
-    KnownProductRepository, RepoError,
+    classify_location, install_root, ContextRepository, ExecutableContext, IdentityRecord, IdentityRepository,
+    KnownIndex, KnownProduct, KnownProductRepository, RepoError,
 };
 
 use crate::history::ms;
@@ -30,6 +30,32 @@ pub struct IdentityBadgeView {
     pub product: Option<String>,
     /// Where it runs from (`system`, `program_files`, `program_data`, `user_profile`, `temporary`, `network`, `other`, `unknown`).
     pub location: String,
+    /// The kinds of account it has been SEEN running as, most recent first, each once (`system`, `local_service`,
+    /// `network_service`, `service_account`, `user`, `other`). Empty when it has never been observed running (not "none").
+    pub runs_as: Vec<String>,
+    /// It has been seen hosting a Windows service.
+    pub service: bool,
+}
+
+/// One account a program has been seen running as.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountView {
+    /// As Windows names it (`NT AUTHORITY\SYSTEM`), when it could.
+    pub name: Option<String>,
+    pub kind: String,
+    pub first_seen_ms: i64,
+    pub last_seen_ms: i64,
+}
+
+/// One Windows service a program has been seen hosting.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceView {
+    pub name: String,
+    pub display_name: Option<String>,
+    pub first_seen_ms: i64,
+    pub last_seen_ms: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -65,6 +91,10 @@ pub struct IdentityDetailView {
     pub install_root: Option<String>,
     /// The last look failed (the facts above, if any, are from an earlier look).
     pub failure: Option<IdentityFailureView>,
+    /// The accounts it has been seen running as, most recent first. Empty when it has never been observed running.
+    pub accounts: Vec<AccountView>,
+    /// The Windows services it has been seen hosting, most recent first.
+    pub services: Vec<ServiceView>,
 }
 
 pub fn badge(path: &str, record: Option<&IdentityRecord>) -> IdentityBadgeView {
@@ -81,7 +111,53 @@ pub fn badge(path: &str, record: Option<&IdentityRecord>) -> IdentityBadgeView {
         publisher: facts.and_then(|f| f.signature.signer.clone().or_else(|| f.version.company.clone())),
         product: facts.and_then(|f| f.version.product.clone()),
         location,
+        runs_as: Vec::new(),
+        service: false,
     }
+}
+
+/// The kinds of account in a context, most recent first, each once.
+fn account_kinds(context: &ExecutableContext) -> Vec<String> {
+    let mut kinds: Vec<String> = Vec::new();
+    for account in &context.accounts {
+        let kind = account.kind.as_str().to_owned();
+        if !kinds.contains(&kind) {
+            kinds.push(kind);
+        }
+    }
+    kinds
+}
+
+/// The badge of a program with what has been seen of how it runs.
+pub fn with_context(mut badge: IdentityBadgeView, context: &ExecutableContext) -> IdentityBadgeView {
+    badge.runs_as = account_kinds(context);
+    badge.service = !context.services.is_empty();
+    badge
+}
+
+/// The accounts and services of a program for its identity panel.
+pub fn context_views(context: &ExecutableContext) -> (Vec<AccountView>, Vec<ServiceView>) {
+    let accounts = context
+        .accounts
+        .iter()
+        .map(|account| AccountView {
+            name: account.name.clone(),
+            kind: account.kind.as_str().to_owned(),
+            first_seen_ms: ms(account.first_seen),
+            last_seen_ms: ms(account.last_seen),
+        })
+        .collect();
+    let services = context
+        .services
+        .iter()
+        .map(|service| ServiceView {
+            name: service.name.clone(),
+            display_name: service.display_name.clone(),
+            first_seen_ms: ms(service.first_seen),
+            last_seen_ms: ms(service.last_seen),
+        })
+        .collect();
+    (accounts, services)
 }
 
 pub fn detail(path: &str, record: Option<&IdentityRecord>) -> IdentityDetailView {
@@ -107,34 +183,51 @@ pub fn detail(path: &str, record: Option<&IdentityRecord>) -> IdentityDetailView
             message: f.message.clone(),
             attempts: f.attempts,
         }),
+        accounts: Vec::new(),
+        services: Vec::new(),
     }
 }
 
-/// All the identity records, by executable key, and the user's known products with an index over them: read once per request,
-/// so a ranking of 200 rows costs two queries.
+/// All the identity records, by executable key, how programs have been seen running, and the user's known products with an
+/// index over them: read once per request, so a ranking of 200 rows costs three queries.
 pub struct Identities {
     records: HashMap<String, IdentityRecord>,
+    contexts: HashMap<String, ExecutableContext>,
     products: Vec<KnownProduct>,
     index: KnownIndex,
 }
 
 impl Identities {
-    pub fn load<R: IdentityRepository + KnownProductRepository + ?Sized>(repo: &R) -> Result<Self, RepoError> {
+    pub fn load<R: IdentityRepository + ContextRepository + KnownProductRepository + ?Sized>(
+        repo: &R,
+    ) -> Result<Self, RepoError> {
         let records: HashMap<String, IdentityRecord> = repo
             .identity_entries()?
             .into_iter()
             .filter_map(|entry| entry.record.map(|record| (entry.exe.key, record)))
             .collect();
+        let contexts: HashMap<String, ExecutableContext> =
+            repo.all_contexts()?.into_iter().map(|(exe, context)| (exe.key, context)).collect();
         let products = repo.known_products()?;
         let index = KnownIndex::build(
             products.clone(),
             records.values().map(|record| (record.exe.path.as_str(), record.facts.as_ref())),
         );
-        Ok(Self { records, products, index })
+        Ok(Self { records, contexts, products, index })
     }
 
     pub fn of(&self, path: &str) -> Option<&IdentityRecord> {
         executable_key(path).and_then(|key| self.records.get(&key))
+    }
+
+    /// How a program has been seen running (empty when it never was).
+    pub fn context_of(&self, path: &str) -> ExecutableContext {
+        executable_key(path).and_then(|key| self.contexts.get(&key)).cloned().unwrap_or_default()
+    }
+
+    /// The badge of a program: its identity facts and how it has been seen running.
+    pub fn badge(&self, path: &str) -> IdentityBadgeView {
+        with_context(badge(path, self.of(path)), &self.context_of(path))
     }
 
     /// Every program that has an identity record.
@@ -209,5 +302,27 @@ pub fn merged_badge(members: &[IdentityBadgeView]) -> IdentityBadgeView {
         publisher: most_common(members.iter().filter_map(|m| m.publisher.clone())),
         product: most_common(members.iter().filter_map(|m| m.product.clone())),
         location: members.first().map_or_else(|| "unknown".to_owned(), |m| m.location.clone()),
+        runs_as: union_in_order(members.iter().flat_map(|m| m.runs_as.iter().cloned())),
+        service: members.iter().any(|m| m.service),
     }
+}
+
+/// Each value once, in the order it first appears.
+fn union_in_order(values: impl Iterator<Item = String>) -> Vec<String> {
+    let mut seen: Vec<String> = Vec::new();
+    for value in values {
+        if !seen.contains(&value) {
+            seen.push(value);
+        }
+    }
+    seen
+}
+
+/// A detail view with the accounts and services a program has been seen with, and the matching badge facts.
+pub fn with_accounts(mut view: IdentityDetailView, context: &ExecutableContext) -> IdentityDetailView {
+    let (accounts, services) = context_views(context);
+    view.badge = with_context(view.badge, context);
+    view.accounts = accounts;
+    view.services = services;
+    view
 }

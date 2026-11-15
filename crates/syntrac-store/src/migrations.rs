@@ -304,6 +304,30 @@ pub const MIGRATIONS: &[&str] = &[
     -- Which program was first to talk to a destination (docs/NETWORK-PLAN.md, T3b): the primary key starts with the program.
     CREATE INDEX idx_exe_destinations_addr ON exe_destinations (addr, first_seen);
     ",
+    // 9: how each program has been seen running (docs/RUNAS-PLAN.md, I4a). Additive. One row per (program, account) and per
+    // (program, service) pair ever seen, with first and last seen only (MIN and MAX), so recording twice changes nothing. A
+    // program is a set of accounts (it can run as SYSTEM and as a user) and a service host carries many services. Permanent: the
+    // purge of detail never touches either table. The account name is the user's own and stays in this local database.
+    "
+    CREATE TABLE executable_accounts (
+        exe_id       INTEGER NOT NULL,
+        sid          TEXT NOT NULL,
+        account_name TEXT,
+        account_kind TEXT NOT NULL,
+        first_seen   INTEGER NOT NULL,
+        last_seen    INTEGER NOT NULL,
+        PRIMARY KEY (exe_id, sid)
+    ) WITHOUT ROWID;
+
+    CREATE TABLE executable_services (
+        exe_id       INTEGER NOT NULL,
+        service_name TEXT NOT NULL,
+        display_name TEXT,
+        first_seen   INTEGER NOT NULL,
+        last_seen    INTEGER NOT NULL,
+        PRIMARY KEY (exe_id, service_name)
+    ) WITHOUT ROWID;
+    ",
 ];
 
 /// The migration (1-based number) that rewrites every table. An existing database gets a backup copy before it is applied

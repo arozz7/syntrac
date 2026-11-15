@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { locationLabel, locationNote, signatureLabel, wasRenamed } from './identityLabels';
+import {
+  accountConcern,
+  accountLabel,
+  locationLabel,
+  locationNote,
+  signatureLabel,
+  wasRenamed,
+} from './identityLabels';
 import { identityBadge } from './test/fakeApi';
 
 describe('signatureLabel', () => {
@@ -57,5 +64,39 @@ describe('wasRenamed', () => {
     expect(wasRenamed('C:\\Apps\\Tool.exe', 'tool.EXE')).toBe(false);
     expect(wasRenamed('C:\\Apps\\tool.exe', 'other.exe')).toBe(true);
     expect(wasRenamed('C:\\Apps\\tool.exe', null)).toBe(false);
+  });
+});
+
+describe('accountLabel', () => {
+  it('names each kind of account in plain words', () => {
+    expect(accountLabel('system')).toBe('SYSTEM account');
+    expect(accountLabel('local_service')).toBe('Local Service account');
+    expect(accountLabel('network_service')).toBe('Network Service account');
+    expect(accountLabel('service_account')).toBe('Service account');
+    expect(accountLabel('user')).toBe('user account');
+    expect(accountLabel('other')).toBe('other account');
+  });
+});
+
+describe('accountConcern', () => {
+  const system = { runsAs: ['system' as const] };
+
+  it('is only raised for a privileged account running from a temporary folder, a user folder or a network share', () => {
+    expect(accountConcern(identityBadge({ ...system, location: 'temporary' }))).toMatch(/worth a look/i);
+    expect(accountConcern(identityBadge({ ...system, location: 'user_profile' }))).toMatch(/worth a look/i);
+    expect(accountConcern(identityBadge({ ...system, location: 'network' }))).toMatch(/worth a look/i);
+  });
+
+  it('is quiet for the ordinary cases', () => {
+    expect(accountConcern(identityBadge({ ...system, location: 'program_files' }))).toBeNull();
+    expect(accountConcern(identityBadge({ ...system, location: 'system' }))).toBeNull();
+    expect(accountConcern(identityBadge({ runsAs: ['user'], location: 'temporary' }))).toBeNull();
+    expect(accountConcern(identityBadge({ runsAs: [], location: 'temporary' }))).toBeNull();
+  });
+
+  it('counts the other service accounts as privileged too', () => {
+    for (const kind of ['local_service', 'network_service', 'service_account'] as const) {
+      expect(accountConcern(identityBadge({ runsAs: [kind], location: 'temporary' }))).not.toBeNull();
+    }
   });
 });

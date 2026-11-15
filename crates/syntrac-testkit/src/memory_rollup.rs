@@ -30,6 +30,8 @@ pub struct RollupState {
     /// The names asked for, by (address, name): first and last seen. Permanent.
     names: BTreeMap<(IpAddr, String), (Timestamp, Timestamp)>,
     names_backfilled: bool,
+    /// How programs have been seen running (account and services). Permanent.
+    pub(crate) contexts: crate::memory_context::ContextState,
 }
 
 impl RollupState {

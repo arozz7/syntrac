@@ -49,3 +49,11 @@ identity_interval_minutes = 5
 identity_files_per_pass = 5
 identity_backlog_pause_secs = 30
 identity_max_hash_mb = 512     # a larger file is not hashed (its size is still recorded)
+
+# Context worker: records which account each program runs as (SYSTEM, a service account, you) and which Windows services it
+# hosts, on its own thread. It only LOOKS at the running programs (one process snapshot and one token read per process; about
+# 15 ms of CPU per look) and writes a program only when it is new, changed, or due for a refresh. Nothing leaves the machine.
+# The account names (they contain your Windows user name) are kept in the local database only.
+context_enabled = true
+context_interval_secs = 30      # seconds between two looks; a program that runs for less than this can be missed
+context_refresh_minutes = 10    # a program that keeps running has its "last seen" moved this often, not every look

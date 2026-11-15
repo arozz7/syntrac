@@ -8,13 +8,13 @@ use syntrac_core::rollup::hour_start;
 use syntrac_core::storage_guard::StorageStats;
 use syntrac_core::{
     all_programs, collect_totals, group_programs, install_root, product_key, rank_groups, rank_totals,
-    IdentityRepository, KnownProductRepository, ProgramMetric, ProgramSummary, ProgramTotals, RepoError,
-    RollupRepository, Timestamp, TrendRepository,
+    ContextRepository, IdentityRepository, KnownProductRepository, ProgramMetric, ProgramSummary, ProgramTotals,
+    RepoError, RollupRepository, Timestamp, TrendRepository,
 };
 
 use crate::history::{clamp_history_secs, ms, range_start};
 use crate::identity_view::{
-    badge, detail, merged_badge, product_name, Identities, IdentityBadgeView, IdentityDetailView,
+    badge, detail, merged_badge, product_name, with_accounts, Identities, IdentityBadgeView, IdentityDetailView,
 };
 use crate::known_view::{merged_standing, StandingView};
 use crate::names::display_name;
@@ -92,7 +92,7 @@ pub struct ProgramRowView {
 /// An ordinary row: one program (or the unknown-program bucket).
 fn plain_row(program: ProgramSummary, identities: &Identities) -> ProgramRowView {
     let path = program.exe.map(|exe| exe.path);
-    let identity = path.as_deref().map_or_else(|| badge("", None), |p| badge(p, identities.of(p)));
+    let identity = path.as_deref().map_or_else(|| badge("", None), |p| identities.badge(p));
     let standing = path.as_deref().map_or_else(StandingView::unlisted, |p| identities.standing(p));
     ProgramRowView {
         name: path.as_deref().map_or_else(|| UNKNOWN_PROGRAM.to_owned(), |p| display_name(p, 0)),
@@ -120,7 +120,7 @@ fn product_row(merged: ProgramSummary, members: Vec<ProgramSummary>, identities:
         .filter_map(|member| member.exe)
         .map(|exe| ProgramMemberView {
             name: display_name(&exe.path, 0),
-            identity: badge(&exe.path, identities.of(&exe.path)),
+            identity: identities.badge(&exe.path),
             standing: identities.standing(&exe.path),
             path: exe.path,
         })
@@ -240,7 +240,7 @@ pub fn rank_range<R>(
     grouping: Grouping,
 ) -> Result<ProgramsView, RepoError>
 where
-    R: RollupRepository + StorageStats + IdentityRepository + KnownProductRepository,
+    R: RollupRepository + StorageStats + IdentityRepository + ContextRepository + KnownProductRepository,
 {
     let limit = limit.clamp(1, MAX_PROGRAM_ROWS);
     let identities = Identities::load(repo)?;
@@ -263,7 +263,12 @@ pub fn program_ranking<R>(
     grouping: Grouping,
 ) -> Result<ProgramsView, RepoError>
 where
-    R: RollupRepository + TrendRepository + StorageStats + IdentityRepository + KnownProductRepository,
+    R: RollupRepository
+        + TrendRepository
+        + StorageStats
+        + IdentityRepository
+        + ContextRepository
+        + KnownProductRepository,
 {
     rank_range(repo, &range_totals(repo, now, range_secs)?, metric, limit, grouping)
 }
@@ -306,7 +311,7 @@ pub fn program_history<R>(
     path: &str,
 ) -> Result<ProgramHistoryView, RepoError>
 where
-    R: RollupRepository + IdentityRepository + KnownProductRepository,
+    R: RollupRepository + IdentityRepository + ContextRepository + KnownProductRepository,
 {
     let from = range_start(now, clamp_history_secs(range_secs));
     let rows = repo.executable_hours(path, from, now)?;
@@ -338,7 +343,7 @@ where
         to_ms: ms(now),
         first_seen_ms: ledger.map(|l| ms(l.first_seen)),
         last_seen_ms: ledger.map(|l| ms(l.last_seen)),
-        identity: detail(path, repo.identity(path)?.as_ref()),
+        identity: with_accounts(detail(path, repo.identity(path)?.as_ref()), &repo.context_of(path)?),
         standing: Identities::load(repo)?.standing(path),
         hours,
     })

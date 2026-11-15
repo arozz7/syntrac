@@ -131,3 +131,26 @@ fn the_identity_worker_has_gentle_defaults_and_can_be_tuned() {
     assert_eq!((tuned.identity_files_per_pass, tuned.identity_max_hash_mb), (2, 64));
     assert_eq!(tuned.identity_interval_minutes, 5, "the rest stay default");
 }
+
+#[test]
+fn the_context_worker_is_on_by_default_every_thirty_seconds_and_can_be_tuned_or_switched_off() {
+    let defaults = ServiceConfig::default();
+    assert_eq!(
+        (defaults.context_enabled, defaults.context_interval_secs, defaults.context_refresh_minutes),
+        (true, 30, 10)
+    );
+
+    let tuned = ServiceConfig::from_toml_str("context_interval_secs = 60\ncontext_refresh_minutes = 30").unwrap();
+    assert_eq!((tuned.context_interval_secs, tuned.context_refresh_minutes), (60, 30));
+
+    let off = ServiceConfig::from_toml_str("context_enabled = false").unwrap();
+    assert!(!off.context_enabled);
+    assert_eq!(off.context_interval_secs, 30, "the rest stay default");
+}
+
+#[test]
+fn a_zero_context_interval_or_refresh_is_refused() {
+    for bad in ["context_interval_secs = 0", "context_refresh_minutes = 0"] {
+        assert!(ServiceConfig::from_toml_str(bad).is_err(), "{bad} must be rejected");
+    }
+}

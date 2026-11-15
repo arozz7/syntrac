@@ -140,6 +140,8 @@ function LookalikesTable({
                       publisher: program.publisher,
                       product: null,
                       location: program.location,
+                      runsAs: [],
+                      service: false,
                     }}
                   />
                   {note !== null && <span className="muted">{note}</span>}

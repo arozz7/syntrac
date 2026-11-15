@@ -208,3 +208,40 @@ impl syntrac_core::FileInspector for FakeInspector {
         self.answer(path)
     }
 }
+
+/// A `ProcessContextSource` that answers what it was told: a snapshot, or a failure (always, or just for the next pass).
+#[derive(Debug)]
+pub struct FakeContextSource {
+    answer: std::cell::RefCell<Result<syntrac_core::ContextSnapshot, String>>,
+    fail_once: std::cell::RefCell<Option<String>>,
+}
+
+impl FakeContextSource {
+    pub fn new(snapshot: syntrac_core::ContextSnapshot) -> Self {
+        Self { answer: std::cell::RefCell::new(Ok(snapshot)), fail_once: std::cell::RefCell::new(None) }
+    }
+
+    /// A source whose every look fails with this message.
+    pub fn failing(message: &str) -> Self {
+        Self { answer: std::cell::RefCell::new(Err(message.to_owned())), fail_once: std::cell::RefCell::new(None) }
+    }
+
+    /// From now on, answers this snapshot.
+    pub fn set(&self, snapshot: syntrac_core::ContextSnapshot) {
+        *self.answer.borrow_mut() = Ok(snapshot);
+    }
+
+    /// The next look fails with this message; the ones after it answer normally again.
+    pub fn fail_next(&self, message: &str) {
+        *self.fail_once.borrow_mut() = Some(message.to_owned());
+    }
+}
+
+impl syntrac_core::ProcessContextSource for FakeContextSource {
+    fn observe(&self) -> Result<syntrac_core::ContextSnapshot, syntrac_core::ContextSourceError> {
+        if let Some(message) = self.fail_once.borrow_mut().take() {
+            return Err(syntrac_core::ContextSourceError(message));
+        }
+        self.answer.borrow().clone().map_err(syntrac_core::ContextSourceError)
+    }
+}

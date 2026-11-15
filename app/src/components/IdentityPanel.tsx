@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { IdentityDetailView, StandingView } from '../api/types';
 import { formatBytes, formatDateTime } from '../format';
-import { locationLabel, signatureLabel, wasRenamed } from '../identityLabels';
+import { accountConcern, accountLabel, locationLabel, signatureLabel, wasRenamed } from '../identityLabels';
 import { SignatureBadge } from './IdentityBadge';
 import { KnownSection } from './KnownSection';
 
@@ -83,8 +83,42 @@ export function IdentityPanel({
           {locationLabel(identity.location)}
           {identity.installRoot !== null && <span className="muted"> {identity.installRoot}</span>}
         </Fact>
+        <Fact label="Runs as">
+          {identity.accounts.length === 0 ? (
+            <span className="muted">Not observed running yet</span>
+          ) : (
+            <ul className="names">
+              {identity.accounts.map((account) => (
+                <li key={`${account.kind}:${account.name ?? ''}`}>
+                  <code>{account.name ?? 'unnamed account'}</code>{' '}
+                  <span className="muted">
+                    ({accountLabel(account.kind)}), seen {formatDateTime(account.firstSeenMs)} to{' '}
+                    {formatDateTime(account.lastSeenMs)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Fact>
+        {identity.services.length > 0 && (
+          <Fact label="Services">
+            <ul className="names">
+              {identity.services.map((service) => (
+                <li key={service.name}>
+                  <code>{service.name}</code>
+                  {service.displayName !== null && <span className="muted"> {service.displayName}</span>}
+                </li>
+              ))}
+            </ul>
+          </Fact>
+        )}
       </dl>
       <p className="muted">{label.hint}</p>
+      {accountConcern(identity) !== null && <p className="muted">{accountConcern(identity)}</p>}
+      <p className="muted">
+        The account shows how a program was started and what it is allowed to do, not whether it is safe. It is recorded
+        only while the program is seen running, so a program that runs briefly can be missed.
+      </p>
       {known && wasRenamed(path, identity.originalFilename) && (
         <p className="muted">
           This file was built with a different name than it has on disk. That is common (launchers and helper programs

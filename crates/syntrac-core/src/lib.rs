@@ -1,10 +1,12 @@
 //! SYNTRAC core: domain types, interfaces and pure logic. No I/O, no vendor imports.
 
 pub mod addr_class;
+pub mod context_run;
 pub mod correlator;
 pub mod destination_trend;
 pub mod dns_names;
 pub mod event;
+pub mod exe_context;
 pub mod exe_identity;
 pub mod exe_location;
 pub mod flow;
@@ -25,6 +27,7 @@ pub mod time;
 pub mod trend;
 
 pub use addr_class::{classify_addr, AddrClass};
+pub use context_run::{observe_context, ContextFailure, ContextPass, ContextSettings};
 pub use correlator::correlate;
 pub use destination_trend::{
     new_destination_cutoff, rank_destination_programs, rank_destinations, select_new, AddressScope, DestinationOrder,
@@ -32,6 +35,11 @@ pub use destination_trend::{
 };
 pub use dns_names::{backfill_names, AddressName, DnsAnswerRow, NamesBackfill};
 pub use event::{EventCategory, EventEnvelope, EventPayload, NetAction, NetProtocol, Severity};
+pub use exe_context::{
+    classify_sid, merge_snapshot, AccountKind, AccountSeen, ContextObservation, ContextRepository, ContextSnapshot,
+    ContextSourceError, ContextTracker, ContextWrite, ExecutableContext, MergedSnapshot, ProcessContext,
+    ProcessContextSource, ServiceInfo, ServiceSeen,
+};
 pub use exe_identity::{
     FileFacts, FileInspector, FileStamp, IdentityEntry, IdentityFailure, IdentityRecord, IdentityRepository,
     InspectError, InspectErrorKind, Signature, SignatureKind, SignatureStatus, VersionInfo,

@@ -233,3 +233,8 @@ fn sqlite_store_satisfies_the_known_products_contract() {
 fn sqlite_store_satisfies_the_destination_contract() {
     syntrac_testkit::destination_contract::destination_contract(in_memory_store);
 }
+
+#[test]
+fn sqlite_store_satisfies_the_context_contract() {
+    syntrac_testkit::context_contract::context_contract(in_memory_store);
+}

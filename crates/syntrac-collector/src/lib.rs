@@ -16,6 +16,7 @@ pub mod file_version;
 pub mod metrics_build;
 pub mod orphan_guard;
 pub mod paths;
+pub mod process_context;
 pub mod snapshot;
 pub mod snapshot_map;
 pub mod sysmetrics;

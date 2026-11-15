@@ -13,6 +13,7 @@ use syntrac_collector::etw::EtwSource;
 use syntrac_collector::etw_stats::{EtwReport, EtwStats};
 use syntrac_collector::file_inspector::{InspectorSettings, WindowsFileInspector};
 use syntrac_collector::orphan_guard::clean_up_orphans;
+use syntrac_collector::process_context::WindowsProcessContextSource;
 use syntrac_collector::snapshot::SnapshotSource;
 use syntrac_collector::sysmetrics::SysinfoMetricsSource;
 use syntrac_collector::system::{is_elevated, own_cpu_time, SystemClock};
@@ -21,11 +22,11 @@ use syntrac_collector::volumes::system_path_converter;
 use syntrac_core::retention::GuardLimits;
 use syntrac_core::silence::{SilenceAction, SilencePolicy, SilenceVerdict, SilenceWatchdog};
 use syntrac_core::storage_guard::StorageStats;
-use syntrac_core::IdentitySettings;
 use syntrac_core::{
     Clock, EventRepository, MetricsRepository, MetricsSource, ProcessRepository, Retention, RollupRepository,
     RollupSettings, TelemetrySource,
 };
+use syntrac_core::{ContextSettings, IdentitySettings};
 use syntrac_ipc::pipe::{PipeServer, PipeServerConfig};
 use syntrac_ipc::protocol::{Request, Response};
 use syntrac_ipc::serve::Handler;
@@ -33,8 +34,8 @@ use syntrac_store::SqliteStore;
 use tracing::{error, info, warn};
 
 use crate::{
-    BoardInfo, Collector, CollectorSettings, IdentityWorker, IdentityWorkerSettings, KnownProductsAdmin, ServiceConfig,
-    ServiceHandler, StatusBoard,
+    BoardInfo, Collector, CollectorSettings, ContextWorker, ContextWorkerSettings, IdentityWorker,
+    IdentityWorkerSettings, KnownProductsAdmin, ServiceConfig, ServiceHandler, StatusBoard,
 };
 
 /// Teardown (stopping sources, final drain, summary) must finish within this long, or `on_stall` runs.
@@ -169,6 +170,7 @@ pub fn run_host(
 
     let worker_stop = Arc::new(AtomicBool::new(false));
     let identity_thread = start_identity_worker(options, &worker_stop);
+    let context_thread = start_context_worker(options, &worker_stop);
 
     let started = Instant::now();
     let cpu_at_start = own_cpu_time();
@@ -228,6 +230,9 @@ pub fn run_host(
     if let Some(thread) = identity_thread {
         let _ = thread.join();
     }
+    if let Some(thread) = context_thread {
+        let _ = thread.join();
+    }
     let summary = render_summary(&collector, etw_stats.as_deref(), started.elapsed(), own_cpu_time() - cpu_at_start);
     Ok(HostOutcome { summary })
 }
@@ -264,6 +269,46 @@ fn start_identity_worker(options: &HostOptions, stop: &Arc<AtomicBool>) -> Optio
         }
         Err(error) => {
             warn!(%error, "The identity worker thread could not start; collecting without it");
+            None
+        }
+    }
+}
+
+/// Starts the context worker (which account each program runs as, which services it hosts) on its own thread with its own
+/// database connection, so looking at the running programs can never delay the collector. If it is switched off or cannot
+/// start, collection carries on without it: this is evidence, not the telemetry itself.
+fn start_context_worker(options: &HostOptions, stop: &Arc<AtomicBool>) -> Option<std::thread::JoinHandle<()>> {
+    let config = &options.config;
+    if !config.context_enabled {
+        info!("The context worker is switched off in the configuration");
+        return None;
+    }
+    let store = match SqliteStore::open(&options.database_path) {
+        Ok(store) => store,
+        Err(error) => {
+            warn!(%error, "The context worker could not open the database; collecting without it");
+            return None;
+        }
+    };
+    let settings = ContextWorkerSettings {
+        interval: Duration::from_secs(config.context_interval_secs),
+        pass: ContextSettings {
+            refresh_every: Duration::from_secs(config.context_refresh_minutes * 60),
+            ..ContextSettings::default()
+        },
+    };
+    let worker = ContextWorker::new(store, WindowsProcessContextSource::new(), SystemClock, settings);
+    let stop = Arc::clone(stop);
+    let spawned = std::thread::Builder::new()
+        .name("syntrac-context".into())
+        .spawn(move || worker.run(&stop, Duration::from_millis(500)));
+    match spawned {
+        Ok(handle) => {
+            info!("Context worker started");
+            Some(handle)
+        }
+        Err(error) => {
+            warn!(%error, "The context worker thread could not start; collecting without it");
             None
         }
     }

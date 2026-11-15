@@ -114,6 +114,18 @@ detail never touches either table. A name is what a program asked for, not who o
 Migration 8 also adds `idx_exe_destinations_addr` on `exe_destinations (addr, first_seen)`, so the program that was first to talk
 to a destination is found without scanning the pairs (the Network tab's "new destinations").
 
+## How programs run (v9)
+
+`executable_accounts` and `executable_services` (migration v9, additive): how each program has been SEEN running. One row per
+(`exe_id`, `sid`) with the account's name as Windows gave it (`account_name`, NULL when it could not be named), its kind
+(`account_kind`: `system`, `local_service`, `network_service`, `service_account`, `user`, `other`) and `first_seen` / `last_seen`;
+one row per (`exe_id`, `service_name`) with the display name and `first_seen` / `last_seen`. A program is a SET of accounts (it
+can run as SYSTEM and as a user) and a service host carries many services. Only first and last seen are kept (MIN and MAX), so
+recording the same sighting twice changes nothing, and a missing name never erases a known one. Written only by the service's
+context worker, and a program the rollups have not met yet gets its `executables` row from there (with the spelling first
+seen). Permanent: the purge of detail never touches either table. The account name contains the Windows user name and stays in
+this local database. Plan: `docs/RUNAS-PLAN.md`.
+
 ## Retention
 
 `Retention::purge_before(cutoff)` removes events, flows, metrics older than the cutoff, and ended processes that ended

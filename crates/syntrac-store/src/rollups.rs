@@ -40,7 +40,7 @@ fn executable_from(id: i64, key: String, path: String) -> Option<Executable> {
 }
 
 /// Looks the executable up (adding it on first sight) and returns its id. The path stored is the spelling first seen.
-fn executable_id(
+pub(crate) fn executable_id(
     tx: &Transaction<'_>,
     cache: &mut HashMap<String, i64>,
     exe: Option<&Executable>,

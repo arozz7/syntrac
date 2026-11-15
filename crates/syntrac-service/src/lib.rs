@@ -4,6 +4,7 @@
 mod cli;
 mod collector;
 mod config;
+mod context_worker;
 mod db_check;
 mod guard;
 mod host;
@@ -15,6 +16,7 @@ mod status_board;
 pub use cli::{CliArgs, CliError, USAGE};
 pub use collector::{Collector, CollectorSettings, TickReport, Totals};
 pub use config::{ConfigError, ServiceConfig};
+pub use context_worker::{ContextTick, ContextWorker, ContextWorkerSettings};
 pub use db_check::{database_check_passed, format_database_report};
 pub use guard::StorageSnapshot;
 pub use host::{

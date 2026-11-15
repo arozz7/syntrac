@@ -1,7 +1,8 @@
 # Run-as account, services and launch records (I4): implementation plan
 
-Status: **DRAFT 2026-11-15, waiting for the user's approval.** No code until approved. I4 is the item `docs/IDENTITY-PLAN.md`
-deferred ("own plan later"). It is split into three slices so each can be approved, built and installed on its own.
+Status: **I4a APPROVED 2026-11-15** with the decisions at the end (polling worker, 30 seconds, account names stored locally), and
+**built the same day** (`aiChangeLog/phase-I4a.md`; measured overhead about 0.05% of one core). I4b and I4c still need their own addenda. I4 is the item `docs/IDENTITY-PLAN.md` deferred ("own plan later"). It is split into three slices
+so each can be approved, built and installed on its own.
 
 ## Goal
 
@@ -54,6 +55,15 @@ its token's user (`OpenProcessToken`, `GetTokenInformation(TokenUser)`), turn th
 service map comes from one `EnumServicesStatusExW` call (running services with their process ids). A process that cannot be opened
 (protected system processes) is counted as unreadable and skipped, never an error and never a retry storm. No new network use, no
 writes, no process is touched beyond a query.
+
+**Overhead (the user asked: "does 30 seconds cause too much overhead?").** Three measures keep it negligible, and the cost is
+measured before the slice is called done (see the rehearsal below).
+- One pass is one process snapshot, one token read per process and one service listing. Looking a SID up to a name is the only
+  call that can be slow (a domain account may be asked of a domain controller), so each SID is resolved once and kept in memory.
+- A program that is seen again is NOT written again every pass. The worker remembers what it has stored and writes a program only
+  when it is new to it, when its set of services changed, or when ten minutes have passed (to move "last seen"). With 400 running
+  programs that turns about 1.1 million row updates a day into a few thousand.
+- It runs on its own thread with its own database connection, so it can never delay draining ETW, and a failed pass is skipped.
 
 **Service worker (`context_worker.rs`).** A thread of its own with its own database connection, like the identity worker. Polls every
 `context_interval_secs` (default 30). Stops promptly on a stop request. Configured by `context_*` keys in `config/service.toml`
@@ -115,6 +125,7 @@ program here). Token elevation level and integrity level. Network use of any kin
 
 ## Decisions I need from you
 
-1. Approve **I4a** as written (a polling worker, no change to the event schema). I4b and I4c wait for their own addenda.
-2. Poll interval: 30 seconds (a pass is a few milliseconds of work). Faster catches shorter programs; slower costs less.
-3. Storing the account name (it contains your Windows user name; local only): OK?
+Resolved 2026-11-15:
+1. **I4a approved** as written (a polling worker, no change to the event schema). I4b and I4c wait for their own addenda.
+2. **Poll interval 30 seconds**, with the user's question about overhead answered by the three measures above and a measurement.
+3. **Storing the account name locally: yes** (it stays on the desktop; nothing is sent anywhere).
