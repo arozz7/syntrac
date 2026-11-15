@@ -134,6 +134,10 @@
 .card {
   margin: 0;
   min-width: 0;
+  /* Nothing may spill past the card: long unbroken text (a path, a hash, an IPv6 address) wraps, and a table that is still
+     too wide scrolls inside the card. */
+  overflow-wrap: anywhere;
+  overflow-x: auto;
 }
 
 .card h2 {
@@ -248,6 +252,8 @@
 
 .table .num {
   text-align: right;
+  /* A number stays with its unit ("633.7 KB"); the column grows instead. */
+  white-space: nowrap;
 }
 
 .table .path {
