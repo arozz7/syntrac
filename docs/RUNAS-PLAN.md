@@ -1,7 +1,7 @@
 # Run-as account, services and launch records (I4): implementation plan
 
 Status: **I4a APPROVED 2026-11-15** with the decisions at the end (polling worker, 30 seconds, account names stored locally), and
-**built the same day** (`aiChangeLog/phase-I4a.md`; measured overhead about 0.05% of one core). I4b and I4c still need their own addenda. I4 is the item `docs/IDENTITY-PLAN.md` deferred ("own plan later"). It is split into three slices
+**built the same day** (`aiChangeLog/phase-I4a.md`; measured overhead about 0.05% of one core). I4b and I4c: **addendum written 2026-11-15, waiting for approval** (see the end of this file). I4 is the item `docs/IDENTITY-PLAN.md` deferred ("own plan later"). It is split into three slices
 so each can be approved, built and installed on its own.
 
 ## Goal
@@ -129,3 +129,115 @@ Resolved 2026-11-15:
 1. **I4a approved** as written (a polling worker, no change to the event schema). I4b and I4c wait for their own addenda.
 2. **Poll interval 30 seconds**, with the user's question about overhead answered by the three measures above and a measurement.
 3. **Storing the account name locally: yes** (it stays on the desktop; nothing is sent anywhere).
+
+## Addendum 2026-11-15: I4b and I4c in detail (waiting for approval)
+
+You asked for these to be planned. They share one design so the second is small: a **system records worker** that, every 10
+minutes, asks a list of read-only *record sources* what the machine is configured to start or has installed, and writes what it
+finds. I4b adds the launch sources, I4c adds the install source. Like I4a: own thread, own database connection, bounded work, a
+failed source is logged and skipped (the others still run), switchable off in `config/service.toml`
+(`records_enabled`, `records_interval_minutes = 10`). Pure rules in `syntrac-core`, Windows reads in `syntrac-collector`, fakes and
+a shared contract suite in `syntrac-testkit`.
+
+What this machine holds today (counts only, read-only): 107 automatic services; Run keys 8 (machine), 5 (32-bit view), 9 (this
+user), RunOnce 2; one Startup-folder entry for all users and one for this user; Uninstall keys 331 (64-bit), 387 (32-bit) and 25 (this
+user). Small enough that a full sweep is milliseconds to tens of milliseconds, to be measured.
+
+### I4b: how a program gets started
+
+**Sources (all read-only):**
+1. **Services** (SCM): every service's start type and its command line (`QueryServiceConfigW`). Automatic and delayed-automatic
+   count as "starts with Windows"; manual and disabled are kept as facts but quiet. A shared host (`svchost -k group`) is recorded
+   against `svchost.exe` with the service name (I4a already records which services a running host carries).
+2. **Scheduled tasks**: the task definition files under `System32\Tasks` (XML, UTF-16), from each `<Exec><Command>` and
+   `<Arguments>`, with the trigger kinds (boot, logon, time, event, idle...). The service runs as SYSTEM and can read them; **my
+   unelevated check of that folder read zero files, so the file format is confirmed first by an elevated probe on this machine
+   (step 0 below) before any parser is written**, and the Task Scheduler's own COM interface is the fallback if the files prove
+   awkward.
+3. **Run and RunOnce keys**: machine (64-bit and the 32-bit view) and each **loaded** user hive under `HKEY_USERS` (the service's
+   own `HKCU` is SYSTEM's, which is not yours). Users who are not signed in have unloaded hives and are not read; said on screen.
+4. **Startup folders**: the all-users folder and each profile's folder; a `.lnk` shortcut is resolved to its target with the shell
+   link interface, an `.exe` is taken as is.
+
+**Mapping an entry to a program (pure, tested to death, because this is where the surprises are).** `launch_target(command,
+expand, exists)`: quotes; an unquoted path with spaces (`C:\Program Files\X\x.exe /s`: try each prefix ending in `.exe`, and use
+the file-exists port to pick the longest real one); environment variables (`%ProgramFiles%`, `%SystemRoot%`, `%windir%`;
+`%USERPROFILE%` and `%APPDATA%` are expanded per the profile that owns the entry); `\??\` and `\\?\` prefixes; `System32` path
+spelling; **proxies**: `rundll32`, `cmd /c`, `powershell`, `wscript`, `cscript`, `mshta`, `msiexec` are recorded as launching the
+proxy itself, with the arguments shown (sanitised, length capped), because that is what really runs; we do not guess what the
+proxy then loads. Anything that cannot be resolved is counted and kept as "unresolved: <text>" under the entry's location, never
+dropped silently.
+
+**Data (schema: next free version, additive).**
+- `executable_launchers (exe_id, kind, location, detail, first_seen, last_seen, PRIMARY KEY (exe_id, kind, location)) WITHOUT
+  ROWID`. `kind`: `service_auto`, `service_other`, `task`, `run_key`, `run_once`, `startup_folder`. `location`: the service name,
+  the task path, the key and value name, the shortcut path. `detail`: trigger or arguments (sanitised, capped).
+- `launcher_sweeps (kind PRIMARY KEY, completed_at)`: when each kind was last read **completely**. "Still configured" is
+  `last_seen >= completed_at` for its kind; a source that failed this time does not move `completed_at`, so nothing is wrongly
+  shown as removed. Only first and last seen are kept, as everywhere, so a repeat sweep writes nothing new except `last_seen` (the
+  worker writes a changed or new entry at once, an unchanged one only at the refresh time, like I4a).
+- Permanent; the purge of detail never touches them.
+
+**App.** Identity panel: **Starts with Windows via** (service, scheduled task "<name>", Run key, Startup folder; first seen on the
+machine; "no longer configured" when removed). Programs table: a quiet badge "Starts at boot" for automatic services, tasks and
+Run keys only. A program with no launch record says "No start-up entry found", with the stated blind spots (below), never "does not
+autostart".
+
+**Honest blind spots, stated on screen and in the docs.** Not read: Winlogon `Shell`/`Userinit`, Image File Execution Options,
+AppInit and other DLL hooks, WMI event subscriptions, COM hijacks, drivers, unloaded user hives, programs launched by another
+program. So "no start-up entry found" means "not found in the places we read".
+
+**Tests first.** `launch_target` (about 40 cases: every item above plus empty, only quotes, a trailing backslash, a 4,000-character
+value, control and direction characters, mixed case, forward slashes); task-XML parsing from fixtures (one action, several actions,
+no Exec action such as COM-handler tasks, disabled task, UTF-16 with and without a byte-order mark, malformed XML counted not
+fatal); registry and folder sources against fakes; contract suite for the repository in both stores; migration test on a copy of the
+live database; `launcher_sweeps` semantics (a failed source keeps old state); worker stops promptly and survives a failing source;
+app and frontend with fake data (service, task, several, none, removed). Adapter tests run on this machine and assert only
+machine-independent facts (it reads without error; counts are not negative; a made-up task folder with fixtures parses).
+
+**Step 0 (before code, needs you):** an elevated probe prints counts and one anonymised sample of each source, so the parser is
+built from real files. I will give you the one command to run in an elevated shell; it writes nothing.
+
+### I4c: install records
+
+**Source:** the Uninstall registry keys (machine 64-bit, 32-bit view, and each loaded user hive): `DisplayName`, `Publisher`,
+`DisplayVersion`, `InstallLocation`, `DisplayIcon`, `UninstallString`, `InstallDate`, `SystemComponent`, `WindowsInstaller`.
+
+**Data.** `install_records (id, hive, key_name, display_name, publisher, version, location, install_date, system_component,
+first_seen, last_seen)`, unique on `(hive, key_name)`, `location` lower-cased and normalised. When `InstallLocation` is empty the
+folder is derived from `DisplayIcon` or `UninstallString` and marked `derived`, because that is weaker evidence. Not stored per
+program: one product has many executables, so matching is done **when shown**.
+
+**Matching (pure, tested).** A program matches the record with the **longest install folder that contains the program's path**.
+Guards: ignore folders that are too general (a drive root, `Program Files`, `Windows`, `System32`, a profile folder, `Temp`),
+ignore records with no usable folder. Several equally specific records are all shown, not one picked silently.
+
+**Use and honesty.** Shown in the identity panel as **"Registered by an installer as 'X' from 'Y' (version, date)"**, labelled a
+clue: anything able to write the registry can claim any name, so it never replaces the signature and never changes a standing. One
+good use: a program with no signer that lives in a folder an installer registered gives product grouping a name where the
+version resource is empty. It is offered to the existing product grouping only as a **fallback label**, below signer and version
+information, and never merges two products by itself.
+
+**Tests first.** Parsing from a fake registry (missing values, wrong types, a value of 10,000 characters, control characters, a
+duplicate key in both views), folder derivation, the matching guards and longest-prefix rule, ties, the product-grouping fallback
+order, contract and migration tests, worker survival, frontend with fake data.
+
+### Shared
+
+- **Order proposed:** T3d (Network screen), T3c (owner data), then I4b, then I4c. Each is its own commit and its own reinstall.
+- **Overhead:** one sweep every 10 minutes reads a few hundred small registry keys and files; I expect a few tens of milliseconds
+  per sweep (about 0.005% of one core) and measure it, together with the database growth, before calling the slice done, as for
+  I4a. The writes are first-seen only plus a refresh of `last_seen`.
+- **Privacy:** the records name your programs and your user profile paths; they stay in the local database. Strings from the
+  system go through the existing sanitiser. Nothing is written to the system, no key is created, no task is started.
+- **Documentation:** `aiChangeLog/phase-I4b.md` and `phase-I4c.md`, `docs/SCHEMA.md`, `ARCHITECTURE.md`, `THREAT-MODEL.md` (the
+  service reads the Task Scheduler folder and other users' hives), `IDENTITY-PLAN.md`, `README.md` for the new config keys.
+- **Future (Phase 3, not planned here):** "something new will start at every boot" is an alert that can use `first_seen` of a launch
+  entry, and "a known program started a new way" can use these records with the known-programs list.
+
+### Decisions I need from you (I4b and I4c)
+
+1. Approve the **shared records worker** design, I4b first and I4c after it.
+2. Approve the **blind-spot list** as the honest scope of I4b (the places not read).
+3. OK for the **elevated probe** (step 0): one command you run in an elevated shell, read-only, before I write the task parser.
+4. Reading **other users' loaded hives** under `HKEY_USERS` is a new capability of the service (read-only); OK?

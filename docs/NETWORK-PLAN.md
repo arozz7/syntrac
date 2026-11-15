@@ -1,6 +1,6 @@
 ﻿# Network history (T3): implementation plan
 
-Status: **APPROVED 2026-11-15** (T3-0, T3a, T3b; T3c waits for the source and licence). **T3-0, T3a and T3b done 2026-11-15** (`aiChangeLog/phase-T3-0.md`, `phase-T3a.md`, `phase-T3b.md`); T3c waits.
+Status: **APPROVED 2026-11-15** (T3-0, T3a, T3b; T3c waits for the source and licence). **T3-0, T3a and T3b done 2026-11-15** (`aiChangeLog/phase-T3-0.md`, `phase-T3a.md`, `phase-T3b.md`); T3c: source and licence approved 2026-11-15, design in `docs/OWNER-PLAN.md` (waiting for approval). T3d (seeing the programs): addendum at the end, waiting for approval.
 T3 is the third slice of
 `docs/TRENDS-PLAN.md` (approved 2026-11-13); this document replaces its one-line T3 entry with a full design.
 
@@ -128,3 +128,35 @@ country, exporting, names per hour (only first and last seen are kept), DNS even
 2. Clipping: which screens, ideally a screenshot of each.
 3. "New destination" baseline of the first 24 hours of history, and Public-only as the default scope: OK?
 4. Cap of 50 names per address: OK?
+
+## Addendum 2026-11-15: slice T3d, seeing the programs (waiting for approval)
+
+**What you found.** The Network tab shows only a number of programs per destination. The names are in the drill-down, but that card
+opens at the bottom of a long page, so it looks as if nothing happened; and the program names inside it are plain text, not links
+(this plan promised "a program name there opens that program's history", and it was not built; this slice fixes that omission).
+
+**Recommendation: a dialog (pop-up) plus names in the row**, not a second page.
+1. **Names in the row.** The "Programs" cell shows the three biggest programs by traffic to that address, then "+N more", for
+   example `browser.exe, chat.exe +4`. You see who it is without clicking. Order and count follow the same range as the table.
+2. **A dialog for the detail.** Clicking the address, the program count or "New destinations" opens the drill-down as a dialog over
+   the page (Esc, the Close button or a click outside closes it; it scrolls inside; focus returns to the row). Nothing is hidden
+   below the fold any more.
+3. **Program names are links.** Inside the dialog, a program name replaces the dialog's content with that program's history
+   (`ProgramDetail`, the identity panel included) and a "Back to <address>" button. This also means you can reach a program from
+   the Network tab without switching tabs. The same links apply to "first program" in New destinations.
+4. Not chosen, and why: expanding the row in place (the table gets tall and the chart does not fit), and a side drawer (narrow, and
+   a program history needs the width). If you prefer the in-row expansion, say so; the data work below is the same.
+
+**Data work.** A new read method `top_programs_for(addrs, from, to, per_addr)` on `DestinationTrendRepository` (in-memory and SQLite,
+one query for the whole visible page, not one per row), included in `DestinationsView` as `topPrograms` (name and path, at most 3)
+and `morePrograms`. Contract test in both stores, a query-plan test (index seek by address, no scan of the rollup table), backend
+test (empty, one program, ties, unattributed bucket named "Unknown program"), frontend tests (row names, "+N more", dialog open and
+close, Esc, focus return, a program link opens its history and Back returns). A small `Dialog` component (role `dialog`,
+`aria-modal`, labelled by its title) with its own test, reused later.
+
+**Files:** `destination_trend.rs`, the two stores, the contract suite, `history_network.rs`, `types.ts`, `fakeApi.ts`,
+`NetworkHistory.tsx`, `NewDestinations.tsx`, `DestinationDetail.tsx`, a new `components/Dialog.tsx`, `app.css`. Change log
+`aiChangeLog/phase-T3d.md`. No schema change, so no reinstall of the service is needed; rebuild the app only.
+
+**Not in this slice (idea only):** the opposite direction, "where does this program connect" in the program's history. Ask if you want
+it planned.
