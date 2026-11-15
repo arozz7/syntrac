@@ -14,6 +14,10 @@ app/src-tauri/gen/
 *.db-shm
 *.log
 
+# Raw run output (smoke tests, console runs, rehearsals): names the machine and the account, so it is never published.
+# The phase documents (aiChangeLog/phase-*.md) are the record. See aiChangeLog/README.md.
+/aiChangeLog/*.txt
+
 # Editor / OS
 .vs/
 .idea/
