@@ -299,3 +299,90 @@ export interface StorageView {
   /** Hours of detail the storage guard has trimmed early since the service started. */
   trimmedHoursTotal: number;
 }
+
+/** What kind of address a destination is: the internet, or this network's own (router, printers), or multicast. */
+export type AddressClass = 'public' | 'private' | 'link_local' | 'multicast' | 'other';
+
+export type DestinationOrder = 'bytes' | 'flows' | 'programs';
+
+export interface DestinationRowView {
+  addr: string;
+  /** The name a program asked for most recently when it reached this address (never an owner). */
+  name: string | null;
+  otherNames: number;
+  class: AddressClass;
+  bytesSent: number;
+  bytesReceived: number;
+  flows: number;
+  /** How many different programs talked to it. */
+  programs: number;
+  firstSeenMs: number | null;
+  lastSeenMs: number | null;
+}
+
+export interface DestinationsView {
+  fromMs: number;
+  toMs: number;
+  historyStartsMs: number | null;
+  /** Hours of the range that have data at all. */
+  hoursInRange: number;
+  destinations: DestinationRowView[];
+}
+
+export interface NewDestinationRowView {
+  addr: string;
+  name: string | null;
+  otherNames: number;
+  class: AddressClass;
+  firstSeenMs: number;
+  lastSeenMs: number;
+  /** The program that was first to talk to it; null when only unidentified programs ever did. */
+  firstProgram: string | null;
+  firstProgramPath: string | null;
+}
+
+export interface NewDestinationsView {
+  /** Only addresses first seen at or after this count as new (null: there is no history yet). */
+  sinceMs: number | null;
+  /** Everything first seen before this is the baseline, not news. */
+  baselineUntilMs: number | null;
+  historyStartsMs: number | null;
+  destinations: NewDestinationRowView[];
+}
+
+export interface DestinationNameView {
+  name: string;
+  firstSeenMs: number;
+  lastSeenMs: number;
+}
+
+export interface DestinationProgramView {
+  name: string;
+  /** Null for the bucket of programs that could not be identified. */
+  path: string | null;
+  bytesSent: number;
+  bytesReceived: number;
+  flows: number;
+  firstSeenMs: number;
+  lastSeenMs: number;
+}
+
+export interface DestinationHourView {
+  hourMs: number;
+  bytesSent: number;
+  bytesReceived: number;
+  flows: number;
+}
+
+export interface DestinationHistoryView {
+  addr: string;
+  class: AddressClass;
+  fromMs: number;
+  toMs: number;
+  firstSeenMs: number | null;
+  lastSeenMs: number | null;
+  /** Every name asked for when this address was reached, newest first. */
+  names: DestinationNameView[];
+  programs: DestinationProgramView[];
+  hours: DestinationHourView[];
+}

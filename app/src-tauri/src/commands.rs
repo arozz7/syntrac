@@ -5,12 +5,13 @@ use std::sync::Arc;
 
 use serde::Serialize;
 
-use syntrac_core::SystemClock;
+use syntrac_core::{AddressScope, SystemClock};
 use tauri::State;
 
 use crate::backend::{Backend, Data};
 use crate::health::HealthView;
 use crate::history::SystemHistoryView;
+use crate::history_network::{DestinationHistoryView, DestinationOrderParam, DestinationsView, NewDestinationsView};
 use crate::history_programs::{Grouping, ProgramHistoryView, ProgramMetricParam, ProgramsView};
 use crate::known_view::KnownProgramsView;
 use crate::views::{ConnectionRowView, OverviewView, ProcessListParams, ProcessRowView};
@@ -67,6 +68,49 @@ pub async fn get_program_history(
 ) -> Result<Data<ProgramHistoryView>, ()> {
     let backend = Arc::clone(&backend);
     Ok(blocking(move || backend.program_history(range_secs, path)).await.unwrap_or_else(internal))
+}
+
+fn scope_of(all_addresses: Option<bool>) -> AddressScope {
+    if all_addresses.unwrap_or(false) {
+        AddressScope::All
+    } else {
+        AddressScope::Internet
+    }
+}
+
+#[tauri::command]
+pub async fn get_top_destinations(
+    backend: State<'_, SharedBackend>,
+    range_secs: u64,
+    order: DestinationOrderParam,
+    limit: Option<usize>,
+    all_addresses: Option<bool>,
+) -> Result<Data<DestinationsView>, ()> {
+    let backend = Arc::clone(&backend);
+    let scope = scope_of(all_addresses);
+    Ok(blocking(move || backend.top_destinations(range_secs, order, scope, limit)).await.unwrap_or_else(internal))
+}
+
+#[tauri::command]
+pub async fn get_new_destinations(
+    backend: State<'_, SharedBackend>,
+    window_secs: u64,
+    limit: Option<usize>,
+    all_addresses: Option<bool>,
+) -> Result<Data<NewDestinationsView>, ()> {
+    let backend = Arc::clone(&backend);
+    let scope = scope_of(all_addresses);
+    Ok(blocking(move || backend.new_destinations(window_secs, scope, limit)).await.unwrap_or_else(internal))
+}
+
+#[tauri::command]
+pub async fn get_destination_history(
+    backend: State<'_, SharedBackend>,
+    range_secs: u64,
+    addr: String,
+) -> Result<Data<DestinationHistoryView>, ()> {
+    let backend = Arc::clone(&backend);
+    Ok(blocking(move || backend.destination_history(range_secs, addr)).await.unwrap_or_else(internal))
 }
 
 #[tauri::command]

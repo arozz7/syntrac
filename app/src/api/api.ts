@@ -2,8 +2,12 @@ import { invoke } from '@tauri-apps/api/core';
 import type {
   ConnectionRowView,
   Data,
+  DestinationHistoryView,
+  DestinationOrder,
+  DestinationsView,
   HealthView,
   KnownProgramsView,
+  NewDestinationsView,
   OverviewView,
   ProcessListParams,
   ProcessRowView,
@@ -29,6 +33,17 @@ export interface Api {
   ): Promise<Data<ProgramsView>>;
   /** One program, hour by hour. `path` is the program's image path as listed by `topPrograms`. */
   programHistory(rangeSecs: number, path: string): Promise<Data<ProgramHistoryView>>;
+  /** Where the machine talked to the most over the range, from the rollups. Addresses on this network and multicast are left out unless `allAddresses`. */
+  topDestinations(
+    rangeSecs: number,
+    order: DestinationOrder,
+    limit?: number,
+    allAddresses?: boolean,
+  ): Promise<Data<DestinationsView>>;
+  /** Destinations first seen within the last `windowSecs` (never counting the first day of history as new). */
+  newDestinations(windowSecs: number, limit?: number, allAddresses?: boolean): Promise<Data<NewDestinationsView>>;
+  /** One destination: the names asked for, the programs that talked to it, and its hours. */
+  destinationHistory(rangeSecs: number, addr: string): Promise<Data<DestinationHistoryView>>;
   /** The user's known programs, and programs that look like one without being it. */
   knownPrograms(): Promise<Data<KnownProgramsView>>;
   /** Asks the service to mark the product of the program at path as known. Never throws: a refusal is in the outcome. */
@@ -84,6 +99,11 @@ export const tauriApi: Api = {
   topPrograms: (rangeSecs, metric, limit, groupByProduct) =>
     data<ProgramsView>('get_top_programs', { rangeSecs, metric, limit, groupByProduct }),
   programHistory: (rangeSecs, path) => data<ProgramHistoryView>('get_program_history', { rangeSecs, path }),
+  topDestinations: (rangeSecs, order, limit, allAddresses) =>
+    data<DestinationsView>('get_top_destinations', { rangeSecs, order, limit, allAddresses }),
+  newDestinations: (windowSecs, limit, allAddresses) =>
+    data<NewDestinationsView>('get_new_destinations', { windowSecs, limit, allAddresses }),
+  destinationHistory: (rangeSecs, addr) => data<DestinationHistoryView>('get_destination_history', { rangeSecs, addr }),
   knownPrograms: () => data<KnownProgramsView>('get_known_programs'),
   markKnown: (path, label, note) => write('mark_known_program', { path, label, note }),
   unmarkKnown: (id) => write('unmark_known_program', { id }),

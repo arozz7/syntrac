@@ -19,12 +19,12 @@ pub struct RollupState {
     rolled_up_before: Option<Timestamp>,
     system: BTreeMap<Timestamp, SystemHour>,
     processes: BTreeMap<(Timestamp, Option<String>), ProcessHour>,
-    traffic: BTreeMap<(Timestamp, Option<String>, IpAddr), TrafficHour>,
+    pub(crate) traffic: BTreeMap<(Timestamp, Option<String>, IpAddr), TrafficHour>,
     /// The spelling of each executable's path as first seen.
-    paths: HashMap<String, String>,
+    pub(crate) paths: HashMap<String, String>,
     executables: HashMap<String, LedgerEntry>,
-    destinations: HashMap<IpAddr, LedgerEntry>,
-    pairs: HashMap<(String, IpAddr), LedgerEntry>,
+    pub(crate) destinations: HashMap<IpAddr, LedgerEntry>,
+    pub(crate) pairs: HashMap<(String, IpAddr), LedgerEntry>,
     /// Executable identities (permanent, like the ledgers), by executable key.
     identities: HashMap<String, syntrac_core::IdentityRecord>,
     /// The names asked for, by (address, name): first and last seen. Permanent.

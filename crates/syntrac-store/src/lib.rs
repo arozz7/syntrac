@@ -3,6 +3,7 @@
 
 mod codec;
 mod connection;
+mod destinations;
 mod events;
 mod identities;
 mod inspect;

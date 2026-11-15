@@ -1,10 +1,12 @@
 //! Test support for SYNTRAC: mocks, an in-memory repository, fixtures and contract suites.
 
 pub mod contract;
+pub mod destination_contract;
 pub mod fixtures;
 pub mod identity_contract;
 pub mod known_contract;
 pub mod memory;
+mod memory_destinations;
 mod memory_identity;
 mod memory_known;
 mod memory_rollup;

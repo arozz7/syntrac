@@ -3,6 +3,9 @@ import type { Api } from '../api/api';
 import type {
   ConnectionRowView,
   Data,
+  DestinationHistoryView,
+  DestinationRowView,
+  DestinationsView,
   HealthView,
   OverviewView,
   ProcessCpuView,
@@ -10,6 +13,8 @@ import type {
   IdentityBadgeView,
   IdentityDetailView,
   KnownProgramsView,
+  NewDestinationRowView,
+  NewDestinationsView,
   StandingView,
   WriteOutcome,
   ProgramHistoryView,
@@ -273,6 +278,91 @@ export function programHistoryView(overrides: Partial<ProgramHistoryView> = {}):
   };
 }
 
+export function destinationRow(overrides: Partial<DestinationRowView> = {}): DestinationRowView {
+  return {
+    addr: '142.251.40.238',
+    name: 'calendar.google.com',
+    otherNames: 2,
+    class: 'public',
+    bytesSent: 2048,
+    bytesReceived: 5 * 1024 ** 2,
+    flows: 40,
+    programs: 2,
+    firstSeenMs: NOW - 5 * 86_400_000,
+    lastSeenMs: NOW - 3_600_000,
+    ...overrides,
+  };
+}
+
+export function destinationsView(overrides: Partial<DestinationsView> = {}): DestinationsView {
+  return {
+    fromMs: NOW - 7 * 86_400_000,
+    toMs: NOW,
+    historyStartsMs: NOW - 5 * 86_400_000,
+    hoursInRange: 100,
+    destinations: [
+      destinationRow(),
+      destinationRow({ addr: '203.0.113.50', name: null, otherNames: 0, bytesReceived: 1024, flows: 3, programs: 1 }),
+    ],
+    ...overrides,
+  };
+}
+
+export function newDestinationRow(overrides: Partial<NewDestinationRowView> = {}): NewDestinationRowView {
+  return {
+    addr: '198.51.100.7',
+    name: 'later.example.org',
+    otherNames: 0,
+    class: 'public',
+    firstSeenMs: NOW - 3_600_000,
+    lastSeenMs: NOW - 1_800_000,
+    firstProgram: 'code.exe',
+    firstProgramPath: 'C:\\apps\\code.exe',
+    ...overrides,
+  };
+}
+
+export function newDestinationsView(overrides: Partial<NewDestinationsView> = {}): NewDestinationsView {
+  return {
+    sinceMs: NOW - 4 * 86_400_000,
+    baselineUntilMs: NOW - 4 * 86_400_000,
+    historyStartsMs: NOW - 5 * 86_400_000,
+    destinations: [newDestinationRow()],
+    ...overrides,
+  };
+}
+
+export function destinationHistoryView(overrides: Partial<DestinationHistoryView> = {}): DestinationHistoryView {
+  return {
+    addr: '142.251.40.238',
+    class: 'public',
+    fromMs: NOW - 7 * 86_400_000,
+    toMs: NOW,
+    firstSeenMs: NOW - 5 * 86_400_000,
+    lastSeenMs: NOW - 3_600_000,
+    names: [
+      { name: 'calendar.google.com', firstSeenMs: NOW - 4 * 86_400_000, lastSeenMs: NOW - 3_600_000 },
+      { name: 'clients4.google.com', firstSeenMs: NOW - 5 * 86_400_000, lastSeenMs: NOW - 2 * 86_400_000 },
+    ],
+    programs: [
+      {
+        name: 'chrome.exe',
+        path: 'C:\\apps\\chrome.exe',
+        bytesSent: 1024,
+        bytesReceived: 4096,
+        flows: 30,
+        firstSeenMs: NOW - 5 * 86_400_000,
+        lastSeenMs: NOW - 3_600_000,
+      },
+    ],
+    hours: [
+      { hourMs: NOW - 3 * 3_600_000, bytesSent: 1024, bytesReceived: 4096, flows: 30 },
+      { hourMs: NOW - 2 * 3_600_000, bytesSent: 0, bytesReceived: 0, flows: 0 },
+    ],
+    ...overrides,
+  };
+}
+
 const ok = <T>(data: T): Data<T> => ({ state: 'ok', data });
 
 /** An `Api` whose every method is a spy returning sensible sample data. */
@@ -283,6 +373,9 @@ export function makeFakeApi(overrides: Partial<Api> = {}): Api & { [K in keyof A
     systemHistory: vi.fn(async () => ok(systemHistory())),
     topPrograms: vi.fn(async () => ok(programsView())),
     programHistory: vi.fn(async () => ok(programHistoryView())),
+    topDestinations: vi.fn(async () => ok(destinationsView())),
+    newDestinations: vi.fn(async () => ok(newDestinationsView())),
+    destinationHistory: vi.fn(async () => ok(destinationHistoryView())),
     knownPrograms: vi.fn(async () => ok(knownProgramsView())),
     markKnown: vi.fn(async (): Promise<WriteOutcome> => ({ ok: true, id: 1, message: null })),
     unmarkKnown: vi.fn(async (): Promise<WriteOutcome> => ({ ok: true, id: null, message: null })),

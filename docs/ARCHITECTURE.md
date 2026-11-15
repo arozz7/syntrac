@@ -64,6 +64,7 @@ Client: `syntrac-service --status` / `--ping` (`--pipe <name>`), exit codes 0 ok
 | `Retention` | Memory | Implemented: `purge_before(cutoff)` (detail only; rollups and ledgers are never purged by it) |
 | `StorageStats` / `FreeSpace` / `DetailStore` | Memory + Tool | Implemented (SQLite, in-memory; Windows `GetDiskFreeSpaceExW`): size accounting, space recovery and the narrow view the storage guard works on |
 | `RollupRepository` | Memory | Implemented (SQLite, in-memory; shared contract suite): loads one hour of detail, stores its rollup + ledgers + watermark atomically, reads history and ledgers. The maths is the pure `syntrac_core::rollup::roll_up_hour` |
+| `DestinationTrendRepository` | Memory | Implemented (SQLite, in-memory; shared contract suite): per-destination sums over a range, destinations first seen after an instant (with the first program), and the programs of one destination. Ranking, scope and the "new" rule are pure (`destination_trend.rs`, `addr_class.rs`) |
 | `TelemetrySource` | Tool | Implemented: `EtwSource`, `SnapshotSource` (Windows), `MockTelemetrySource` |
 | `MetricsSource` | Tool | Implemented: `SysinfoMetricsSource`, `MockMetricsSource` |
 | `Clock` | Tool | Implemented: `SystemClock`, `ManualClock` |
@@ -134,6 +135,18 @@ Programs are ranked over a range by `syntrac_core::trend`: the store only sums (
 year of rows never reaches the app), and merging, averaging and ranking are pure. A program's CPU average divides by the samples of
 the whole range (not recorded counts as zero); network totals leave out loopback. Summing a year takes about 2 s, ranking the
 sums under 1 ms, so the app's backend keeps the sums of each range until the rollup watermark moves (an hour).
+
+## Network history
+
+The Network tab (History) answers where the machine talks to over days and months. Two things make it work after the detail is
+purged. First, the permanent address-to-name table (`address_names`, schema v8): the pure `dns_names.rs` turns each hour's DNS
+answers into (address, name) pairs, stored with the hourly rollup in one transaction, plus a one-time backfill of the lookups still
+retained when v8 first starts; only first and last seen are kept, so writing twice changes nothing, and at most 50 names are kept
+per address. Second, the existing rollups and ledgers: `DestinationTrendRepository` sums one group-by per question, and
+`destination_trend.rs` ranks (bytes, flows or programs; ties by address), applies the scope (internet addresses by default, chosen
+with the pure `addr_class.rs`) BEFORE the limit, and decides what is new: first seen after the window start, but never inside the
+first 24 hours of history (the baseline). A name is what a program ASKED for, never an owner, and the screen says so. The backend
+(`history_network.rs`) keeps each range's sums until the rollup watermark moves, like the Programs ranking. Plan: `docs/NETWORK-PLAN.md`.
 
 ## Executable identity
 

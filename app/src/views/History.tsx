@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { KnownPrograms } from './KnownPrograms';
+import { NetworkHistory } from './NetworkHistory';
 import { ProgramsHistory } from './ProgramsHistory';
 import { SystemHistory } from './SystemHistory';
 
-type TabId = 'system' | 'programs' | 'known';
+type TabId = 'system' | 'programs' | 'network' | 'known';
 
 const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'system', label: 'System' },
   { id: 'programs', label: 'Programs' },
+  { id: 'network', label: 'Network' },
   { id: 'known', label: 'Known programs' },
 ];
 
@@ -17,6 +19,8 @@ function CurrentTab({ tab }: { tab: TabId }) {
       return <SystemHistory />;
     case 'programs':
       return <ProgramsHistory />;
+    case 'network':
+      return <NetworkHistory />;
     case 'known':
       return <KnownPrograms />;
   }

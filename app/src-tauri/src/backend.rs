@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use serde::Serialize;
 use syntrac_core::rollup::HOUR_MICROS;
-use syntrac_core::{Clock, MetricsRepository, RepoError, RollupRepository, Timestamp};
+use syntrac_core::{AddressScope, Clock, MetricsRepository, RepoError, RollupRepository, Timestamp};
 use syntrac_ipc::pipe::request;
 use syntrac_ipc::protocol::{Request, Response};
 use syntrac_store::SqliteStore;
@@ -17,6 +17,10 @@ use crate::db_location::{DbLocation, FileMemory, NoMemory, PathMemory};
 use crate::health::{assess_health, HealthView};
 use crate::history::range_start;
 use crate::history::{system_history, SystemHistoryView};
+use crate::history_network::{
+    destination_history, destination_range, new_destinations_view, rank_destination_range, DestinationHistoryView,
+    DestinationOrderParam, DestinationRange, DestinationsView, NewDestinationsView, DEFAULT_DESTINATION_ROWS,
+};
 use crate::history_programs::{
     program_history, range_totals, rank_range, Grouping, ProgramHistoryView, ProgramMetricParam, ProgramsView,
     RangeTotals, DEFAULT_PROGRAM_ROWS,
@@ -68,6 +72,8 @@ pub struct Backend<C> {
     location: DbLocation,
     clock: C,
     totals: Mutex<HashMap<TotalsKey, Arc<RangeTotals>>>,
+    /// The same, for the sums of destinations (the Network tab).
+    destinations: Mutex<HashMap<TotalsKey, Arc<DestinationRange>>>,
 }
 
 impl<C: Clock + Send + Sync> Backend<C> {
@@ -77,7 +83,13 @@ impl<C: Clock + Send + Sync> Backend<C> {
             None => Box::new(NoMemory),
         };
         let location = DbLocation::new(settings.database_path, settings.database_pinned, memory);
-        Self { pipe_name: settings.pipe_name, location, clock, totals: Mutex::new(HashMap::new()) }
+        Self {
+            pipe_name: settings.pipe_name,
+            location,
+            clock,
+            totals: Mutex::new(HashMap::new()),
+            destinations: Mutex::new(HashMap::new()),
+        }
     }
 
     /// The summed range, from the cache when the collector has not rolled up another hour since it was read.
@@ -102,6 +114,29 @@ impl<C: Clock + Send + Sync> Backend<C> {
             cache.insert(key, Arc::clone(&totals));
         }
         Ok(totals)
+    }
+
+    /// The summed destinations of a range, from the cache when the collector has not rolled up another hour since.
+    fn cached_destinations(
+        &self,
+        store: &SqliteStore,
+        now: Timestamp,
+        range_secs: u64,
+    ) -> Result<Arc<DestinationRange>, RepoError> {
+        let watermark = store.rolled_up_before()?.map(|w| w.as_micros());
+        let key = (range_start(now, range_secs).as_micros() / HOUR_MICROS, watermark);
+        if let Some(found) = self.destinations.lock().ok().and_then(|cache| cache.get(&key).cloned()) {
+            return Ok(found);
+        }
+        let range = Arc::new(destination_range(store, now, range_secs)?);
+        if let Ok(mut cache) = self.destinations.lock() {
+            cache.retain(|(_, mark), _| *mark == watermark);
+            if cache.len() >= MAX_CACHED_RANGES {
+                cache.clear();
+            }
+            cache.insert(key, Arc::clone(&range));
+        }
+        Ok(range)
     }
 
     /// Asks the collector how it is doing. Also keeps the database location up to date: the data may have been moved.
@@ -185,6 +220,34 @@ impl<C: Clock + Send + Sync> Backend<C> {
 
     pub fn program_history(&self, range_secs: u64, path: String) -> Data<ProgramHistoryView> {
         self.with_store(|store, now| program_history(store, now, range_secs, &path))
+    }
+
+    pub fn top_destinations(
+        &self,
+        range_secs: u64,
+        order: DestinationOrderParam,
+        scope: AddressScope,
+        limit: Option<usize>,
+    ) -> Data<DestinationsView> {
+        self.with_store(|store, now| {
+            let range = self.cached_destinations(store, now, range_secs)?;
+            rank_destination_range(store, &range, order.into(), scope, limit.unwrap_or(DEFAULT_DESTINATION_ROWS))
+        })
+    }
+
+    pub fn new_destinations(
+        &self,
+        window_secs: u64,
+        scope: AddressScope,
+        limit: Option<usize>,
+    ) -> Data<NewDestinationsView> {
+        self.with_store(|store, now| {
+            new_destinations_view(store, now, window_secs, scope, limit.unwrap_or(DEFAULT_DESTINATION_ROWS))
+        })
+    }
+
+    pub fn destination_history(&self, range_secs: u64, addr: String) -> Data<DestinationHistoryView> {
+        self.with_store(|store, now| destination_history(store, now, range_secs, &addr))
     }
 
     pub fn known_programs(&self) -> Data<KnownProgramsView> {

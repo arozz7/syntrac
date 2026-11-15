@@ -111,6 +111,8 @@ address is the IPv4 address); `name` is lower case without a trailing dot. At mo
 recently seen; a tie keeps the name that sorts first). Written in the same transaction as the hourly rollup, plus once by the
 backfill of the retained DNS events, which `names_progress` (one row, present when done) remembers. Permanent: the purge of
 detail never touches either table. A name is what a program asked for, not who owns the address. Plan: `docs/NETWORK-PLAN.md`.
+Migration 8 also adds `idx_exe_destinations_addr` on `exe_destinations (addr, first_seen)`, so the program that was first to talk
+to a destination is found without scanning the pairs (the Network tab's "new destinations").
 
 ## Retention
 

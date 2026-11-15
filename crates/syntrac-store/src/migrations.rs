@@ -300,6 +300,9 @@ pub const MIGRATIONS: &[&str] = &[
     CREATE TABLE names_progress (
         id          INTEGER PRIMARY KEY CHECK (id = 1)
     );
+
+    -- Which program was first to talk to a destination (docs/NETWORK-PLAN.md, T3b): the primary key starts with the program.
+    CREATE INDEX idx_exe_destinations_addr ON exe_destinations (addr, first_seen);
     ",
 ];
 

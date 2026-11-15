@@ -6,6 +6,7 @@ pub mod commands;
 pub mod db_location;
 pub mod health;
 pub mod history;
+pub mod history_network;
 pub mod history_programs;
 pub mod identity_view;
 pub mod known_view;
@@ -35,7 +36,10 @@ pub fn run() {
             commands::get_known_programs,
             commands::mark_known_program,
             commands::unmark_known_program,
-            commands::get_program_history
+            commands::get_program_history,
+            commands::get_top_destinations,
+            commands::get_new_destinations,
+            commands::get_destination_history
         ])
         .run(tauri::generate_context!())
         .expect("failed to run the SYNTRAC application");
