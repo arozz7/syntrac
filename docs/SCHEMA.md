@@ -138,6 +138,17 @@ downloaded. The whole dataset is replaced at once: the new ranges are written in
 swapped in with one transaction, so a reader sees the old dataset or the new one. Nothing is stored per address: an owner is
 looked up when a page is shown. Written only by the service when the user asks for a download. Plan: `docs/OWNER-PLAN.md`.
 
+## How programs get started (v11)
+
+`executable_launchers` and `launcher_sweeps` (migration v11, additive): one row per (`exe_id`, `kind`, `location`) that was ever
+seen starting a program: `kind` is `service_auto`, `service_other`, `task`, `run_key`, `run_once` or `startup_folder`; `location` is
+the service name, the task path, the key and value name or the shortcut; `detail` is the kinds of trigger of a task or the start type
+of a service; `arguments` is what follows the program (cleaned, at most 400 characters); `first_seen` and `last_seen` only (MIN and
+MAX). `launcher_sweeps` holds, per kind, when that kind was last read COMPLETELY: an entry whose `last_seen` is older than that is
+no longer configured (its history stays). A source that failed does not move its kinds, so nothing is wrongly shown as removed. A
+program the rollups have not met yet gets its `executables` row from there. Permanent: the purge of detail never touches them.
+Written only by the service's launch worker. Plan: `docs/RUNAS-PLAN.md`.
+
 ## Retention
 
 `Retention::purge_before(cutoff)` removes events, flows, metrics older than the cutoff, and ended processes that ended

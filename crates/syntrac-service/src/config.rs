@@ -60,6 +60,11 @@ pub struct ServiceConfig {
     pub context_interval_secs: u64,
     /// Context worker: a program that keeps running has its "last seen" moved this often (minutes), not every look.
     pub context_refresh_minutes: u64,
+    /// Launch records (docs/RUNAS-PLAN.md, I4b): whether to record how programs get started (services, scheduled tasks, Run keys,
+    /// Startup folders).
+    pub launch_enabled: bool,
+    /// Launch records: minutes between two sweeps of those places (they change rarely).
+    pub launch_interval_minutes: u64,
     /// Whether the service may ever download the owner dataset (docs/OWNER-PLAN.md). The download itself still happens only when
     /// the user asks for it in the app; `false` makes the service refuse even then. The only network use SYNTRAC has.
     pub owner_data_allowed: bool,
@@ -96,6 +101,8 @@ impl Default for ServiceConfig {
             context_enabled: true,
             context_interval_secs: 30,
             context_refresh_minutes: 10,
+            launch_enabled: true,
+            launch_interval_minutes: 10,
             owner_data_allowed: true,
             status_interval_secs: 30,
             etw_silent_restart_secs: 180,
@@ -129,6 +136,7 @@ impl ServiceConfig {
             (self.identity_max_hash_mb, "identity_max_hash_mb"),
             (self.context_interval_secs, "context_interval_secs"),
             (self.context_refresh_minutes, "context_refresh_minutes"),
+            (self.launch_interval_minutes, "launch_interval_minutes"),
             (self.top_processes as u64, "top_processes"),
             (self.status_interval_secs, "status_interval_secs"),
             (self.etw_silent_restart_secs, "etw_silent_restart_secs"),

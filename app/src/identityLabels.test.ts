@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   accountConcern,
   accountLabel,
+  launcherLabel,
   locationLabel,
   locationNote,
   signatureLabel,
@@ -98,5 +99,20 @@ describe('accountConcern', () => {
     for (const kind of ['local_service', 'network_service', 'service_account'] as const) {
       expect(accountConcern(identityBadge({ runsAs: [kind], location: 'temporary' }))).not.toBeNull();
     }
+  });
+});
+
+describe('launcherLabel', () => {
+  it('names each way a program can be started in plain words', () => {
+    expect(launcherLabel('service_auto')).toBe('Windows service (automatic)');
+    expect(launcherLabel('service_other')).toBe('Windows service (on demand)');
+    expect(launcherLabel('task')).toBe('Scheduled task');
+    expect(launcherLabel('run_key')).toBe('Run key (every sign-in)');
+    expect(launcherLabel('run_once')).toBe('Run key (next sign-in only)');
+    expect(launcherLabel('startup_folder')).toBe('Startup folder');
+  });
+
+  it('calls a disabled service disabled, not on demand', () => {
+    expect(launcherLabel('service_other', 'disabled')).toBe('Windows service (disabled)');
   });
 });

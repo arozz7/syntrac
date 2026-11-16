@@ -349,6 +349,26 @@ pub const MIGRATIONS: &[&str] = &[
         sha256        TEXT NOT NULL
     );
     ",
+    // 11: how programs get started (docs/RUNAS-PLAN.md, I4b). Additive. One row per (program, kind, place) that was ever seen
+    // starting it, with first and last seen only; launcher_sweeps says when each kind was last read completely, so an entry whose
+    // last_seen is older than that is no longer there. Permanent: the purge of detail never touches them.
+    "
+    CREATE TABLE executable_launchers (
+        exe_id     INTEGER NOT NULL,
+        kind       TEXT NOT NULL,
+        location   TEXT NOT NULL,
+        detail     TEXT NOT NULL,
+        arguments  TEXT NOT NULL,
+        first_seen INTEGER NOT NULL,
+        last_seen  INTEGER NOT NULL,
+        PRIMARY KEY (exe_id, kind, location)
+    ) WITHOUT ROWID;
+
+    CREATE TABLE launcher_sweeps (
+        kind         TEXT PRIMARY KEY,
+        completed_at INTEGER NOT NULL
+    ) WITHOUT ROWID;
+    ",
 ];
 
 /// The migration (1-based number) that rewrites every table. An existing database gets a backup copy before it is applied

@@ -83,3 +83,8 @@ fn in_memory_repository_satisfies_the_context_contract() {
 fn in_memory_repository_satisfies_the_owner_contract() {
     syntrac_testkit::owner_contract::owner_contract(InMemoryRepository::default);
 }
+
+#[test]
+fn in_memory_repository_satisfies_the_launcher_contract() {
+    syntrac_testkit::launcher_contract::launcher_contract(InMemoryRepository::default);
+}

@@ -45,6 +45,14 @@ export function IdentityCell({ identity, standing }: { identity: IdentityBadgeVi
           Service
         </span>
       )}
+      {identity.startsAtBoot && (
+        <span
+          className="badge badge--quiet"
+          title="Something that starts with Windows (an automatic service, a scheduled task, a Run key or a Startup folder entry) was found for this program."
+        >
+          Starts at boot
+        </span>
+      )}
       {identity.publisher !== null && (
         <span className="identity-cell__publisher" title={publisherHint(identity)}>
           {identity.publisher}

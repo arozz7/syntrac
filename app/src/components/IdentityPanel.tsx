@@ -1,7 +1,14 @@
 import type { ReactNode } from 'react';
 import type { IdentityDetailView, StandingView } from '../api/types';
 import { formatBytes, formatDateTime } from '../format';
-import { accountConcern, accountLabel, locationLabel, signatureLabel, wasRenamed } from '../identityLabels';
+import {
+  accountConcern,
+  accountLabel,
+  launcherLabel,
+  locationLabel,
+  signatureLabel,
+  wasRenamed,
+} from '../identityLabels';
 import { SignatureBadge } from './IdentityBadge';
 import { KnownSection } from './KnownSection';
 
@@ -112,9 +119,36 @@ export function IdentityPanel({
             </ul>
           </Fact>
         )}
+        <Fact label="Starts with Windows via">
+          {identity.launchers.length === 0 ? (
+            <span className="muted">
+              No start-up entry found in the services, scheduled tasks, Run keys and Startup folders that were read
+            </span>
+          ) : (
+            <ul className="names">
+              {identity.launchers.map((entry) => (
+                <li key={`${entry.kind}:${entry.location}`}>
+                  {launcherLabel(entry.kind, entry.detail)} <code>{entry.location}</code>
+                  {entry.kind === 'task' && entry.detail !== '' && <span className="muted"> ({entry.detail})</span>}
+                  {entry.arguments !== '' && <span className="muted"> {entry.arguments}</span>}
+                  <span className="muted">
+                    {' '}
+                    since {formatDateTime(entry.firstSeenMs)}
+                    {!entry.current && ', no longer configured'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Fact>
       </dl>
       <p className="muted">{label.hint}</p>
       {accountConcern(identity) !== null && <p className="muted">{accountConcern(identity)}</p>}
+      <p className="muted">
+        Not read: Winlogon settings, debugger and DLL hooks, WMI subscriptions, drivers, users who are not signed in,
+        and programs started by another program. A program can start in those ways, so "no entry found" only means "not
+        found in the places read".
+      </p>
       <p className="muted">
         The account shows how a program was started and what it is allowed to do, not whether it is safe. It is recorded
         only while the program is seen running, so a program that runs briefly can be missed.

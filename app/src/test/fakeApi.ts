@@ -171,6 +171,7 @@ export function identityBadge(overrides: Partial<IdentityBadgeView> = {}): Ident
     location: 'program_files',
     runsAs: [],
     service: false,
+    startsAtBoot: false,
     ...overrides,
   };
 }
@@ -195,6 +196,7 @@ export function identityDetail(overrides: Partial<IdentityDetailView> = {}): Ide
     failure: null,
     accounts: [],
     services: [],
+    launchers: [],
     ...overrides,
   };
 }

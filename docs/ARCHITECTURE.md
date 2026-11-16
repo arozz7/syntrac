@@ -65,6 +65,7 @@ Client: `syntrac-service --status` / `--ping` (`--pipe <name>`), exit codes 0 ok
 | `StorageStats` / `FreeSpace` / `DetailStore` | Memory + Tool | Implemented (SQLite, in-memory; Windows `GetDiskFreeSpaceExW`): size accounting, space recovery and the narrow view the storage guard works on |
 | `RollupRepository` | Memory | Implemented (SQLite, in-memory; shared contract suite): loads one hour of detail, stores its rollup + ledgers + watermark atomically, reads history and ledgers. The maths is the pure `syntrac_core::rollup::roll_up_hour` |
 | `DestinationTrendRepository` | Memory | Implemented (SQLite, in-memory; shared contract suite): per-destination sums over a range, destinations first seen after an instant (with the first program), and the programs of one destination. Ranking, scope and the "new" rule are pure (`destination_trend.rs`, `addr_class.rs`) |
+| `LauncherRepository` / `LaunchSource` | Memory + Tool | Implemented (SQLite, in-memory; shared contract suite; Windows adapters and a test fake): how each program gets started, per executable. The rules are pure (`launch_target.rs`, `task_xml.rs`, `launch_run.rs`) |
 | `OwnerRepository` / `DatasetFetcher` | Memory + Tool | Implemented (SQLite, in-memory; shared contract suite; WinHTTP adapter and a test fake): the downloaded IP-to-owner dataset and how it is fetched. The rules are pure (`owner_dataset.rs`, `owner_refresh.rs`) |
 | `ContextRepository` / `ProcessContextSource` | Memory + Tool | Implemented (SQLite, in-memory; shared contract suite; Windows adapter and a test fake): which account each program has been seen running as and which services it hosts, per executable. The rules are pure (`exe_context.rs`, `context_run.rs`) |
 | `TelemetrySource` | Tool | Implemented: `EtwSource`, `SnapshotSource` (Windows), `MockTelemetrySource` |
@@ -149,6 +150,17 @@ per address. Second, the existing rollups and ledgers: `DestinationTrendReposito
 with the pure `addr_class.rs`) BEFORE the limit, and decides what is new: first seen after the window start, but never inside the
 first 24 hours of history (the baseline). A name is what a program ASKED for, never an owner, and the screen says so. The backend
 (`history_network.rs`) keeps each range's sums until the rollup watermark moves, like the Programs ranking. Plan: `docs/NETWORK-PLAN.md`.
+
+## How programs get started (launch records)
+
+A worker of its own (`syntrac-service/src/launch_worker.rs`, own thread and connection) sweeps every `launch_interval_minutes` (10)
+the places that say what starts, through the `LaunchSource` port: services (`launch_services.rs`), scheduled tasks
+(`launch_tasks.rs`, the task files under System32Tasks), Run and RunOnce keys of the machine and of each loaded user
+(`launch_registry.rs`, `registry.rs`) and the Startup folders (`launch_startup.rs`, shortcuts resolved through the shell). The pure
+core turns each raw entry into the program it starts (`launch_target.rs`: quotes, unquoted paths with spaces settled against the
+file system, variables, proxies recorded as themselves) and records it (`launch_run.rs`); the repository keeps first and last seen and
+when each kind was last read completely. The identity panel shows "Starts with Windows via", the table a quiet "Starts at boot".
+Plan: `docs/RUNAS-PLAN.md`.
 
 ## Owner data (which network owns an address)
 

@@ -19,6 +19,7 @@ pub struct InMemoryRepository {
     /// How many ids have been handed out: an id that was removed is never issued again.
     pub(crate) known_issued: i64,
     pub(crate) owners: crate::memory_owner::OwnerState,
+    pub(crate) launchers: crate::memory_launchers::LauncherState,
 }
 
 impl ProcessRepository for InMemoryRepository {

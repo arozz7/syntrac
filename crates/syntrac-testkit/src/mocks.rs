@@ -292,3 +292,47 @@ impl syntrac_core::DatasetFetcher for FakeDatasetFetcher {
         self.answer.lock().unwrap().clone().map_err(syntrac_core::FetchError)
     }
 }
+
+/// A `LaunchSource` that answers what it was told: the entries it found, or a failure.
+#[derive(Debug)]
+pub struct FakeLaunchSource {
+    name: &'static str,
+    kinds: &'static [syntrac_core::LauncherKind],
+    answer: Result<syntrac_core::SourceRead, String>,
+}
+
+impl FakeLaunchSource {
+    pub fn new(
+        name: &'static str,
+        kinds: &'static [syntrac_core::LauncherKind],
+        entries: Vec<syntrac_core::RawEntry>,
+    ) -> Self {
+        Self::with_read(name, kinds, syntrac_core::SourceRead { entries, unreadable: 0 })
+    }
+
+    pub fn with_read(
+        name: &'static str,
+        kinds: &'static [syntrac_core::LauncherKind],
+        read: syntrac_core::SourceRead,
+    ) -> Self {
+        Self { name, kinds, answer: Ok(read) }
+    }
+
+    pub fn failing(name: &'static str, kinds: &'static [syntrac_core::LauncherKind], message: &str) -> Self {
+        Self { name, kinds, answer: Err(message.to_owned()) }
+    }
+}
+
+impl syntrac_core::LaunchSource for FakeLaunchSource {
+    fn name(&self) -> &'static str {
+        self.name
+    }
+
+    fn kinds(&self) -> &'static [syntrac_core::LauncherKind] {
+        self.kinds
+    }
+
+    fn read(&self) -> Result<syntrac_core::SourceRead, syntrac_core::LaunchSourceError> {
+        self.answer.clone().map_err(syntrac_core::LaunchSourceError)
+    }
+}

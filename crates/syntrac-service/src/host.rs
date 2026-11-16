@@ -12,6 +12,11 @@ use syntrac_collector::drive_space::DriveFreeSpace;
 use syntrac_collector::etw::EtwSource;
 use syntrac_collector::etw_stats::{EtwReport, EtwStats};
 use syntrac_collector::file_inspector::{InspectorSettings, WindowsFileInspector};
+use syntrac_collector::launch_env;
+use syntrac_collector::launch_registry::RunKeyLaunchSource;
+use syntrac_collector::launch_services::ServiceLaunchSource;
+use syntrac_collector::launch_startup::StartupLaunchSource;
+use syntrac_collector::launch_tasks::TaskLaunchSource;
 use syntrac_collector::orphan_guard::clean_up_orphans;
 use syntrac_collector::owner_fetch::WinHttpFetcher;
 use syntrac_collector::process_context::WindowsProcessContextSource;
@@ -27,7 +32,7 @@ use syntrac_core::{
     Clock, EventRepository, MetricsRepository, MetricsSource, ProcessRepository, Retention, RollupRepository,
     RollupSettings, TelemetrySource,
 };
-use syntrac_core::{ContextSettings, IdentitySettings, RefreshLimits};
+use syntrac_core::{ContextSettings, IdentitySettings, LaunchSource, RefreshLimits};
 use syntrac_ipc::pipe::{PipeServer, PipeServerConfig};
 use syntrac_ipc::protocol::{Request, Response};
 use syntrac_ipc::serve::Handler;
@@ -36,7 +41,8 @@ use tracing::{error, info, warn};
 
 use crate::{
     BoardInfo, Collector, CollectorSettings, ContextWorker, ContextWorkerSettings, IdentityWorker,
-    IdentityWorkerSettings, KnownProductsAdmin, OwnerControl, OwnerData, ServiceConfig, ServiceHandler, StatusBoard,
+    IdentityWorkerSettings, KnownProductsAdmin, LaunchWorker, LaunchWorkerSettings, OwnerControl, OwnerData,
+    ServiceConfig, ServiceHandler, StatusBoard,
 };
 
 /// Teardown (stopping sources, final drain, summary) must finish within this long, or `on_stall` runs.
@@ -174,6 +180,7 @@ pub fn run_host(
     let worker_stop = Arc::new(AtomicBool::new(false));
     let identity_thread = start_identity_worker(options, &worker_stop);
     let context_thread = start_context_worker(options, &worker_stop);
+    let launch_thread = start_launch_worker(options, &worker_stop);
 
     let started = Instant::now();
     let cpu_at_start = own_cpu_time();
@@ -234,6 +241,9 @@ pub fn run_host(
         let _ = thread.join();
     }
     if let Some(thread) = context_thread {
+        let _ = thread.join();
+    }
+    if let Some(thread) = launch_thread {
         let _ = thread.join();
     }
     let summary = render_summary(&collector, etw_stats.as_deref(), started.elapsed(), own_cpu_time() - cpu_at_start);
@@ -312,6 +322,46 @@ fn start_context_worker(options: &HostOptions, stop: &Arc<AtomicBool>) -> Option
         }
         Err(error) => {
             warn!(%error, "The context worker thread could not start; collecting without it");
+            None
+        }
+    }
+}
+
+/// Starts the launch-record worker (how programs get started: services, scheduled tasks, Run keys, Startup folders) on its own
+/// thread with its own database connection. If it is switched off or cannot start, collection carries on without it.
+fn start_launch_worker(options: &HostOptions, stop: &Arc<AtomicBool>) -> Option<std::thread::JoinHandle<()>> {
+    let config = &options.config;
+    if !config.launch_enabled {
+        info!("The launch-record worker is switched off in the configuration");
+        return None;
+    }
+    let store = match SqliteStore::open(&options.database_path) {
+        Ok(store) => store,
+        Err(error) => {
+            warn!(%error, "The launch-record worker could not open the database; collecting without it");
+            return None;
+        }
+    };
+    let sources: Vec<Box<dyn LaunchSource + Send>> = vec![
+        Box::new(ServiceLaunchSource),
+        Box::new(TaskLaunchSource::for_this_machine()),
+        Box::new(RunKeyLaunchSource),
+        Box::new(StartupLaunchSource::for_this_machine()),
+    ];
+    let settings = LaunchWorkerSettings { interval: Duration::from_secs(config.launch_interval_minutes * 60) };
+    let worker =
+        LaunchWorker::new(store, sources, launch_env::environment, launch_env::file_exists, SystemClock, settings);
+    let stop = Arc::clone(stop);
+    let spawned = std::thread::Builder::new()
+        .name("syntrac-launch".into())
+        .spawn(move || worker.run(&stop, Duration::from_millis(500)));
+    match spawned {
+        Ok(handle) => {
+            info!("Launch-record worker started");
+            Some(handle)
+        }
+        Err(error) => {
+            warn!(%error, "The launch-record worker thread could not start; collecting without it");
             None
         }
     }

@@ -10,7 +10,7 @@ use serde::Serialize;
 use syntrac_core::rollup::executable_key;
 use syntrac_core::{
     classify_location, install_root, ContextRepository, ExecutableContext, IdentityRecord, IdentityRepository,
-    KnownIndex, KnownProduct, KnownProductRepository, RepoError,
+    KnownIndex, KnownProduct, KnownProductRepository, LauncherRepository, LauncherSeen, RepoError,
 };
 
 use crate::history::ms;
@@ -35,6 +35,9 @@ pub struct IdentityBadgeView {
     pub runs_as: Vec<String>,
     /// It has been seen hosting a Windows service.
     pub service: bool,
+    /// Something that starts with Windows (an automatic service, a scheduled task, a Run key, a Startup folder entry) was found
+    /// for it and is still there. `false` means none was found in the places read, never "does not autostart".
+    pub starts_at_boot: bool,
 }
 
 /// One account a program has been seen running as.
@@ -46,6 +49,23 @@ pub struct AccountView {
     pub kind: String,
     pub first_seen_ms: i64,
     pub last_seen_ms: i64,
+}
+
+/// One way a program has been seen to get started.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LauncherView {
+    /// `service_auto`, `service_other`, `task`, `run_key`, `run_once` or `startup_folder`.
+    pub kind: String,
+    /// Where it was found: the service name, the task path, the key and value name, the shortcut.
+    pub location: String,
+    /// The kinds of trigger of a task, the start type of a service.
+    pub detail: String,
+    pub arguments: String,
+    pub first_seen_ms: i64,
+    pub last_seen_ms: i64,
+    /// It was still there when its kind was last read completely.
+    pub current: bool,
 }
 
 /// One Windows service a program has been seen hosting.
@@ -95,6 +115,8 @@ pub struct IdentityDetailView {
     pub accounts: Vec<AccountView>,
     /// The Windows services it has been seen hosting, most recent first.
     pub services: Vec<ServiceView>,
+    /// How it has been seen to get started, most recent first. Empty when nothing was found (not "does not autostart").
+    pub launchers: Vec<LauncherView>,
 }
 
 pub fn badge(path: &str, record: Option<&IdentityRecord>) -> IdentityBadgeView {
@@ -113,6 +135,7 @@ pub fn badge(path: &str, record: Option<&IdentityRecord>) -> IdentityBadgeView {
         location,
         runs_as: Vec::new(),
         service: false,
+        starts_at_boot: false,
     }
 }
 
@@ -185,7 +208,35 @@ pub fn detail(path: &str, record: Option<&IdentityRecord>) -> IdentityDetailView
         }),
         accounts: Vec::new(),
         services: Vec::new(),
+        launchers: Vec::new(),
     }
+}
+
+/// The badge flag and the panel list for a program's start entries.
+pub fn with_launchers(mut view: IdentityDetailView, launchers: &[LauncherSeen]) -> IdentityDetailView {
+    view.badge.starts_at_boot = starts_at_boot(launchers);
+    view.launchers = launcher_views(launchers);
+    view
+}
+
+/// Whether any entry that starts with Windows is still there.
+fn starts_at_boot(launchers: &[LauncherSeen]) -> bool {
+    launchers.iter().any(|l| l.current && l.kind.starts_with_windows())
+}
+
+fn launcher_views(launchers: &[LauncherSeen]) -> Vec<LauncherView> {
+    launchers
+        .iter()
+        .map(|l| LauncherView {
+            kind: l.kind.as_str().to_owned(),
+            location: l.location.clone(),
+            detail: l.detail.clone(),
+            arguments: l.arguments.clone(),
+            first_seen_ms: ms(l.first_seen),
+            last_seen_ms: ms(l.last_seen),
+            current: l.current,
+        })
+        .collect()
 }
 
 /// All the identity records, by executable key, how programs have been seen running, and the user's known products with an
@@ -193,12 +244,13 @@ pub fn detail(path: &str, record: Option<&IdentityRecord>) -> IdentityDetailView
 pub struct Identities {
     records: HashMap<String, IdentityRecord>,
     contexts: HashMap<String, ExecutableContext>,
+    launchers: HashMap<String, Vec<LauncherSeen>>,
     products: Vec<KnownProduct>,
     index: KnownIndex,
 }
 
 impl Identities {
-    pub fn load<R: IdentityRepository + ContextRepository + KnownProductRepository + ?Sized>(
+    pub fn load<R: IdentityRepository + ContextRepository + LauncherRepository + KnownProductRepository + ?Sized>(
         repo: &R,
     ) -> Result<Self, RepoError> {
         let records: HashMap<String, IdentityRecord> = repo
@@ -208,12 +260,14 @@ impl Identities {
             .collect();
         let contexts: HashMap<String, ExecutableContext> =
             repo.all_contexts()?.into_iter().map(|(exe, context)| (exe.key, context)).collect();
+        let launchers: HashMap<String, Vec<LauncherSeen>> =
+            repo.all_launchers()?.into_iter().map(|(exe, list)| (exe.key, list)).collect();
         let products = repo.known_products()?;
         let index = KnownIndex::build(
             products.clone(),
             records.values().map(|record| (record.exe.path.as_str(), record.facts.as_ref())),
         );
-        Ok(Self { records, contexts, products, index })
+        Ok(Self { records, contexts, launchers, products, index })
     }
 
     pub fn of(&self, path: &str) -> Option<&IdentityRecord> {
@@ -225,9 +279,16 @@ impl Identities {
         executable_key(path).and_then(|key| self.contexts.get(&key)).cloned().unwrap_or_default()
     }
 
-    /// The badge of a program: its identity facts and how it has been seen running.
+    /// How a program has been seen to get started (empty when nothing was found).
+    pub fn launchers_of(&self, path: &str) -> Vec<LauncherSeen> {
+        executable_key(path).and_then(|key| self.launchers.get(&key)).cloned().unwrap_or_default()
+    }
+
+    /// The badge of a program: its identity facts, how it has been seen running and whether it starts with Windows.
     pub fn badge(&self, path: &str) -> IdentityBadgeView {
-        with_context(badge(path, self.of(path)), &self.context_of(path))
+        let mut badge = with_context(badge(path, self.of(path)), &self.context_of(path));
+        badge.starts_at_boot = starts_at_boot(&self.launchers_of(path));
+        badge
     }
 
     /// Every program that has an identity record.
@@ -304,6 +365,7 @@ pub fn merged_badge(members: &[IdentityBadgeView]) -> IdentityBadgeView {
         location: members.first().map_or_else(|| "unknown".to_owned(), |m| m.location.clone()),
         runs_as: union_in_order(members.iter().flat_map(|m| m.runs_as.iter().cloned())),
         service: members.iter().any(|m| m.service),
+        starts_at_boot: members.iter().any(|m| m.starts_at_boot),
     }
 }
 

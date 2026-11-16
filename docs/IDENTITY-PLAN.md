@@ -106,8 +106,7 @@ the program drill-down. Where the same `exe_id` has no identity yet the UI says 
   the only writes the pipe allows. Their own tests come first (rejected oversize or malformed requests, a non-listed caller,
   a read-only ping still works). I3 gets a short plan addendum before its code, since it changes the pipe protocol.
 - **I4 (own plan: `docs/RUNAS-PLAN.md`).** Run-as account per program and service-name mapping are done (I4a, no event-schema
-  change after all: a polling worker). Autostart and scheduled-task mapping (I4b) and Uninstall records (I4c) wait for their own
-  addenda.
+  change after all: a polling worker). Autostart and scheduled-task mapping (I4b) is built (schema v11); Uninstall records (I4c) are next.
 
 ## Tests first (per slice)
 

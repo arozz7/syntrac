@@ -1,4 +1,4 @@
-import type { AccountKind, IdentityBadgeView, LocationClass } from './api/types';
+import type { AccountKind, IdentityBadgeView, LauncherKind, LocationClass } from './api/types';
 
 /** How loudly to show a label: `alert` is for a file that no longer matches its signature, never for merely unsigned. */
 export type Tone = 'good' | 'caution' | 'alert' | 'quiet';
@@ -102,6 +102,20 @@ const ACCOUNT_NAMES: Record<AccountKind, string> = {
 
 export function accountLabel(kind: AccountKind): string {
   return ACCOUNT_NAMES[kind];
+}
+
+const LAUNCHER_NAMES: Record<LauncherKind, string> = {
+  service_auto: 'Windows service (automatic)',
+  service_other: 'Windows service (on demand)',
+  task: 'Scheduled task',
+  run_key: 'Run key (every sign-in)',
+  run_once: 'Run key (next sign-in only)',
+  startup_folder: 'Startup folder',
+};
+
+/** How a program gets started, in plain words. A service that is switched off says so instead of "on demand". */
+export function launcherLabel(kind: LauncherKind, detail = ''): string {
+  return kind === 'service_other' && detail === 'disabled' ? 'Windows service (disabled)' : LAUNCHER_NAMES[kind];
 }
 
 const PRIVILEGED: ReadonlySet<AccountKind> = new Set(['system', 'local_service', 'network_service', 'service_account']);

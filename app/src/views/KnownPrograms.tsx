@@ -142,6 +142,7 @@ function LookalikesTable({
                       location: program.location,
                       runsAs: [],
                       service: false,
+                      startsAtBoot: false,
                     }}
                   />
                   {note !== null && <span className="muted">{note}</span>}

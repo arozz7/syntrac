@@ -14,7 +14,11 @@ pub mod flow;
 pub mod identity;
 pub mod identity_run;
 pub mod known;
+pub mod launch_run;
+pub mod launch_target;
+pub mod launchers;
 pub mod metrics;
+pub mod mini_xml;
 pub mod owner_dataset;
 pub mod owner_refresh;
 pub mod pipeline;
@@ -26,6 +30,7 @@ pub mod rollup_ledger;
 pub mod rollup_run;
 pub mod silence;
 pub mod storage_guard;
+pub mod task_xml;
 pub mod time;
 pub mod trend;
 
@@ -54,6 +59,12 @@ pub use identity::ProcessInstanceId;
 pub use identity_run::{inspect_due, retry_after, IdentityPass, IdentitySettings};
 pub use known::{
     KnownError, KnownIndex, KnownProduct, KnownProductRepository, LookalikeReason, NewKnownProduct, Standing,
+};
+pub use launch_run::{sweep_launchers, SweepReport};
+pub use launch_target::{launch_target, LaunchTarget};
+pub use launchers::{
+    LaunchSource, LaunchSourceError, LauncherKind, LauncherObservation, LauncherRepository, LauncherSeen,
+    LauncherWrite, RawEntry, SourceRead,
 };
 pub use metrics::{
     CpuBreakdown, CpuContribution, MetricsSample, OtherProcesses, ProcessMetric, PurgeCounts, SystemMetrics,

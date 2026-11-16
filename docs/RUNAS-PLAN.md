@@ -1,7 +1,7 @@
 # Run-as account, services and launch records (I4): implementation plan
 
 Status: **I4a APPROVED 2026-11-15** with the decisions at the end (polling worker, 30 seconds, account names stored locally), and
-**built the same day** (`aiChangeLog/phase-I4a.md`; measured overhead about 0.05% of one core). I4b and I4c: **addendum written 2026-11-15, waiting for approval** (see the end of this file). I4 is the item `docs/IDENTITY-PLAN.md` deferred ("own plan later"). It is split into three slices
+**built the same day** (`aiChangeLog/phase-I4a.md`; measured overhead about 0.05% of one core). I4b: **approved and built 2026-11-15** (`aiChangeLog/phase-I4b.md`, with its deviations). I4c: addendum approved, not yet built (see the end of this file). I4 is the item `docs/IDENTITY-PLAN.md` deferred ("own plan later"). It is split into three slices
 so each can be approved, built and installed on its own.
 
 ## Goal

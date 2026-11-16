@@ -150,6 +150,24 @@ export interface IdentityBadgeView {
   runsAs: AccountKind[];
   /** It has been seen hosting a Windows service. */
   service: boolean;
+  /** Something that starts with Windows was found for it and is still there. False means none was found in the places read. */
+  startsAtBoot: boolean;
+}
+
+/** One way a program gets started: a Windows service, a scheduled task, a Run key or a Startup folder entry. */
+export type LauncherKind = 'service_auto' | 'service_other' | 'task' | 'run_key' | 'run_once' | 'startup_folder';
+
+export interface LauncherView {
+  kind: LauncherKind;
+  /** Where it was found: the service name, the task path, the key and value name, the shortcut. */
+  location: string;
+  /** The triggers of a task, the start type of a service. */
+  detail: string;
+  arguments: string;
+  firstSeenMs: number;
+  lastSeenMs: number;
+  /** It was still there when its kind was last read completely. */
+  current: boolean;
 }
 
 /** What kind of account a program runs as, from its SID. Evidence of how it was started, not of whether it is safe. */
@@ -202,6 +220,8 @@ export interface IdentityDetailView extends IdentityBadgeView {
   accounts: AccountView[];
   /** The Windows services it has been seen hosting, most recent first. */
   services: ServiceView[];
+  /** How it has been seen to get started, most recent first. Empty: nothing found (not "does not autostart"). */
+  launchers: LauncherView[];
 }
 
 /** Where a program stands against the user's list of known programs. Evidence, not a verdict. */

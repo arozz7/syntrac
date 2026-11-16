@@ -160,3 +160,12 @@ fn downloading_owner_data_is_allowed_by_default_and_can_be_switched_off() {
     assert!(ServiceConfig::from_toml_str("").unwrap().owner_data_allowed);
     assert!(!ServiceConfig::from_toml_str("owner_data_allowed = false").unwrap().owner_data_allowed);
 }
+
+#[test]
+fn launch_records_are_on_every_ten_minutes_by_default_and_the_interval_must_be_positive() {
+    let config = ServiceConfig::from_toml_str("").unwrap();
+    assert!(config.launch_enabled);
+    assert_eq!(config.launch_interval_minutes, 10);
+    assert!(ServiceConfig::from_toml_str("launch_interval_minutes = 0").is_err());
+    assert!(!ServiceConfig::from_toml_str("launch_enabled = false").unwrap().launch_enabled);
+}

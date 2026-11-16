@@ -39,7 +39,13 @@ Core: `owner_dataset.rs` (11), `clean_text.rs` (3). Testkit: `owner_contract` (b
 Service: `owner_data.rs` (8), config (1). Ipc: protocol (2). App: `history_network.rs` (+4), `owner_data_pipe.rs` (5). Frontend:
 `OwnerData.test.tsx` (12), `NetworkHistory.test.tsx` (+4), `networkLabels.test.ts` (+4).
 
+## Rehearsal (one real download, with the user's go-ahead, into a copy of the live database; `examples/rehearse_owner.rs`; copy at `<scratch folder>\owner-t3c`, to be deleted by the user)
+- Download and unpack: 0.7 s, 54 MB of text (IPv4 and IPv6 together), no redirect, from iptoasn.com.
+- Parse: 0.3 s; 579,453 ranges kept, 139,696 unrouted (not kept), 0 unreadable lines.
+- Store: 1.0 s (staging and swap); the database grew from 1,115 MB to 1,170 MB (about 55 MB).
+- Lookups: all 2,161 destinations the copy had seen resolved in 10 ms; 2,087 have an owner (Microsoft 592, Google 422, Amazon 308+124,
+  Akamai 192, Cloudflare 101, Fastly 45...).
+The size limit of 64 MB for the download and 256 MB for the text are well above the real file (54 MB of text).
+
 ## Not yet done
-A real download on this machine (the rehearsal with a copy of the live database), which needs the user's go-ahead because it is
-the first network use; sizes and timings are measured then. The service must be reinstalled (schema v10 and the new pipe
-requests) and the app rebuilt together.
+The service must be reinstalled with this build and the app rebuilt together (the user did this on 2026-11-15; schema v10).

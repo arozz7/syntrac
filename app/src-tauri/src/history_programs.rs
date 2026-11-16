@@ -8,13 +8,14 @@ use syntrac_core::rollup::hour_start;
 use syntrac_core::storage_guard::StorageStats;
 use syntrac_core::{
     all_programs, collect_totals, group_programs, install_root, product_key, rank_groups, rank_totals,
-    ContextRepository, IdentityRepository, KnownProductRepository, ProgramMetric, ProgramSummary, ProgramTotals,
-    RepoError, RollupRepository, Timestamp, TrendRepository,
+    ContextRepository, IdentityRepository, KnownProductRepository, LauncherRepository, ProgramMetric, ProgramSummary,
+    ProgramTotals, RepoError, RollupRepository, Timestamp, TrendRepository,
 };
 
 use crate::history::{clamp_history_secs, ms, range_start};
 use crate::identity_view::{
-    badge, detail, merged_badge, product_name, with_accounts, Identities, IdentityBadgeView, IdentityDetailView,
+    badge, detail, merged_badge, product_name, with_accounts, with_launchers, Identities, IdentityBadgeView,
+    IdentityDetailView,
 };
 use crate::known_view::{merged_standing, StandingView};
 use crate::names::display_name;
@@ -240,7 +241,12 @@ pub fn rank_range<R>(
     grouping: Grouping,
 ) -> Result<ProgramsView, RepoError>
 where
-    R: RollupRepository + StorageStats + IdentityRepository + ContextRepository + KnownProductRepository,
+    R: RollupRepository
+        + StorageStats
+        + IdentityRepository
+        + ContextRepository
+        + LauncherRepository
+        + KnownProductRepository,
 {
     let limit = limit.clamp(1, MAX_PROGRAM_ROWS);
     let identities = Identities::load(repo)?;
@@ -268,6 +274,7 @@ where
         + StorageStats
         + IdentityRepository
         + ContextRepository
+        + LauncherRepository
         + KnownProductRepository,
 {
     rank_range(repo, &range_totals(repo, now, range_secs)?, metric, limit, grouping)
@@ -311,7 +318,7 @@ pub fn program_history<R>(
     path: &str,
 ) -> Result<ProgramHistoryView, RepoError>
 where
-    R: RollupRepository + IdentityRepository + ContextRepository + KnownProductRepository,
+    R: RollupRepository + IdentityRepository + ContextRepository + LauncherRepository + KnownProductRepository,
 {
     let from = range_start(now, clamp_history_secs(range_secs));
     let rows = repo.executable_hours(path, from, now)?;
@@ -343,7 +350,10 @@ where
         to_ms: ms(now),
         first_seen_ms: ledger.map(|l| ms(l.first_seen)),
         last_seen_ms: ledger.map(|l| ms(l.last_seen)),
-        identity: with_accounts(detail(path, repo.identity(path)?.as_ref()), &repo.context_of(path)?),
+        identity: with_launchers(
+            with_accounts(detail(path, repo.identity(path)?.as_ref()), &repo.context_of(path)?),
+            &repo.launchers_of(path)?,
+        ),
         standing: Identities::load(repo)?.standing(path),
         hours,
     })

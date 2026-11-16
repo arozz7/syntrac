@@ -118,7 +118,9 @@ pub struct KnownProgramsView {
 /// The most lookalikes listed: a screen of them is already a finding, and the list is read on every refresh.
 const MAX_LOOKALIKES: usize = 200;
 
-pub fn known_programs<R: KnownProductRepository + IdentityRepository + syntrac_core::ContextRepository>(
+pub fn known_programs<
+    R: KnownProductRepository + IdentityRepository + syntrac_core::ContextRepository + syntrac_core::LauncherRepository,
+>(
     repo: &R,
 ) -> Result<KnownProgramsView, RepoError> {
     let identities = Identities::load(repo)?;

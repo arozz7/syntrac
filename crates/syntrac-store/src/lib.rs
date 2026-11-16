@@ -9,9 +9,12 @@ mod events;
 mod identities;
 mod inspect;
 mod known_products;
+mod launchers;
 mod metrics;
 #[cfg(test)]
 mod migration_v10_tests;
+#[cfg(test)]
+mod migration_v11_tests;
 #[cfg(test)]
 mod migration_v4_tests;
 #[cfg(test)]
