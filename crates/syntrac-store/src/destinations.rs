@@ -4,7 +4,8 @@
 use std::net::IpAddr;
 
 use rusqlite::{params, Row};
-use syntrac_core::destination_trend::{DestinationProgram, DestinationTotals, NewDestination};
+use syntrac_core::destination_trend::{DestinationProgram, DestinationTotals, NewDestination, ProgramDestination};
+use syntrac_core::rollup::executable_key;
 use syntrac_core::{DestinationTrendRepository, Executable, RepoError, Timestamp};
 
 use crate::codec::to_u64;
@@ -35,6 +36,18 @@ fn destination_totals_sql() -> String {
 
 /// The first program is the pair with the earliest first sighting (a tie: the path that sorts first), found through the
 /// `(addr, first_seen)` index of `exe_destinations`. Only attributed programs have pairs.
+/// One program's destinations. Not given an index of its own: measured on a copy of the real database (32,000 hourly traffic rows)
+/// the busiest program reads in about 5 ms, and an index on `(exe_id, hour_start)` made no difference (docs/ALERTS-PLAN.md, N2).
+/// Revisit if a ranking over years of rows is slow.
+fn program_destinations_sql() -> String {
+    format!(
+        "SELECT t.addr, SUM(t.bytes_sent), SUM(t.bytes_received), SUM(t.flows), MIN(t.first_seen), MAX(t.last_seen)
+         FROM rollup_traffic_hour t JOIN executables e ON e.id = t.exe_id
+         WHERE e.path_key = ?1 AND t.hour_start >= ?2 AND t.hour_start <= ?3 AND t.{NOT_LOOPBACK}
+         GROUP BY t.addr"
+    )
+}
+
 fn new_destinations_sql() -> String {
     format!(
         "SELECT d.addr, d.first_seen, d.last_seen, e.path_key, e.path
@@ -47,6 +60,30 @@ fn new_destinations_sql() -> String {
 }
 
 impl DestinationTrendRepository for SqliteStore {
+    fn program_destinations(
+        &self,
+        path: &str,
+        from: Timestamp,
+        to: Timestamp,
+    ) -> Result<Vec<ProgramDestination>, RepoError> {
+        let Some(key) = executable_key(path) else { return Ok(Vec::new()) };
+        let mut statement = self.conn.prepare(&program_destinations_sql()).map_err(backend)?;
+        let mut rows = statement.query(params![key, from.as_micros(), to.as_micros()]).map_err(backend)?;
+        let mut found = Vec::new();
+        while let Some(row) = rows.next().map_err(backend)? {
+            let addr: String = row.get(0).map_err(backend)?;
+            found.push(ProgramDestination {
+                addr: parse_addr(&addr)?,
+                bytes_sent: to_u64(row.get(1).map_err(backend)?),
+                bytes_received: to_u64(row.get(2).map_err(backend)?),
+                flows: to_u64(row.get(3).map_err(backend)?),
+                first_seen: ts(row, 4)?,
+                last_seen: ts(row, 5)?,
+            });
+        }
+        Ok(found)
+    }
+
     fn destination_totals(&self, from: Timestamp, to: Timestamp) -> Result<Vec<DestinationTotals>, RepoError> {
         let mut statement = self.conn.prepare(&destination_totals_sql()).map_err(backend)?;
         let mut rows = statement.query(params![from.as_micros(), to.as_micros()]).map_err(backend)?;

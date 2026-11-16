@@ -14,6 +14,7 @@ import { NetworkDialog, type NetworkFocus } from './NetworkDialog';
 import { NewDestinations } from './NewDestinations';
 import { OwnerDataBar } from './OwnerDataBar';
 import { ProgramLink } from './ProgramLink';
+import { TopOwners } from './TopOwners';
 
 const REFRESH_MS = 60_000;
 
@@ -186,6 +187,13 @@ export function NetworkHistory() {
           )}
         </DataGate>
       </section>
+
+      <TopOwners
+        rangeSecs={rangeSecs}
+        allAddresses={allAddresses}
+        refreshKey={ownerVersion}
+        onSelect={openDestination}
+      />
 
       <NewDestinations
         allAddresses={allAddresses}

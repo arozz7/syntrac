@@ -12,7 +12,7 @@ use serde::Serialize;
 use syntrac_core::rollup::HOUR_MICROS;
 use syntrac_core::storage_guard::StorageStats;
 use syntrac_core::{
-    classify_addr, new_destination_cutoff, rank_destination_programs, rank_destinations, select_new,
+    classify_addr, group_by_owner, new_destination_cutoff, rank_destination_programs, rank_destinations, select_new,
     top_destination_programs, AddrClass, AddressScope, DestinationOrder, DestinationProgram, DestinationTotals,
     DestinationTrendRepository, Executable, OwnerRepository, RepoError, RollupRepository, Timestamp,
 };
@@ -42,6 +42,8 @@ impl From<DestinationOrderParam> for DestinationOrder {
 
 pub const DEFAULT_DESTINATION_ROWS: usize = 25;
 pub const MAX_DESTINATION_ROWS: usize = 200;
+/// How many destinations a program's own list shows by default.
+pub const DEFAULT_PROGRAM_DESTINATION_ROWS: usize = 50;
 
 /// The class of an address as the UI names it.
 fn class_name(class: AddrClass) -> &'static str {
@@ -247,6 +249,188 @@ where
     R: RollupRepository + DestinationTrendRepository + OwnerRepository + StorageStats,
 {
     rank_destination_range(repo, &destination_range(repo, now, range_secs)?, order, scope, limit)
+}
+
+// ---- the owners
+
+/// One of an owner's destinations, to say where its bytes went without opening the owner.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OwnerDestinationView {
+    pub addr: String,
+    pub name: Option<String>,
+    pub bytes_sent: u64,
+    pub bytes_received: u64,
+}
+
+/// One owner (or the group of destinations with no owner found) over a range.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OwnerRowView {
+    /// `None`: no owner found (no dataset, outside every range, or not an address on the internet).
+    pub owner: Option<OwnerView>,
+    pub bytes_sent: u64,
+    pub bytes_received: u64,
+    pub flows: u64,
+    pub destinations: u32,
+    /// The biggest destinations by traffic (at most `DESTINATIONS_PER_OWNER`).
+    pub top_destinations: Vec<OwnerDestinationView>,
+    /// How many destinations are not in `top_destinations`.
+    pub more_destinations: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OwnersView {
+    pub from_ms: i64,
+    pub to_ms: i64,
+    pub history_starts_ms: Option<i64>,
+    pub hours_in_range: u32,
+    /// The owner dataset, when one has been downloaded; without it every destination is in the group with no owner.
+    pub owner_data: Option<OwnerDataView>,
+    pub owners: Vec<OwnerRowView>,
+}
+
+/// Groups the collected sums by owner.
+pub fn rank_owner_range<R>(
+    repo: &R,
+    range: &DestinationRange,
+    scope: AddressScope,
+    limit: usize,
+) -> Result<OwnersView, RepoError>
+where
+    R: RollupRepository + DestinationTrendRepository + OwnerRepository + StorageStats,
+{
+    let limit = limit.clamp(1, MAX_DESTINATION_ROWS);
+    let groups = group_by_owner(range.totals.clone(), scope, limit, |addr| repo.lookup_owner(addr))?;
+    let mut owners = Vec::with_capacity(groups.len());
+    for group in groups {
+        let mut top_destinations = Vec::with_capacity(group.top.len());
+        for row in &group.top {
+            top_destinations.push(OwnerDestinationView {
+                addr: row.addr.to_string(),
+                name: names_summary(repo, row.addr)?.0,
+                bytes_sent: row.bytes_sent,
+                bytes_received: row.bytes_received,
+            });
+        }
+        let shown = u32::try_from(group.top.len()).unwrap_or(u32::MAX);
+        owners.push(OwnerRowView {
+            owner: group.owner.map(|owner| OwnerView { asn: owner.asn, org: owner.org, country: owner.country }),
+            bytes_sent: group.bytes_sent,
+            bytes_received: group.bytes_received,
+            flows: group.flows,
+            destinations: group.destinations,
+            more_destinations: group.destinations.saturating_sub(shown),
+            top_destinations,
+        });
+    }
+    Ok(OwnersView {
+        from_ms: ms(range.from),
+        to_ms: ms(range.to),
+        history_starts_ms: StorageStats::usage(repo)?.oldest_rollup.map(ms),
+        hours_in_range: range.hours_in_range,
+        owner_data: owner_data(repo)?,
+        owners,
+    })
+}
+
+pub fn owner_ranking<R>(
+    repo: &R,
+    now: Timestamp,
+    range_secs: u64,
+    scope: AddressScope,
+    limit: usize,
+) -> Result<OwnersView, RepoError>
+where
+    R: RollupRepository + DestinationTrendRepository + OwnerRepository + StorageStats,
+{
+    rank_owner_range(repo, &destination_range(repo, now, range_secs)?, scope, limit)
+}
+
+// ---- where one program connected
+
+/// One address a program talked to over a range.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProgramDestinationRowView {
+    pub addr: String,
+    /// The name asked for most recently, when any was recorded.
+    pub name: Option<String>,
+    pub other_names: u32,
+    pub class: &'static str,
+    pub owner: Option<OwnerView>,
+    pub bytes_sent: u64,
+    pub bytes_received: u64,
+    pub flows: u64,
+    /// When THIS program first talked to this address (permanent, so it is still there after the detail was purged).
+    pub first_seen_ms: Option<i64>,
+    /// The last time within the range.
+    pub last_seen_ms: i64,
+    /// This program first reached it after the first day of history and within the range.
+    pub is_new: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProgramDestinationsView {
+    pub path: String,
+    pub from_ms: i64,
+    pub to_ms: i64,
+    /// How many different addresses the program talked to in the range (inside the scope), whatever the limit.
+    pub total_destinations: u32,
+    pub owner_data: Option<OwnerDataView>,
+    /// The biggest by traffic, biggest first.
+    pub destinations: Vec<ProgramDestinationRowView>,
+}
+
+pub fn program_destinations_view<R>(
+    repo: &R,
+    now: Timestamp,
+    range_secs: u64,
+    path: &str,
+    scope: AddressScope,
+    limit: usize,
+) -> Result<ProgramDestinationsView, RepoError>
+where
+    R: RollupRepository + DestinationTrendRepository + OwnerRepository + StorageStats,
+{
+    let limit = limit.clamp(1, MAX_DESTINATION_ROWS);
+    let from = range_start(now, clamp_history_secs(range_secs));
+    let mut rows = repo.program_destinations(path, from, now)?;
+    rows.retain(|row| scope.includes(row.addr));
+    rows.sort_by(|a, b| b.bytes().cmp(&a.bytes()).then_with(|| a.addr.cmp(&b.addr)));
+    let total_destinations = u32::try_from(rows.len()).unwrap_or(u32::MAX);
+    rows.truncate(limit);
+
+    let history_start = StorageStats::usage(repo)?.oldest_rollup;
+    let new_since = new_destination_cutoff(history_start, from);
+    let mut destinations = Vec::with_capacity(rows.len());
+    for row in rows {
+        let (name, other_names) = names_summary(repo, row.addr)?;
+        let first_seen = repo.pair_ledger(path, row.addr)?.map(|ledger| ledger.first_seen);
+        destinations.push(ProgramDestinationRowView {
+            addr: row.addr.to_string(),
+            name,
+            other_names,
+            class: class_name(classify_addr(row.addr)),
+            owner: owner_of(repo, row.addr)?,
+            bytes_sent: row.bytes_sent,
+            bytes_received: row.bytes_received,
+            flows: row.flows,
+            first_seen_ms: first_seen.map(ms),
+            last_seen_ms: ms(row.last_seen),
+            is_new: first_seen.is_some_and(|first| first >= new_since),
+        });
+    }
+    Ok(ProgramDestinationsView {
+        path: path.to_owned(),
+        from_ms: ms(from),
+        to_ms: ms(now),
+        total_destinations,
+        owner_data: owner_data(repo)?,
+        destinations,
+    })
 }
 
 // ---- what is new

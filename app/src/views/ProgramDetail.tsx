@@ -11,10 +11,23 @@ import { DataGate } from '../components/DataGate';
 import { IdentityPanel } from '../components/IdentityPanel';
 import { formatBytes, formatDateTime } from '../format';
 import { usePolled } from '../hooks/usePolled';
+import { ProgramDestinations } from './ProgramDestinations';
 
 const REFRESH_MS = 60_000;
 
-function DetailBody({ data, name, onChanged }: { data: ProgramHistoryView; name: string; onChanged: () => void }) {
+function DetailBody({
+  data,
+  name,
+  rangeSecs,
+  onChanged,
+  onOpenDestination,
+}: {
+  data: ProgramHistoryView;
+  name: string;
+  rangeSecs: number;
+  onChanged: () => void;
+  onOpenDestination: ((addr: string) => void) | undefined;
+}) {
   const granularity = granularityFor((data.toMs - data.fromMs) / 1000);
   const buckets = useMemo(() => bucketProgramHours(data.hours, granularity), [data.hours, granularity]);
   const palette = useMemo(() => readPalette(), []);
@@ -61,6 +74,7 @@ function DetailBody({ data, name, onChanged }: { data: ProgramHistoryView; name:
       </dl>
       <Chart option={cpu} label="Program CPU over time" />
       <Chart option={memory} label="Program memory over time" />
+      <ProgramDestinations path={data.path} rangeSecs={rangeSecs} onOpenDestination={onOpenDestination} />
       <IdentityPanel
         identity={data.identity}
         standing={data.standing}
@@ -78,6 +92,7 @@ export function ProgramDetailBody({
   path,
   rangeSecs,
   onChanged,
+  onOpenDestination,
   version = 0,
 }: {
   name: string;
@@ -85,6 +100,8 @@ export function ProgramDetailBody({
   rangeSecs: number;
   /** Called after the user changed something about this program (for example marked it as known). */
   onChanged: () => void;
+  /** Makes the addresses in "Where it connected" links that open them. Left out where the page has nowhere to open one. */
+  onOpenDestination?: (addr: string) => void;
   /** Changes whenever the list of known programs changed, so the screen is read again. */
   version?: number;
 }) {
@@ -97,7 +114,17 @@ export function ProgramDetailBody({
   return (
     <>
       <p className="muted">{path}</p>
-      <DataGate result={result}>{(data) => <DetailBody data={data} name={name} onChanged={onChanged} />}</DataGate>
+      <DataGate result={result}>
+        {(data) => (
+          <DetailBody
+            data={data}
+            name={name}
+            rangeSecs={rangeSecs}
+            onChanged={onChanged}
+            onOpenDestination={onOpenDestination}
+          />
+        )}
+      </DataGate>
     </>
   );
 }

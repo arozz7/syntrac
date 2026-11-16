@@ -443,6 +443,66 @@ export interface DestinationsView {
   destinations: DestinationRowView[];
 }
 
+/** One of an owner's destinations, to say where its traffic went without opening the owner. */
+export interface OwnerDestinationView {
+  addr: string;
+  name: string | null;
+  bytesSent: number;
+  bytesReceived: number;
+}
+
+/** One network owner over a range. `owner` is null for the group of destinations with no owner found. */
+export interface OwnerRowView {
+  owner: OwnerView | null;
+  bytesSent: number;
+  bytesReceived: number;
+  flows: number;
+  destinations: number;
+  /** The biggest destinations by traffic. */
+  topDestinations: OwnerDestinationView[];
+  /** How many destinations are not in `topDestinations`. */
+  moreDestinations: number;
+}
+
+export interface OwnersView {
+  fromMs: number;
+  toMs: number;
+  historyStartsMs: number | null;
+  hoursInRange: number;
+  /** The owner data, when it has been downloaded; without it every destination is in the group with no owner. */
+  ownerData: OwnerDataView | null;
+  owners: OwnerRowView[];
+}
+
+/** One address a program talked to over a range. */
+export interface ProgramDestinationRowView {
+  addr: string;
+  name: string | null;
+  otherNames: number;
+  class: AddressClass;
+  owner: OwnerView | null;
+  bytesSent: number;
+  bytesReceived: number;
+  flows: number;
+  /** When THIS program first talked to the address (permanent). */
+  firstSeenMs: number | null;
+  /** The last time within the range. */
+  lastSeenMs: number;
+  /** The program first reached it after the first day of history and within the range. */
+  isNew: boolean;
+}
+
+export interface ProgramDestinationsView {
+  path: string;
+  fromMs: number;
+  toMs: number;
+  /** How many different addresses the program talked to in the range, whatever the limit. */
+  totalDestinations: number;
+  ownerData: OwnerDataView | null;
+  /** The biggest by traffic, biggest first. */
+  destinations: ProgramDestinationRowView[];
+}
+
 export interface NewDestinationRowView {
   addr: string;
   name: string | null;

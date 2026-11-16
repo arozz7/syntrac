@@ -54,6 +54,7 @@ export function NetworkDialog({
           path={focus.path}
           rangeSecs={rangeSecs}
           onChanged={() => setVersion((current) => current + 1)}
+          onOpenDestination={(addr) => onChange({ kind: 'destination', addr })}
           version={version}
         />
       )}

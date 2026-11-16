@@ -57,8 +57,35 @@ pub struct DestinationProgram {
     pub last_seen: Timestamp,
 }
 
+/// One address a program talked to, summed over a range.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProgramDestination {
+    pub addr: IpAddr,
+    pub bytes_sent: u64,
+    pub bytes_received: u64,
+    pub flows: u64,
+    /// First and last time within the range.
+    pub first_seen: Timestamp,
+    pub last_seen: Timestamp,
+}
+
+impl ProgramDestination {
+    pub fn bytes(&self) -> u64 {
+        self.bytes_sent.saturating_add(self.bytes_received)
+    }
+}
+
 /// The read side of destination trends. Implementations only group, sum and list.
 pub trait DestinationTrendRepository {
+    /// Every address the program at `path` (matched without regard to case) talked to over the hours in `[from, to]`, loopback
+    /// left out, one row per address, in any order. A path that was never recorded has none.
+    fn program_destinations(
+        &self,
+        path: &str,
+        from: Timestamp,
+        to: Timestamp,
+    ) -> Result<Vec<ProgramDestination>, RepoError>;
+
     /// Every destination over the hours in `[from, to]`, loopback left out, in any order.
     fn destination_totals(&self, from: Timestamp, to: Timestamp) -> Result<Vec<DestinationTotals>, RepoError>;
 
@@ -102,7 +129,8 @@ pub enum AddressScope {
 }
 
 impl AddressScope {
-    fn includes(self, addr: IpAddr) -> bool {
+    /// Whether an address is inside this scope.
+    pub fn includes(self, addr: IpAddr) -> bool {
         match self {
             Self::All => true,
             Self::Internet => classify_addr(addr).is_internet(),

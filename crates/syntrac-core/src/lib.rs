@@ -22,6 +22,7 @@ pub mod metrics;
 pub mod mini_xml;
 pub mod owner_dataset;
 pub mod owner_refresh;
+pub mod owner_totals;
 pub mod pipeline;
 pub mod ports;
 pub mod program_group;
@@ -42,6 +43,7 @@ pub use correlator::correlate;
 pub use destination_trend::{
     new_destination_cutoff, rank_destination_programs, rank_destinations, select_new, top_destination_programs,
     AddressScope, DestinationOrder, DestinationProgram, DestinationTotals, DestinationTrendRepository, NewDestination,
+    ProgramDestination,
 };
 pub use dns_names::{backfill_names, AddressName, DnsAnswerRow, NamesBackfill};
 pub use event::{EventCategory, EventEnvelope, EventPayload, NetAction, NetProtocol, Severity};
@@ -80,6 +82,7 @@ pub use owner_refresh::{
     refresh_owner_data, DatasetFetcher, DatasetInfo, FetchError, FetchedFile, OwnerRefreshError, OwnerRepository,
     RefreshLimits, RefreshOutcome,
 };
+pub use owner_totals::{group_by_owner, OwnerGroup, DESTINATIONS_PER_OWNER};
 pub use pipeline::{ingest_metrics, IngestError, Pipeline};
 pub use ports::{
     EventQuery, EventRepository, FlowQueries, MetricsRepository, MetricsSource, ProcessFilter, ProcessQueries,

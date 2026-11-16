@@ -18,8 +18,10 @@ use crate::health::{assess_health, HealthView};
 use crate::history::range_start;
 use crate::history::{system_history, SystemHistoryView};
 use crate::history_network::{
-    destination_history, destination_range, new_destinations_view, rank_destination_range, DestinationHistoryView,
-    DestinationOrderParam, DestinationRange, DestinationsView, NewDestinationsView, DEFAULT_DESTINATION_ROWS,
+    destination_history, destination_range, new_destinations_view, program_destinations_view, rank_destination_range,
+    rank_owner_range, DestinationHistoryView, DestinationOrderParam, DestinationRange, DestinationsView,
+    NewDestinationsView, OwnersView, ProgramDestinationsView, DEFAULT_DESTINATION_ROWS,
+    DEFAULT_PROGRAM_DESTINATION_ROWS,
 };
 use crate::history_programs::{
     program_history, range_totals, rank_range, Grouping, ProgramHistoryView, ProgramMetricParam, ProgramsView,
@@ -233,6 +235,34 @@ impl<C: Clock + Send + Sync> Backend<C> {
         self.with_store(|store, now| {
             let range = self.cached_destinations(store, now, range_secs)?;
             rank_destination_range(store, &range, order.into(), scope, limit.unwrap_or(DEFAULT_DESTINATION_ROWS))
+        })
+    }
+
+    /// Where one program connected over a range (its own destinations, biggest first).
+    pub fn program_destinations(
+        &self,
+        range_secs: u64,
+        path: String,
+        scope: AddressScope,
+        limit: Option<usize>,
+    ) -> Data<ProgramDestinationsView> {
+        self.with_store(|store, now| {
+            program_destinations_view(
+                store,
+                now,
+                range_secs,
+                &path,
+                scope,
+                limit.unwrap_or(DEFAULT_PROGRAM_DESTINATION_ROWS),
+            )
+        })
+    }
+
+    /// The destinations of a range grouped by the network that owns them (the sums are the ones the ranking keeps).
+    pub fn top_owners(&self, range_secs: u64, scope: AddressScope, limit: Option<usize>) -> Data<OwnersView> {
+        self.with_store(|store, now| {
+            let range = self.cached_destinations(store, now, range_secs)?;
+            rank_owner_range(store, &range, scope, limit.unwrap_or(DEFAULT_DESTINATION_ROWS))
         })
     }
 

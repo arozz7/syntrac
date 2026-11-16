@@ -3,12 +3,42 @@
 use std::collections::{BTreeMap, HashSet};
 use std::net::IpAddr;
 
-use syntrac_core::destination_trend::{DestinationProgram, DestinationTotals, NewDestination};
+use syntrac_core::destination_trend::{DestinationProgram, DestinationTotals, NewDestination, ProgramDestination};
+use syntrac_core::rollup::executable_key;
 use syntrac_core::{DestinationTrendRepository, Executable, RepoError, Timestamp};
 
 use crate::memory::InMemoryRepository;
 
 impl DestinationTrendRepository for InMemoryRepository {
+    fn program_destinations(
+        &self,
+        path: &str,
+        from: Timestamp,
+        to: Timestamp,
+    ) -> Result<Vec<ProgramDestination>, RepoError> {
+        let Some(key) = executable_key(path) else { return Ok(Vec::new()) };
+        let mut by_addr: BTreeMap<IpAddr, ProgramDestination> = BTreeMap::new();
+        for ((hour, row_key, addr), row) in &self.rollups.traffic {
+            if *hour < from || *hour > to || addr.is_loopback() || row_key.as_deref() != Some(key.as_str()) {
+                continue;
+            }
+            let entry = by_addr.entry(*addr).or_insert_with(|| ProgramDestination {
+                addr: *addr,
+                bytes_sent: 0,
+                bytes_received: 0,
+                flows: 0,
+                first_seen: row.first_seen,
+                last_seen: row.last_seen,
+            });
+            entry.bytes_sent += row.bytes_sent;
+            entry.bytes_received += row.bytes_received;
+            entry.flows += u64::from(row.flows);
+            entry.first_seen = entry.first_seen.min(row.first_seen);
+            entry.last_seen = entry.last_seen.max(row.last_seen);
+        }
+        Ok(by_addr.into_values().collect())
+    }
+
     fn destination_totals(&self, from: Timestamp, to: Timestamp) -> Result<Vec<DestinationTotals>, RepoError> {
         let mut by_addr: BTreeMap<IpAddr, (DestinationTotals, HashSet<Option<String>>)> = BTreeMap::new();
         for ((hour, key, addr), row) in &self.rollups.traffic {

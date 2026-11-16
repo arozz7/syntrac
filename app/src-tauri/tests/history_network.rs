@@ -474,3 +474,110 @@ fn the_detail_and_the_new_destinations_name_the_owner_too() {
     let none = destination_history(&scenario(), now(), WEEK, "203.0.113.9").unwrap();
     assert_eq!(none.owner, None);
 }
+
+// ---- top owners (docs/ALERTS-PLAN.md, N1)
+
+use syntrac_app_lib::history_network::owner_ranking;
+
+#[test]
+fn owners_are_ranked_with_their_destinations_and_the_dataset_is_described() {
+    let view = owner_ranking(&with_dataset(scenario()), now(), WEEK, AddressScope::Internet, 10).unwrap();
+
+    assert_eq!(view.owners.len(), 2, "the network that owns SITE, and the group nobody owns");
+    let site = &view.owners[0];
+    let owner = site.owner.as_ref().expect("an owner");
+    assert_eq!(
+        (owner.asn, owner.org.as_str(), owner.country.as_str()),
+        (64500, "EXAMPLE-NET Example Networks, Inc.", "US")
+    );
+    assert_eq!((site.bytes_sent, site.bytes_received, site.flows, site.destinations), (111, 991, 3, 1));
+    assert_eq!(site.top_destinations[0].addr, "203.0.113.9");
+    assert_eq!(site.top_destinations[0].name.as_deref(), Some("www.example.com"), "the name asked for most recently");
+    assert_eq!(site.more_destinations, 0);
+    let rest = &view.owners[1];
+    assert_eq!(rest.owner, None, "198.51.100.7 is in no range");
+    assert_eq!((rest.bytes_sent, rest.bytes_received, rest.destinations), (7, 3, 1));
+    assert_eq!(view.owner_data.expect("described").source, "iptoasn.com");
+}
+
+#[test]
+fn without_a_dataset_every_destination_is_in_the_group_with_no_owner() {
+    let view = owner_ranking(&scenario(), now(), WEEK, AddressScope::Internet, 10).unwrap();
+
+    assert_eq!(view.owners.len(), 1);
+    assert_eq!(view.owners[0].owner, None);
+    assert_eq!(view.owners[0].destinations, 2);
+    assert_eq!(view.owner_data, None);
+}
+
+#[test]
+fn this_network_is_left_out_of_the_owners_unless_every_address_is_asked_for() {
+    let internet = owner_ranking(&scenario(), now(), WEEK, AddressScope::Internet, 10).unwrap();
+    let all = owner_ranking(&scenario(), now(), WEEK, AddressScope::All, 10).unwrap();
+
+    let count = |view: &syntrac_app_lib::history_network::OwnersView| -> u32 {
+        view.owners.iter().map(|row| row.destinations).sum()
+    };
+    assert_eq!(count(&internet), 2);
+    assert_eq!(count(&all), 3, "the router counts when asked for");
+}
+
+#[test]
+fn an_owner_shows_a_few_destinations_and_says_how_many_more() {
+    let view = owner_ranking(&scenario(), now(), WEEK, AddressScope::All, 10).unwrap();
+
+    let nobody = &view.owners[0];
+    assert_eq!(nobody.destinations, 3);
+    assert_eq!(nobody.top_destinations.len() as u32 + nobody.more_destinations, 3);
+}
+
+// ---- where does this program connect (docs/ALERTS-PLAN.md, N2)
+
+use syntrac_app_lib::history_network::program_destinations_view;
+
+#[test]
+fn a_program_lists_where_it_connected_biggest_first_with_names_and_owners() {
+    let view =
+        program_destinations_view(&with_dataset(scenario()), now(), WEEK, CODE, AddressScope::Internet, 10).unwrap();
+
+    let addrs: Vec<&str> = view.destinations.iter().map(|row| row.addr.as_str()).collect();
+    assert_eq!(addrs, vec!["198.51.100.7", "203.0.113.9"], "biggest first; the router is not on the internet");
+    let site = &view.destinations[1];
+    assert_eq!((site.bytes_sent, site.bytes_received, site.flows), (1, 1, 1));
+    assert_eq!(site.name.as_deref(), Some("www.example.com"));
+    assert_eq!(site.owner.as_ref().map(|o| o.asn), Some(64500));
+    assert_eq!(view.destinations[0].owner, None);
+    assert_eq!(view.total_destinations, 2);
+    assert!(view.owner_data.is_some());
+}
+
+#[test]
+fn only_a_destination_first_reached_after_the_baseline_by_this_program_is_new() {
+    let view = program_destinations_view(&scenario(), now(), WEEK, CODE, AddressScope::Internet, 10).unwrap();
+
+    let later = view.destinations.iter().find(|row| row.addr == "198.51.100.7").unwrap();
+    let site = view.destinations.iter().find(|row| row.addr == "203.0.113.9").unwrap();
+    assert!(later.is_new, "first reached in hour 30, after the first day of history");
+    assert!(!site.is_new, "reached on the first day of history: the baseline, not news");
+    assert_eq!(later.first_seen_ms, Some(secs(30, 15) * 1000));
+}
+
+#[test]
+fn the_path_is_matched_without_regard_to_case_and_an_unknown_program_has_no_destinations() {
+    let upper =
+        program_destinations_view(&scenario(), now(), WEEK, &CODE.to_uppercase(), AddressScope::Internet, 10).unwrap();
+    assert_eq!(upper.destinations.len(), 2);
+
+    let none = program_destinations_view(&scenario(), now(), WEEK, r"C:\Apps\nothing.exe", AddressScope::Internet, 10)
+        .unwrap();
+    assert!(none.destinations.is_empty());
+    assert_eq!(none.total_destinations, 0);
+}
+
+#[test]
+fn the_list_is_limited_and_says_how_many_destinations_there_are() {
+    let view = program_destinations_view(&scenario(), now(), WEEK, CODE, AddressScope::All, 2).unwrap();
+
+    assert_eq!(view.destinations.len(), 2);
+    assert_eq!(view.total_destinations, 3, "the router counts when every address is asked for");
+}

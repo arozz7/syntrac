@@ -11,7 +11,10 @@ use tauri::State;
 use crate::backend::{Backend, Data};
 use crate::health::HealthView;
 use crate::history::SystemHistoryView;
-use crate::history_network::{DestinationHistoryView, DestinationOrderParam, DestinationsView, NewDestinationsView};
+use crate::history_network::{
+    DestinationHistoryView, DestinationOrderParam, DestinationsView, NewDestinationsView, OwnersView,
+    ProgramDestinationsView,
+};
 use crate::history_programs::{Grouping, ProgramHistoryView, ProgramMetricParam, ProgramsView};
 use crate::known_view::KnownProgramsView;
 use crate::owner_data_view::OwnerDataStateView;
@@ -90,6 +93,31 @@ pub async fn get_top_destinations(
     let backend = Arc::clone(&backend);
     let scope = scope_of(all_addresses);
     Ok(blocking(move || backend.top_destinations(range_secs, order, scope, limit)).await.unwrap_or_else(internal))
+}
+
+#[tauri::command]
+pub async fn get_program_destinations(
+    backend: State<'_, SharedBackend>,
+    range_secs: u64,
+    path: String,
+    limit: Option<usize>,
+    all_addresses: Option<bool>,
+) -> Result<Data<ProgramDestinationsView>, ()> {
+    let backend = Arc::clone(&backend);
+    let scope = scope_of(all_addresses);
+    Ok(blocking(move || backend.program_destinations(range_secs, path, scope, limit)).await.unwrap_or_else(internal))
+}
+
+#[tauri::command]
+pub async fn get_top_owners(
+    backend: State<'_, SharedBackend>,
+    range_secs: u64,
+    limit: Option<usize>,
+    all_addresses: Option<bool>,
+) -> Result<Data<OwnersView>, ()> {
+    let backend = Arc::clone(&backend);
+    let scope = scope_of(all_addresses);
+    Ok(blocking(move || backend.top_owners(range_secs, scope, limit)).await.unwrap_or_else(internal))
 }
 
 #[tauri::command]

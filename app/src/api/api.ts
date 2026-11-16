@@ -8,6 +8,8 @@ import type {
   HealthView,
   KnownProgramsView,
   NewDestinationsView,
+  OwnersView,
+  ProgramDestinationsView,
   OverviewView,
   OwnerDataOutcome,
   ProcessListParams,
@@ -41,6 +43,15 @@ export interface Api {
     limit?: number,
     allAddresses?: boolean,
   ): Promise<Data<DestinationsView>>;
+  /** The same destinations grouped by the network that owns them, biggest owner first. */
+  topOwners(rangeSecs: number, limit?: number, allAddresses?: boolean): Promise<Data<OwnersView>>;
+  /** Where one program connected over the range, biggest first. `path` is the program's image path. */
+  programDestinations(
+    rangeSecs: number,
+    path: string,
+    limit?: number,
+    allAddresses?: boolean,
+  ): Promise<Data<ProgramDestinationsView>>;
   /** Destinations first seen within the last `windowSecs` (never counting the first day of history as new). */
   newDestinations(windowSecs: number, limit?: number, allAddresses?: boolean): Promise<Data<NewDestinationsView>>;
   /** One destination: the names asked for, the programs that talked to it, and its hours. */
@@ -114,6 +125,9 @@ export const tauriApi: Api = {
   programHistory: (rangeSecs, path) => data<ProgramHistoryView>('get_program_history', { rangeSecs, path }),
   topDestinations: (rangeSecs, order, limit, allAddresses) =>
     data<DestinationsView>('get_top_destinations', { rangeSecs, order, limit, allAddresses }),
+  topOwners: (rangeSecs, limit, allAddresses) => data<OwnersView>('get_top_owners', { rangeSecs, limit, allAddresses }),
+  programDestinations: (rangeSecs, path, limit, allAddresses) =>
+    data<ProgramDestinationsView>('get_program_destinations', { rangeSecs, path, limit, allAddresses }),
   newDestinations: (windowSecs, limit, allAddresses) =>
     data<NewDestinationsView>('get_new_destinations', { windowSecs, limit, allAddresses }),
   destinationHistory: (rangeSecs, addr) => data<DestinationHistoryView>('get_destination_history', { rangeSecs, addr }),

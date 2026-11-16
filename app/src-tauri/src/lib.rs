@@ -39,6 +39,8 @@ pub fn run() {
             commands::unmark_known_program,
             commands::get_program_history,
             commands::get_top_destinations,
+            commands::get_top_owners,
+            commands::get_program_destinations,
             commands::get_new_destinations,
             commands::get_destination_history,
             commands::get_owner_data_status,

@@ -3,7 +3,7 @@
 
 use std::net::{IpAddr, Ipv4Addr};
 
-use syntrac_core::destination_trend::{DestinationProgram, DestinationTotals, NewDestination};
+use syntrac_core::destination_trend::{DestinationProgram, DestinationTotals, NewDestination, ProgramDestination};
 use syntrac_core::{
     roll_up_due, DestinationTrendRepository, EventRepository, MetricsRepository, ProcessRepository, Retention,
     RollupRepository,
@@ -37,6 +37,7 @@ pub fn destination_contract<R: DestinationSubject>(make: impl Fn() -> R) {
     new_destinations_survive_the_purge_of_detail(make());
     the_programs_of_one_destination_are_summed_within_the_range(make());
     the_programs_of_many_destinations_come_back_in_one_read(make());
+    the_destinations_of_one_program_are_summed_per_address_within_the_range(make());
 }
 
 fn ip(addr: Ipv4Addr) -> IpAddr {
@@ -202,6 +203,52 @@ fn the_programs_of_one_destination_are_summed_within_the_range<R: DestinationSub
         vec![program(Some(A_EXE), 50, 50, 1, micros(2, 10), micros(2, 10))],
         "first and last are within the range"
     );
+}
+
+fn the_destinations_of_one_program_are_summed_per_address_within_the_range<R: DestinationSubject>(mut repo: R) {
+    scenario(&mut repo);
+    let plain = |mut rows: Vec<ProgramDestination>| {
+        rows.sort_by_key(|row| row.addr);
+        rows.into_iter()
+            .map(|row| {
+                (
+                    row.addr,
+                    row.bytes_sent,
+                    row.bytes_received,
+                    row.flows,
+                    row.first_seen.as_micros(),
+                    row.last_seen.as_micros(),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let mut expected = vec![
+        (ip(BEACON_TARGET), 150, 250, 2, micros(0, 10), micros(2, 10)),
+        (ip(OTHER_TARGET), 1, 1, 1, micros(0, 30), micros(0, 30)),
+        (ip(TIED), 2, 2, 1, micros(1, 10), micros(1, 10)),
+    ];
+    expected.sort_by_key(|row| row.0);
+    assert_eq!(
+        plain(repo.program_destinations(A_EXE, t(0, 0), t(5, 0)).unwrap()),
+        expected,
+        "one row per address, loopback left out"
+    );
+    assert_eq!(
+        plain(repo.program_destinations(&A_EXE.to_uppercase(), t(0, 0), t(5, 0)).unwrap()),
+        expected,
+        "the path is matched without regard to case"
+    );
+
+    assert_eq!(
+        plain(repo.program_destinations(A_EXE, t(2, 0), t(5, 0)).unwrap()),
+        vec![(ip(BEACON_TARGET), 50, 50, 1, micros(2, 10), micros(2, 10))],
+        "only the hours in the range count, and first and last are within the range"
+    );
+    let b = plain(repo.program_destinations(B_EXE, t(0, 0), t(5, 0)).unwrap());
+    assert_eq!(b.iter().map(|row| row.0).collect::<Vec<_>>().len(), 2, "B talked to two addresses");
+    assert!(repo.program_destinations(r"C:\nowhere\none.exe", t(0, 0), t(5, 0)).unwrap().is_empty());
+    assert!(repo.program_destinations("", t(0, 0), t(5, 0)).unwrap().is_empty());
 }
 
 fn the_programs_of_many_destinations_come_back_in_one_read<R: DestinationSubject>(mut repo: R) {
