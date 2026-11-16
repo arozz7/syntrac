@@ -6,11 +6,11 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use syntrac_core::{
-    Executable, LaunchSource, LauncherKind, LauncherObservation, LauncherRepository, LauncherSeen, LauncherWrite,
-    RawEntry, RepoError, Timestamp,
+    Executable, InstallRecord, InstallRepository, InstallSeen, InstallWrite, LaunchSource, LauncherKind,
+    LauncherObservation, LauncherRepository, LauncherSeen, LauncherWrite, RawEntry, RawInstall, RepoError, Timestamp,
 };
 use syntrac_service::{LaunchTick, LaunchWorker, LaunchWorkerSettings};
-use syntrac_testkit::{FakeLaunchSource, InMemoryRepository, ManualClock};
+use syntrac_testkit::{FakeInstallSource, FakeLaunchSource, InMemoryRepository, ManualClock};
 
 const A: &str = r"C:\Apps\A.exe";
 
@@ -149,4 +149,63 @@ fn the_loop_ends_promptly_when_asked_to_stop() {
     handle.join().unwrap();
 
     assert!(asked.elapsed() < Duration::from_secs(2), "the worker took {:?} to stop", asked.elapsed());
+}
+
+impl InstallRepository for Flaky {
+    fn record_installs(&mut self, rows: &[InstallRecord], at: Timestamp) -> Result<InstallWrite, RepoError> {
+        self.inner.record_installs(rows, at)
+    }
+    fn installs(&self) -> Result<Vec<InstallSeen>, RepoError> {
+        self.inner.installs()
+    }
+}
+
+fn product(name: &str) -> RawInstall {
+    RawInstall {
+        hive: "machine".to_owned(),
+        key_name: format!("{{{name}}}"),
+        display_name: name.to_owned(),
+        install_location: format!(r"C:\Apps\{name}"),
+        ..RawInstall::default()
+    }
+}
+
+#[test]
+fn the_uninstall_keys_are_read_in_the_same_sweep_when_a_source_is_given() {
+    let mut worker = LaunchWorker::new(
+        InMemoryRepository::default(),
+        tasks(vec![entry(r"\One", A)]),
+        env,
+        exists,
+        ManualClock::new(at(0)),
+        settings(),
+    )
+    .with_installs(Box::new(FakeInstallSource::new(vec![product("Alpha"), product("Beta")])));
+
+    let tick = worker.tick();
+
+    let LaunchTick::Swept(report) = tick else { panic!("expected a sweep: {tick:?}") };
+    assert_eq!(report.recorded, 1);
+    let installs = report.installs.expect("install records were read");
+    assert_eq!((installs.recorded, installs.new), (2, 2));
+}
+
+#[test]
+fn a_failing_uninstall_read_is_reported_and_the_launch_records_are_still_kept() {
+    let mut worker = LaunchWorker::new(
+        InMemoryRepository::default(),
+        tasks(vec![entry(r"\One", A)]),
+        env,
+        exists,
+        ManualClock::new(at(0)),
+        settings(),
+    )
+    .with_installs(Box::new(FakeInstallSource::failing("the registry is busy")));
+
+    let tick = worker.tick();
+
+    let LaunchTick::Swept(report) = tick else { panic!("expected a sweep: {tick:?}") };
+    assert_eq!(report.recorded, 1);
+    assert!(report.installs.is_none());
+    assert_eq!(report.failed, [("install records".to_owned(), "the registry is busy".to_owned())]);
 }

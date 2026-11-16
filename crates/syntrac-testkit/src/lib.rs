@@ -5,12 +5,14 @@ pub mod contract;
 pub mod destination_contract;
 pub mod fixtures;
 pub mod identity_contract;
+pub mod install_contract;
 pub mod known_contract;
 pub mod launcher_contract;
 pub mod memory;
 mod memory_context;
 mod memory_destinations;
 mod memory_identity;
+mod memory_installs;
 mod memory_known;
 mod memory_launchers;
 mod memory_owner;
@@ -24,6 +26,7 @@ pub mod trend_contract;
 
 pub use memory::InMemoryRepository;
 pub use mocks::{
-    FailingTelemetrySource, FakeContextSource, FakeDatasetFetcher, FakeInspector, FakeLaunchSource, ManualClock,
-    MockMetricsSource, MockTelemetrySource, RestartCounter, RestartableTelemetrySource, ScriptedTelemetrySource,
+    FailingTelemetrySource, FakeContextSource, FakeDatasetFetcher, FakeInspector, FakeInstallSource, FakeLaunchSource,
+    ManualClock, MockMetricsSource, MockTelemetrySource, RestartCounter, RestartableTelemetrySource,
+    ScriptedTelemetrySource,
 };

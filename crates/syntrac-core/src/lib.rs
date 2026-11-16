@@ -13,6 +13,7 @@ pub mod exe_location;
 pub mod flow;
 pub mod identity;
 pub mod identity_run;
+pub mod install_records;
 pub mod known;
 pub mod launch_run;
 pub mod launch_target;
@@ -57,6 +58,10 @@ pub use exe_location::{classify_location, install_root, product_key, LocationCla
 pub use flow::{Destination, FlowAggregator, FlowRow};
 pub use identity::ProcessInstanceId;
 pub use identity_run::{inspect_due, retry_after, IdentityPass, IdentitySettings};
+pub use install_records::{
+    registered_for, sweep_installs, to_record, InstallRecord, InstallRepository, InstallSeen, InstallSource,
+    InstallSourceError, InstallSweep, InstallSweepError, InstallWrite, RawInstall, SourceInstalls,
+};
 pub use known::{
     KnownError, KnownIndex, KnownProduct, KnownProductRepository, LookalikeReason, NewKnownProduct, Standing,
 };

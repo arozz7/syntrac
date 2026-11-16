@@ -9,8 +9,9 @@ use std::collections::HashMap;
 use serde::Serialize;
 use syntrac_core::rollup::executable_key;
 use syntrac_core::{
-    classify_location, install_root, ContextRepository, ExecutableContext, IdentityRecord, IdentityRepository,
-    KnownIndex, KnownProduct, KnownProductRepository, LauncherRepository, LauncherSeen, RepoError,
+    classify_location, install_root, registered_for, ContextRepository, ExecutableContext, IdentityRecord,
+    IdentityRepository, InstallRepository, InstallSeen, KnownIndex, KnownProduct, KnownProductRepository,
+    LauncherRepository, LauncherSeen, RepoError,
 };
 
 use crate::history::ms;
@@ -38,6 +39,9 @@ pub struct IdentityBadgeView {
     /// Something that starts with Windows (an automatic service, a scheduled task, a Run key, a Startup folder entry) was found
     /// for it and is still there. `false` means none was found in the places read, never "does not autostart".
     pub starts_at_boot: bool,
+    /// The name an installer registered for the folder it lives in (the Uninstall keys), when a product that is still installed
+    /// holds it. A clue: anything that can write the registry can claim a name.
+    pub registered_as: Option<String>,
 }
 
 /// One account a program has been seen running as.
@@ -47,6 +51,25 @@ pub struct AccountView {
     /// As Windows names it (`NT AUTHORITY\SYSTEM`), when it could.
     pub name: Option<String>,
     pub kind: String,
+    pub first_seen_ms: i64,
+    pub last_seen_ms: i64,
+}
+
+/// A product the Uninstall registry keys say is installed in the folder a program lives in.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RegisteredView {
+    pub name: String,
+    pub publisher: Option<String>,
+    pub version: Option<String>,
+    /// As the registry holds it (usually `YYYYMMDD`).
+    pub installed: Option<String>,
+    /// The install folder, lower case.
+    pub folder: String,
+    /// The folder was worked out from the icon or the uninstall command, not stated by the entry: weaker evidence.
+    pub folder_derived: bool,
+    /// The entry was still there when the keys were last read completely.
+    pub current: bool,
     pub first_seen_ms: i64,
     pub last_seen_ms: i64,
 }
@@ -117,6 +140,8 @@ pub struct IdentityDetailView {
     pub services: Vec<ServiceView>,
     /// How it has been seen to get started, most recent first. Empty when nothing was found (not "does not autostart").
     pub launchers: Vec<LauncherView>,
+    /// The products the Uninstall keys register for the folder it lives in. Empty when none (not a claim).
+    pub registered: Vec<RegisteredView>,
 }
 
 pub fn badge(path: &str, record: Option<&IdentityRecord>) -> IdentityBadgeView {
@@ -136,6 +161,7 @@ pub fn badge(path: &str, record: Option<&IdentityRecord>) -> IdentityBadgeView {
         runs_as: Vec::new(),
         service: false,
         starts_at_boot: false,
+        registered_as: None,
     }
 }
 
@@ -209,7 +235,33 @@ pub fn detail(path: &str, record: Option<&IdentityRecord>) -> IdentityDetailView
         accounts: Vec::new(),
         services: Vec::new(),
         launchers: Vec::new(),
+        registered: Vec::new(),
     }
+}
+
+/// The panel list of the products registered for a program's folder, and the matching badge fact.
+pub fn with_registered(mut view: IdentityDetailView, registered: &[InstallSeen]) -> IdentityDetailView {
+    view.badge.registered_as = registered_name(registered);
+    view.registered = registered
+        .iter()
+        .map(|seen| RegisteredView {
+            name: seen.record.display_name.clone(),
+            publisher: seen.record.publisher.clone(),
+            version: seen.record.version.clone(),
+            installed: seen.record.install_date.clone(),
+            folder: seen.record.location.clone().unwrap_or_default(),
+            folder_derived: seen.record.derived,
+            current: seen.current,
+            first_seen_ms: ms(seen.first_seen),
+            last_seen_ms: ms(seen.last_seen),
+        })
+        .collect();
+    view
+}
+
+/// The name to offer for a program: the first product that is still installed.
+fn registered_name(registered: &[InstallSeen]) -> Option<String> {
+    registered.iter().find(|seen| seen.current).map(|seen| seen.record.display_name.clone())
 }
 
 /// The badge flag and the panel list for a program's start entries.
@@ -245,12 +297,20 @@ pub struct Identities {
     records: HashMap<String, IdentityRecord>,
     contexts: HashMap<String, ExecutableContext>,
     launchers: HashMap<String, Vec<LauncherSeen>>,
+    installs: Vec<InstallSeen>,
     products: Vec<KnownProduct>,
     index: KnownIndex,
 }
 
 impl Identities {
-    pub fn load<R: IdentityRepository + ContextRepository + LauncherRepository + KnownProductRepository + ?Sized>(
+    pub fn load<
+        R: IdentityRepository
+            + ContextRepository
+            + LauncherRepository
+            + InstallRepository
+            + KnownProductRepository
+            + ?Sized,
+    >(
         repo: &R,
     ) -> Result<Self, RepoError> {
         let records: HashMap<String, IdentityRecord> = repo
@@ -262,12 +322,13 @@ impl Identities {
             repo.all_contexts()?.into_iter().map(|(exe, context)| (exe.key, context)).collect();
         let launchers: HashMap<String, Vec<LauncherSeen>> =
             repo.all_launchers()?.into_iter().map(|(exe, list)| (exe.key, list)).collect();
+        let installs = repo.installs()?;
         let products = repo.known_products()?;
         let index = KnownIndex::build(
             products.clone(),
             records.values().map(|record| (record.exe.path.as_str(), record.facts.as_ref())),
         );
-        Ok(Self { records, contexts, launchers, products, index })
+        Ok(Self { records, contexts, launchers, installs, products, index })
     }
 
     pub fn of(&self, path: &str) -> Option<&IdentityRecord> {
@@ -284,10 +345,16 @@ impl Identities {
         executable_key(path).and_then(|key| self.launchers.get(&key)).cloned().unwrap_or_default()
     }
 
+    /// The products the Uninstall keys register for the folder a program lives in.
+    pub fn registered_of(&self, path: &str) -> Vec<InstallSeen> {
+        registered_for(&self.installs, path).into_iter().cloned().collect()
+    }
+
     /// The badge of a program: its identity facts, how it has been seen running and whether it starts with Windows.
     pub fn badge(&self, path: &str) -> IdentityBadgeView {
         let mut badge = with_context(badge(path, self.of(path)), &self.context_of(path));
         badge.starts_at_boot = starts_at_boot(&self.launchers_of(path));
+        badge.registered_as = registered_name(&self.registered_of(path));
         badge
     }
 
@@ -334,10 +401,12 @@ fn folder_name(path: &str) -> Option<String> {
     shown.split('\\').filter(|part| !part.is_empty()).nth(depth.saturating_sub(1)).map(str::to_owned)
 }
 
-/// The name of a product row: the product name members agree on, else their publisher, else the folder they live in.
+/// The name of a product row: the product name members agree on, else their publisher, else the name an installer registered
+/// for their folder, else the folder they live in.
 pub fn product_name(paths: &[&str], badges: &[IdentityBadgeView]) -> String {
     most_common(badges.iter().filter_map(|b| b.product.clone()))
         .or_else(|| most_common(badges.iter().filter_map(|b| b.publisher.clone())))
+        .or_else(|| most_common(badges.iter().filter_map(|b| b.registered_as.clone())))
         .or_else(|| paths.first().and_then(|path| folder_name(path)))
         .unwrap_or_else(|| "Program group".to_owned())
 }
@@ -366,6 +435,7 @@ pub fn merged_badge(members: &[IdentityBadgeView]) -> IdentityBadgeView {
         runs_as: union_in_order(members.iter().flat_map(|m| m.runs_as.iter().cloned())),
         service: members.iter().any(|m| m.service),
         starts_at_boot: members.iter().any(|m| m.starts_at_boot),
+        registered_as: most_common(members.iter().filter_map(|m| m.registered_as.clone())),
     }
 }
 

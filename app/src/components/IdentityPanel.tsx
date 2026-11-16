@@ -5,6 +5,7 @@ import {
   accountConcern,
   accountLabel,
   launcherLabel,
+  registeredDate,
   locationLabel,
   signatureLabel,
   wasRenamed,
@@ -119,6 +120,28 @@ export function IdentityPanel({
             </ul>
           </Fact>
         )}
+        <Fact label="Registered by an installer as">
+          {identity.registered.length === 0 ? (
+            <span className="muted">No installer record names this folder</span>
+          ) : (
+            <ul className="names">
+              {identity.registered.map((product) => (
+                <li key={`${product.name}:${product.folder}`}>
+                  <strong>{product.name}</strong>
+                  <span className="muted">
+                    {product.publisher !== null && ` from ${product.publisher}`}
+                    {product.version !== null && `, version ${product.version}`}
+                    {product.installed !== null && `, installed ${registeredDate(product.installed)}`}
+                  </span>
+                  {!product.current && <span className="muted"> (no longer installed)</span>}
+                  {product.folderDerived && (
+                    <span className="muted"> (folder worked out from the uninstall command, not stated)</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Fact>
         <Fact label="Starts with Windows via">
           {identity.launchers.length === 0 ? (
             <span className="muted">
@@ -144,6 +167,10 @@ export function IdentityPanel({
       </dl>
       <p className="muted">{label.hint}</p>
       {accountConcern(identity) !== null && <p className="muted">{accountConcern(identity)}</p>}
+      <p className="muted">
+        An installer record is a clue to where a program came from, not proof: any program that can write the registry
+        can claim a name, and it never changes whether a file is signed or known.
+      </p>
       <p className="muted">
         Not read: Winlogon settings, debugger and DLL hooks, WMI subscriptions, drivers, users who are not signed in,
         and programs started by another program. A program can start in those ways, so "no entry found" only means "not

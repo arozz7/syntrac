@@ -336,3 +336,25 @@ impl syntrac_core::LaunchSource for FakeLaunchSource {
         self.answer.clone().map_err(syntrac_core::LaunchSourceError)
     }
 }
+
+/// An `InstallSource` that answers what it was told: the entries it found, or a failure.
+#[derive(Debug)]
+pub struct FakeInstallSource {
+    answer: Result<syntrac_core::SourceInstalls, String>,
+}
+
+impl FakeInstallSource {
+    pub fn new(entries: Vec<syntrac_core::RawInstall>) -> Self {
+        Self { answer: Ok(syntrac_core::SourceInstalls { entries, unreadable: 0 }) }
+    }
+
+    pub fn failing(message: &str) -> Self {
+        Self { answer: Err(message.to_owned()) }
+    }
+}
+
+impl syntrac_core::InstallSource for FakeInstallSource {
+    fn read(&self) -> Result<syntrac_core::SourceInstalls, syntrac_core::InstallSourceError> {
+        self.answer.clone().map_err(syntrac_core::InstallSourceError)
+    }
+}

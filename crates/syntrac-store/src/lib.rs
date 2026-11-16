@@ -8,6 +8,7 @@ mod destinations;
 mod events;
 mod identities;
 mod inspect;
+mod installs;
 mod known_products;
 mod launchers;
 mod metrics;
@@ -15,6 +16,8 @@ mod metrics;
 mod migration_v10_tests;
 #[cfg(test)]
 mod migration_v11_tests;
+#[cfg(test)]
+mod migration_v12_tests;
 #[cfg(test)]
 mod migration_v4_tests;
 #[cfg(test)]

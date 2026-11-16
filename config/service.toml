@@ -65,6 +65,7 @@ owner_data_allowed = true
 
 # Launch records (docs/RUNAS-PLAN.md, I4b): how each program gets started. Every few minutes the service reads, read-only, the
 # Windows services, the scheduled tasks, the Run and RunOnce keys and the Startup folders, and keeps which program each one starts.
+# The same sweep reads the Uninstall registry keys (install records: which product an installer registered for a folder).
 # Evidence only: "no start-up entry found" means "not found in the places read", never "does not autostart".
 launch_enabled = true
 launch_interval_minutes = 10

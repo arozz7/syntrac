@@ -152,6 +152,25 @@ export interface IdentityBadgeView {
   service: boolean;
   /** Something that starts with Windows was found for it and is still there. False means none was found in the places read. */
   startsAtBoot: boolean;
+  /** The name an installer registered for the folder it lives in (the Uninstall keys), when a product still installed holds it. A clue. */
+  registeredAs: string | null;
+}
+
+/** A product the Uninstall registry keys say is installed in the folder a program lives in. */
+export interface RegisteredView {
+  name: string;
+  publisher: string | null;
+  version: string | null;
+  /** As the registry holds it (usually YYYYMMDD). */
+  installed: string | null;
+  /** The install folder, lower case. */
+  folder: string;
+  /** The folder was worked out from the icon or the uninstall command, not stated by the entry: weaker evidence. */
+  folderDerived: boolean;
+  /** The entry was still there when the keys were last read completely. */
+  current: boolean;
+  firstSeenMs: number;
+  lastSeenMs: number;
 }
 
 /** One way a program gets started: a Windows service, a scheduled task, a Run key or a Startup folder entry. */
@@ -222,6 +241,8 @@ export interface IdentityDetailView extends IdentityBadgeView {
   services: ServiceView[];
   /** How it has been seen to get started, most recent first. Empty: nothing found (not "does not autostart"). */
   launchers: LauncherView[];
+  /** The products the Uninstall keys register for the folder it lives in. Empty: none (not a claim). */
+  registered: RegisteredView[];
 }
 
 /** Where a program stands against the user's list of known programs. Evidence, not a verdict. */

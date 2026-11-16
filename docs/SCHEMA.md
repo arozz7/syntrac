@@ -149,6 +149,17 @@ no longer configured (its history stays). A source that failed does not move its
 program the rollups have not met yet gets its `executables` row from there. Permanent: the purge of detail never touches them.
 Written only by the service's launch worker. Plan: `docs/RUNAS-PLAN.md`.
 
+## Install records (v12)
+
+`install_records` (migration v12, additive): what the Uninstall registry keys say about installed products, as a CLUE about where a program
+came from. One row per (`hive`, `key_name`) where `hive` is `machine` (64-bit view), `machine32` (32-bit programs) or `user:<sid>`; `display_name`,
+`publisher`, `version` and `install_date` as the registry holds them (cleaned, capped); `location`, the install folder (lower case, no trailing
+backslash; NULL when the entry names none or only one too general to mean anything); `location_derived` (the folder was worked out from the icon
+or the uninstall command, not stated); `system_component`; `first_seen` and `last_seen` only (MIN and MAX), the other fields being those of the newest
+sighting. When the keys were last read completely is the `launcher_sweeps` row of kind `install_records`: a record whose `last_seen` is older is no
+longer installed (its history stays). Not stored per program: a program is matched to the record whose folder holds it when shown. Permanent:
+the purge of detail never touches it. Written only by the service's launch worker. Plan: `docs/RUNAS-PLAN.md`.
+
 ## Retention
 
 `Retention::purge_before(cutoff)` removes events, flows, metrics older than the cutoff, and ended processes that ended

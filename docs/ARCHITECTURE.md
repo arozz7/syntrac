@@ -65,6 +65,7 @@ Client: `syntrac-service --status` / `--ping` (`--pipe <name>`), exit codes 0 ok
 | `StorageStats` / `FreeSpace` / `DetailStore` | Memory + Tool | Implemented (SQLite, in-memory; Windows `GetDiskFreeSpaceExW`): size accounting, space recovery and the narrow view the storage guard works on |
 | `RollupRepository` | Memory | Implemented (SQLite, in-memory; shared contract suite): loads one hour of detail, stores its rollup + ledgers + watermark atomically, reads history and ledgers. The maths is the pure `syntrac_core::rollup::roll_up_hour` |
 | `DestinationTrendRepository` | Memory | Implemented (SQLite, in-memory; shared contract suite): per-destination sums over a range, destinations first seen after an instant (with the first program), and the programs of one destination. Ranking, scope and the "new" rule are pure (`destination_trend.rs`, `addr_class.rs`) |
+| `InstallRepository` / `InstallSource` | Memory + Tool | Implemented (SQLite, in-memory; shared contract suite; Windows adapter and a test fake): the products the Uninstall keys name, matched to programs by install folder. The rules are pure (`install_records.rs`) |
 | `LauncherRepository` / `LaunchSource` | Memory + Tool | Implemented (SQLite, in-memory; shared contract suite; Windows adapters and a test fake): how each program gets started, per executable. The rules are pure (`launch_target.rs`, `task_xml.rs`, `launch_run.rs`) |
 | `OwnerRepository` / `DatasetFetcher` | Memory + Tool | Implemented (SQLite, in-memory; shared contract suite; WinHTTP adapter and a test fake): the downloaded IP-to-owner dataset and how it is fetched. The rules are pure (`owner_dataset.rs`, `owner_refresh.rs`) |
 | `ContextRepository` / `ProcessContextSource` | Memory + Tool | Implemented (SQLite, in-memory; shared contract suite; Windows adapter and a test fake): which account each program has been seen running as and which services it hosts, per executable. The rules are pure (`exe_context.rs`, `context_run.rs`) |
@@ -161,6 +162,15 @@ core turns each raw entry into the program it starts (`launch_target.rs`: quotes
 file system, variables, proxies recorded as themselves) and records it (`launch_run.rs`); the repository keeps first and last seen and
 when each kind was last read completely. The identity panel shows "Starts with Windows via", the table a quiet "Starts at boot".
 Plan: `docs/RUNAS-PLAN.md`.
+
+## Install records (where a program came from)
+
+The launch worker also reads the Uninstall registry keys (`syntrac-collector/src/install_registry.rs`, on the read-only `registry.rs`) through
+the `InstallSource` port. The pure core (`install_records.rs`) cleans each entry, works out its install folder (stated, or derived from the icon or
+the uninstall command, refusing folders too general to mean anything) and, when a program is shown, matches it to the record whose folder holds
+it (the most specific folder; ties all shown). The identity panel shows "Registered by an installer as"; a product group with no product name and
+no signer takes the registered name before the folder name. It is a clue: it never changes a standing or merges two products. Plan:
+`docs/RUNAS-PLAN.md`.
 
 ## Owner data (which network owns an address)
 

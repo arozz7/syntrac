@@ -369,6 +369,27 @@ pub const MIGRATIONS: &[&str] = &[
         completed_at INTEGER NOT NULL
     ) WITHOUT ROWID;
     ",
+    // 12: what the Uninstall registry keys say about installed products (docs/RUNAS-PLAN.md, I4c). Additive. One row per
+    // (registry view, key name) ever seen, first and last seen only; when the keys were last read completely is the
+    // launcher_sweeps row of kind install_records (a record whose last_seen is older is no longer installed). A clue about where a
+    // program came from, matched to programs by install folder when shown, never stored per program. Permanent.
+    "
+    CREATE TABLE install_records (
+        id               INTEGER PRIMARY KEY,
+        hive             TEXT NOT NULL,
+        key_name         TEXT NOT NULL,
+        display_name     TEXT NOT NULL,
+        publisher        TEXT,
+        version          TEXT,
+        install_date     TEXT,
+        location         TEXT,
+        location_derived INTEGER NOT NULL,
+        system_component INTEGER NOT NULL,
+        first_seen       INTEGER NOT NULL,
+        last_seen        INTEGER NOT NULL,
+        UNIQUE (hive, key_name)
+    );
+    ",
 ];
 
 /// The migration (1-based number) that rewrites every table. An existing database gets a backup copy before it is applied

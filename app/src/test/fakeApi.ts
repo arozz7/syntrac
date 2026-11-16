@@ -172,6 +172,7 @@ export function identityBadge(overrides: Partial<IdentityBadgeView> = {}): Ident
     runsAs: [],
     service: false,
     startsAtBoot: false,
+    registeredAs: null,
     ...overrides,
   };
 }
@@ -197,6 +198,7 @@ export function identityDetail(overrides: Partial<IdentityDetailView> = {}): Ide
     accounts: [],
     services: [],
     launchers: [],
+    registered: [],
     ...overrides,
   };
 }

@@ -12,13 +12,17 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use rusqlite::{Connection, OpenFlags};
+use syntrac_collector::install_registry::UninstallKeySource;
 use syntrac_collector::launch_env::{environment, file_exists};
 use syntrac_collector::launch_registry::RunKeyLaunchSource;
 use syntrac_collector::launch_services::ServiceLaunchSource;
 use syntrac_collector::launch_startup::StartupLaunchSource;
 use syntrac_collector::launch_tasks::TaskLaunchSource;
 use syntrac_collector::system::is_elevated;
-use syntrac_core::{sweep_launchers, Clock, LaunchSource, LauncherRepository, SystemClock};
+use syntrac_core::{
+    registered_for, sweep_installs, sweep_launchers, Clock, InstallRepository, LaunchSource, LauncherRepository,
+    SystemClock,
+};
 use syntrac_store::SqliteStore;
 
 fn main() {
@@ -82,6 +86,35 @@ fn main() {
     for (exe, entries) in all.iter().filter(|(_, e)| e.len() > 1).take(5) {
         let ways: Vec<&str> = entries.iter().map(|e| e.kind.as_str()).collect();
         println!("  {}  {ways:?}", exe.path);
+    }
+
+    // The Uninstall keys (install records, I4c): two reads, the second must find nothing new.
+    for pass in 1..=2 {
+        let started = Instant::now();
+        let sweep = sweep_installs(&UninstallKeySource, &mut store, SystemClock.now()).expect("an install read");
+        println!(
+            "install records {pass}: {:.0} ms; entries {}, recorded {}, with a folder {}, new {}, unreadable {}",
+            started.elapsed().as_secs_f64() * 1000.0,
+            sweep.entries,
+            sweep.recorded,
+            sweep.with_folder,
+            sweep.new,
+            sweep.unreadable
+        );
+    }
+    let installs = store.installs().expect("read installs");
+    let derived = installs.iter().filter(|i| i.record.derived).count();
+    println!("install records: {} ({derived} with a folder worked out, not stated)", installs.len());
+    // How many programs that have a launch entry also have a product registered for their folder.
+    let matched = all.iter().filter(|(exe, _)| !registered_for(&installs, &exe.path).is_empty()).count();
+    println!(
+        "programs with a start entry: {}, of which a product is registered for their folder: {matched}",
+        all.len()
+    );
+    for (exe, _) in all.iter().filter(|(exe, _)| !registered_for(&installs, &exe.path).is_empty()).take(5) {
+        let names: Vec<String> =
+            registered_for(&installs, &exe.path).iter().map(|s| s.record.display_name.clone()).collect();
+        println!("  {}  registered as {names:?}", exe.path);
     }
     println!("copy left at {}", copy.display());
 }

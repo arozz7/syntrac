@@ -118,6 +118,12 @@ export function launcherLabel(kind: LauncherKind, detail = ''): string {
   return kind === 'service_other' && detail === 'disabled' ? 'Windows service (disabled)' : LAUNCHER_NAMES[kind];
 }
 
+/** A date the registry holds (usually YYYYMMDD) as a day; anything else is shown as it is. */
+export function registeredDate(text: string): string {
+  const match = /^(\d{4})(\d{2})(\d{2})$/.exec(text);
+  return match === null ? text : `${match[1]}-${match[2]}-${match[3]}`;
+}
+
 const PRIVILEGED: ReadonlySet<AccountKind> = new Set(['system', 'local_service', 'network_service', 'service_account']);
 const UNUSUAL_FOR_PRIVILEGED: ReadonlySet<LocationClass> = new Set(['temporary', 'user_profile', 'network']);
 

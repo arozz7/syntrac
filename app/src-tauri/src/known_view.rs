@@ -119,7 +119,11 @@ pub struct KnownProgramsView {
 const MAX_LOOKALIKES: usize = 200;
 
 pub fn known_programs<
-    R: KnownProductRepository + IdentityRepository + syntrac_core::ContextRepository + syntrac_core::LauncherRepository,
+    R: KnownProductRepository
+        + IdentityRepository
+        + syntrac_core::ContextRepository
+        + syntrac_core::LauncherRepository
+        + syntrac_core::InstallRepository,
 >(
     repo: &R,
 ) -> Result<KnownProgramsView, RepoError> {

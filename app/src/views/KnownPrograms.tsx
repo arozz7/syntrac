@@ -143,6 +143,7 @@ function LookalikesTable({
                       runsAs: [],
                       service: false,
                       startsAtBoot: false,
+                      registeredAs: null,
                     }}
                   />
                   {note !== null && <span className="muted">{note}</span>}

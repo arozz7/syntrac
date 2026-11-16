@@ -8,8 +8,8 @@ use syntrac_core::clean_text;
 use windows::core::{PCWSTR, PWSTR};
 use windows::Win32::Foundation::{ERROR_MORE_DATA, ERROR_NO_MORE_ITEMS, ERROR_SUCCESS};
 use windows::Win32::System::Registry::{
-    RegCloseKey, RegEnumKeyExW, RegEnumValueW, RegOpenKeyExW, HKEY, HKEY_LOCAL_MACHINE, HKEY_USERS, KEY_READ,
-    KEY_WOW64_64KEY, REG_EXPAND_SZ, REG_SZ,
+    RegCloseKey, RegEnumKeyExW, RegEnumValueW, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_LOCAL_MACHINE, HKEY_USERS,
+    KEY_READ, KEY_WOW64_64KEY, REG_DWORD, REG_EXPAND_SZ, REG_SZ, REG_VALUE_TYPE,
 };
 
 /// Longest value name the registry allows is 16,383 characters; a key name 255.
@@ -77,10 +77,11 @@ impl RegKey {
     /// cleaned of control characters. Values of other types, and values that are too large, are left out.
     pub fn text_values(&self) -> Vec<(String, String)> {
         let mut values = Vec::new();
+        // The buffers are made once, not per value: a key such as an Uninstall entry has a dozen values and a machine hundreds of keys.
+        let mut name = vec![0u16; MAX_NAME_CHARS];
+        let mut data = vec![0u8; MAX_VALUE_BYTES];
         for index in 0..MAX_ENTRIES {
-            let mut name = vec![0u16; MAX_NAME_CHARS];
             let mut name_length = name.len() as u32;
-            let mut data = vec![0u8; MAX_VALUE_BYTES];
             let mut data_length = data.len() as u32;
             let mut kind = 0u32;
             // SAFETY: both buffers hold the lengths passed and outlive the call.
@@ -115,6 +116,24 @@ impl RegKey {
             ));
         }
         values
+    }
+
+    /// A number value (`REG_DWORD`) by name; `None` when it is not there or is not a number.
+    pub fn dword(&self, name: &str) -> Option<u32> {
+        let wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
+        let (mut kind, mut value, mut length) = (REG_VALUE_TYPE(0), 0u32, 4u32);
+        // SAFETY: `wide` is NUL-terminated; `value` holds the four bytes passed as the length.
+        let status = unsafe {
+            RegQueryValueExW(
+                self.0,
+                PCWSTR(wide.as_ptr()),
+                None,
+                Some(&mut kind),
+                Some((&mut value as *mut u32).cast()),
+                Some(&mut length),
+            )
+        };
+        (status == ERROR_SUCCESS && kind == REG_DWORD && length == 4).then_some(value)
     }
 
     /// One text value by name (`""` is the key's default value), as stored.

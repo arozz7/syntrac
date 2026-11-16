@@ -4,6 +4,7 @@
 
 use std::collections::BTreeMap;
 
+use crate::install_records::InstallSweep;
 use crate::launch_target::launch_target;
 use crate::launchers::{LaunchSource, LauncherKind, LauncherObservation, LauncherRepository, RawEntry};
 use crate::ports::RepoError;
@@ -28,6 +29,8 @@ pub struct SweepReport {
     pub new: u32,
     /// The sources that failed, with why.
     pub failed: Vec<(String, String)>,
+    /// The Uninstall keys read in the same pass (install records), when that source is used.
+    pub installs: Option<InstallSweep>,
 }
 
 /// `%USERPROFILE%` and friends for an entry that belongs to one user.

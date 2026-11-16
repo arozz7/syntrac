@@ -20,6 +20,7 @@ pub struct InMemoryRepository {
     pub(crate) known_issued: i64,
     pub(crate) owners: crate::memory_owner::OwnerState,
     pub(crate) launchers: crate::memory_launchers::LauncherState,
+    pub(crate) installs: crate::memory_installs::InstallState,
 }
 
 impl ProcessRepository for InMemoryRepository {

@@ -12,6 +12,7 @@ use syntrac_collector::drive_space::DriveFreeSpace;
 use syntrac_collector::etw::EtwSource;
 use syntrac_collector::etw_stats::{EtwReport, EtwStats};
 use syntrac_collector::file_inspector::{InspectorSettings, WindowsFileInspector};
+use syntrac_collector::install_registry::UninstallKeySource;
 use syntrac_collector::launch_env;
 use syntrac_collector::launch_registry::RunKeyLaunchSource;
 use syntrac_collector::launch_services::ServiceLaunchSource;
@@ -350,7 +351,8 @@ fn start_launch_worker(options: &HostOptions, stop: &Arc<AtomicBool>) -> Option<
     ];
     let settings = LaunchWorkerSettings { interval: Duration::from_secs(config.launch_interval_minutes * 60) };
     let worker =
-        LaunchWorker::new(store, sources, launch_env::environment, launch_env::file_exists, SystemClock, settings);
+        LaunchWorker::new(store, sources, launch_env::environment, launch_env::file_exists, SystemClock, settings)
+            .with_installs(Box::new(UninstallKeySource));
     let stop = Arc::clone(stop);
     let spawned = std::thread::Builder::new()
         .name("syntrac-launch".into())

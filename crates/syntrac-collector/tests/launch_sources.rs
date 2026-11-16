@@ -239,3 +239,37 @@ fn the_tasks_of_this_machine_are_either_read_or_reported_as_unreadable_never_an_
         Err(error) => assert!(error.0.contains("cannot be read") || error.0.contains("not there"), "{error}"),
     }
 }
+
+// ---- install records
+
+#[test]
+fn the_uninstall_keys_of_this_machine_give_named_products_with_where_they_came_from() {
+    use syntrac_collector::install_registry::UninstallKeySource;
+    use syntrac_core::{to_record, InstallSource};
+
+    let read = UninstallKeySource.read().expect("the machine registry can be read");
+
+    assert!(
+        read.entries.len() > 20,
+        "a Windows machine has well over twenty installed entries: {}",
+        read.entries.len()
+    );
+    assert!(read
+        .entries
+        .iter()
+        .all(|e| e.hive == "machine" || e.hive == "machine32" || e.hive.starts_with("user:S-1-5-21-")));
+    let named: Vec<_> = read.entries.iter().filter_map(to_record).collect();
+    assert!(named.len() > 10, "most entries have a name: {}", named.len());
+    assert!(named.iter().any(|r| r.location.is_some()), "some entries name where they are installed");
+    assert!(named.iter().all(|r| !r.display_name.is_empty()));
+}
+
+#[test]
+fn the_registry_reader_reads_a_number_value_and_nothing_for_a_text_one() {
+    let key = RegKey::open(Root::LocalMachine, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion")
+        .expect("exists on every Windows");
+
+    assert!(key.dword("CurrentMajorVersionNumber").is_some_and(|major| major >= 10));
+    assert_eq!(key.dword("ProductName"), None, "a text value is not a number");
+    assert_eq!(key.dword("NoSuchValue"), None);
+}
