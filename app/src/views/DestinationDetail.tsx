@@ -7,12 +7,23 @@ import { buildBytesChartOption } from '../charts/historyChart';
 import { readPalette } from '../charts/readPalette';
 import { Chart } from '../components/Chart';
 import { DataGate } from '../components/DataGate';
+import { SortHeader } from '../components/SortHeader';
 import { formatBytes, formatDateTime } from '../format';
 import { usePolled } from '../hooks/usePolled';
+import { useSort } from '../hooks/useSort';
+import type { Accessors } from '../sorting';
 import { classLabel, ownerLine } from '../networkLabels';
 import { ProgramLink } from './ProgramLink';
 
 const REFRESH_MS = 60_000;
+
+const SORTABLE: Accessors<DestinationHistoryView['programs'][number]> = {
+  program: (program) => program.name,
+  received: (program) => program.bytesReceived,
+  sent: (program) => program.bytesSent,
+  flows: (program) => program.flows,
+  lastSeen: (program) => program.lastSeenMs,
+};
 
 function DetailBody({
   data,
@@ -21,6 +32,7 @@ function DetailBody({
   data: DestinationHistoryView;
   onOpenProgram: (program: { name: string; path: string }) => void;
 }) {
+  const sort = useSort();
   const granularity = granularityFor((data.toMs - data.fromMs) / 1000);
   const buckets = useMemo(() => bucketDestinationHours(data.hours, granularity), [data.hours, granularity]);
   const palette = useMemo(() => readPalette(), []);
@@ -90,15 +102,15 @@ function DetailBody({
         <table className="table">
           <thead>
             <tr>
-              <th>Program</th>
-              <th className="num">Received</th>
-              <th className="num">Sent</th>
-              <th className="num">Flows</th>
-              <th>Last seen</th>
+              <SortHeader sort={sort} column="program" label="Program" />
+              <SortHeader sort={sort} column="received" label="Received" firstDirection="desc" className="num" />
+              <SortHeader sort={sort} column="sent" label="Sent" firstDirection="desc" className="num" />
+              <SortHeader sort={sort} column="flows" label="Flows" firstDirection="desc" className="num" />
+              <SortHeader sort={sort} column="lastSeen" label="Last seen" firstDirection="desc" />
             </tr>
           </thead>
           <tbody>
-            {data.programs.map((program) => (
+            {sort.apply(data.programs, SORTABLE).map((program) => (
               <tr key={program.path ?? program.name}>
                 <td>
                   {program.path === null ? (

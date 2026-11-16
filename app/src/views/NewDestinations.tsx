@@ -2,8 +2,11 @@ import { useState } from 'react';
 import { useApi } from '../api/ApiContext';
 import type { NewDestinationsView } from '../api/types';
 import { DataGate } from '../components/DataGate';
+import { SortHeader } from '../components/SortHeader';
 import { formatDateTime } from '../format';
 import { usePolled } from '../hooks/usePolled';
+import { useSort, type SortControl } from '../hooks/useSort';
+import type { Accessors } from '../sorting';
 import { classLabel, nameLine, ownerLine } from '../networkLabels';
 import { ProgramLink } from './ProgramLink';
 
@@ -19,12 +22,21 @@ const DEFAULT_WINDOW_SECS = 7 * DAY_SECS;
 
 type OpenProgram = (program: { name: string; path: string }, fromAddr: string) => void;
 
+const SORTABLE: Accessors<NewDestinationsView['destinations'][number]> = {
+  destination: (row) => row.addr,
+  firstSeen: (row) => row.firstSeenMs,
+  firstProgram: (row) => row.firstProgram,
+  lastSeen: (row) => row.lastSeenMs,
+};
+
 function NewTable({
   view,
+  sort,
   onSelect,
   onOpenProgram,
 }: {
   view: NewDestinationsView;
+  sort: SortControl;
   onSelect: (addr: string) => void;
   onOpenProgram: OpenProgram;
 }) {
@@ -35,14 +47,14 @@ function NewTable({
     <table className="table">
       <thead>
         <tr>
-          <th>Destination</th>
-          <th>First seen</th>
-          <th>First talked to by</th>
-          <th>Last seen</th>
+          <SortHeader sort={sort} column="destination" label="Destination" />
+          <SortHeader sort={sort} column="firstSeen" label="First seen" firstDirection="desc" />
+          <SortHeader sort={sort} column="firstProgram" label="First talked to by" />
+          <SortHeader sort={sort} column="lastSeen" label="Last seen" firstDirection="desc" />
         </tr>
       </thead>
       <tbody>
-        {view.destinations.map((row) => {
+        {sort.apply(view.destinations, SORTABLE).map((row) => {
           const kind = classLabel(row.class);
           return (
             <tr key={row.addr}>
@@ -90,6 +102,7 @@ export function NewDestinations({
 }) {
   const api = useApi();
   const [windowSecs, setWindowSecs] = useState(DEFAULT_WINDOW_SECS);
+  const sort = useSort();
   const result = usePolled(
     () => api.newDestinations(windowSecs, undefined, allAddresses),
     REFRESH_MS,
@@ -117,7 +130,7 @@ export function NewDestinations({
       <DataGate result={result}>
         {(data) => (
           <>
-            <NewTable view={data} onSelect={onSelect} onOpenProgram={onOpenProgram} />
+            <NewTable view={data} sort={sort} onSelect={onSelect} onOpenProgram={onOpenProgram} />
             {data.sinceMs !== null && data.sinceMs === data.baselineUntilMs && (
               <p className="muted">
                 Everything first seen before {formatDateTime(data.baselineUntilMs)} counts as the baseline, not as new:

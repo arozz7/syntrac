@@ -4,9 +4,12 @@ import type { DestinationOrder, DestinationRowView, DestinationsView } from '../
 import { DataGate } from '../components/DataGate';
 import { DEFAULT_HISTORY_RANGE_SECS, HISTORY_RANGES } from '../components/historyRanges';
 import { RangePicker } from '../components/RangePicker';
+import { SortHeader } from '../components/SortHeader';
 import { formatBytes, formatDateTime, formatDay } from '../format';
 import { usePolled } from '../hooks/usePolled';
+import { useSort, type SortControl } from '../hooks/useSort';
 import { classLabel, nameLine, ownerLine } from '../networkLabels';
+import type { Accessors } from '../sorting';
 import { NetworkDialog, type NetworkFocus } from './NetworkDialog';
 import { NewDestinations } from './NewDestinations';
 import { OwnerDataBar } from './OwnerDataBar';
@@ -52,12 +55,24 @@ function ProgramsCell({
   );
 }
 
+const SORTABLE: Accessors<DestinationRowView> = {
+  destination: (row) => row.addr,
+  received: (row) => row.bytesReceived,
+  sent: (row) => row.bytesSent,
+  flows: (row) => row.flows,
+  programs: (row) => row.programs,
+  firstSeen: (row) => row.firstSeenMs,
+  lastSeen: (row) => row.lastSeenMs,
+};
+
 function DestinationsTable({
   view,
+  sort,
   onSelect,
   onOpenProgram,
 }: {
   view: DestinationsView;
+  sort: SortControl;
   onSelect: (addr: string) => void;
   onOpenProgram: OpenProgram;
 }) {
@@ -65,17 +80,17 @@ function DestinationsTable({
     <table className="table">
       <thead>
         <tr>
-          <th>Destination</th>
-          <th className="num">Received</th>
-          <th className="num">Sent</th>
-          <th className="num">Flows</th>
-          <th>Programs</th>
-          <th>First seen</th>
-          <th>Last seen</th>
+          <SortHeader sort={sort} column="destination" label="Destination" />
+          <SortHeader sort={sort} column="received" label="Received" firstDirection="desc" className="num" />
+          <SortHeader sort={sort} column="sent" label="Sent" firstDirection="desc" className="num" />
+          <SortHeader sort={sort} column="flows" label="Flows" firstDirection="desc" className="num" />
+          <SortHeader sort={sort} column="programs" label="Programs" firstDirection="desc" />
+          <SortHeader sort={sort} column="firstSeen" label="First seen" firstDirection="desc" />
+          <SortHeader sort={sort} column="lastSeen" label="Last seen" firstDirection="desc" />
         </tr>
       </thead>
       <tbody>
-        {view.destinations.map((row) => {
+        {sort.apply(view.destinations, SORTABLE).map((row) => {
           const kind = classLabel(row.class);
           return (
             <tr key={row.addr}>
@@ -108,6 +123,7 @@ export function NetworkHistory() {
   const [order, setOrder] = useState<DestinationOrder>('bytes');
   const [allAddresses, setAllAddresses] = useState(false);
   const [focus, setFocus] = useState<NetworkFocus | null>(null);
+  const sort = useSort();
   // Moves when new owner data has been downloaded, so the tables are read again and show the owners.
   const [ownerVersion, setOwnerVersion] = useState(0);
   const [nowMs] = useState(() => Date.now());
@@ -164,7 +180,7 @@ export function NetworkHistory() {
               {data.destinations.length === 0 ? (
                 <p className="muted">No destinations to show for this period.</p>
               ) : (
-                <DestinationsTable view={data} onSelect={openDestination} onOpenProgram={openProgram} />
+                <DestinationsTable view={data} sort={sort} onSelect={openDestination} onOpenProgram={openProgram} />
               )}
             </>
           )}
@@ -189,7 +205,8 @@ export function NetworkHistory() {
         organisation that runs the range of addresses it sits in, and the country that network is registered in: often a
         cloud or hosting company, not necessarily the service you reached, and not where this machine is. Traffic to
         this machine itself is left out, and addresses on this network, link-local and multicast addresses are left out
-        unless included.
+        unless included. Clicking a column heading sorts the destinations listed here (the biggest ones for the chosen
+        order); a third click returns to that order.
       </p>
     </>
   );

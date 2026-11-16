@@ -4,9 +4,12 @@ import type { KnownProductView, KnownProgramsView, LookalikeView } from '../api/
 import { DataGate } from '../components/DataGate';
 import { SignatureBadge } from '../components/IdentityBadge';
 import { DEFAULT_HISTORY_RANGE_SECS } from '../components/historyRanges';
+import { SortHeader } from '../components/SortHeader';
 import { formatDateTime } from '../format';
 import { locationNote } from '../identityLabels';
 import { usePolled } from '../hooks/usePolled';
+import { useSort } from '../hooks/useSort';
+import type { Accessors } from '../sorting';
 import { ProgramDetail } from './ProgramDetail';
 
 const REFRESH_MS = 60_000;
@@ -60,22 +63,30 @@ function RemoveButton({ product, onChanged }: { product: KnownProductView; onCha
   );
 }
 
+const PRODUCT_SORTABLE: Accessors<KnownProductView> = {
+  label: (product) => product.label,
+  publisher: (product) => product.publisher ?? '',
+  folder: (product) => product.folder,
+  added: (product) => product.createdMs,
+};
+
 function ProductsTable({ products, onChanged }: { products: KnownProductView[]; onChanged: () => void }) {
+  const sort = useSort();
   return (
     <table className="table">
       <thead>
         <tr>
-          <th>Label</th>
-          <th>Signed by / company</th>
-          <th>Folder</th>
+          <SortHeader sort={sort} column="label" label="Label" />
+          <SortHeader sort={sort} column="publisher" label="Signed by / company" />
+          <SortHeader sort={sort} column="folder" label="Folder" />
           <th>Programs here</th>
           <th>Note</th>
-          <th>Added</th>
+          <SortHeader sort={sort} column="added" label="Added" firstDirection="desc" />
           <th />
         </tr>
       </thead>
       <tbody>
-        {products.map((product) => (
+        {sort.apply(products, PRODUCT_SORTABLE).map((product) => (
           <tr key={product.id}>
             <td>{product.label}</td>
             <td>{product.publisher ?? 'none (unsigned, no company)'}</td>
@@ -93,6 +104,11 @@ function ProductsTable({ products, onChanged }: { products: KnownProductView[]; 
   );
 }
 
+const LOOKALIKE_SORTABLE: Accessors<LookalikeView> = {
+  program: (program) => program.name,
+  looksLike: (program) => program.standing.label,
+};
+
 function LookalikesTable({
   lookalikes,
   onSelect,
@@ -100,18 +116,19 @@ function LookalikesTable({
   lookalikes: LookalikeView[];
   onSelect: (choice: { name: string; path: string }) => void;
 }) {
+  const sort = useSort();
   return (
     <table className="table">
       <thead>
         <tr>
-          <th>Program</th>
-          <th>Looks like</th>
+          <SortHeader sort={sort} column="program" label="Program" />
+          <SortHeader sort={sort} column="looksLike" label="Looks like" />
           <th>Why</th>
           <th>Signature</th>
         </tr>
       </thead>
       <tbody>
-        {lookalikes.map((program) => {
+        {sort.apply(lookalikes, LOOKALIKE_SORTABLE).map((program) => {
           const note = locationNote(program.location);
           return (
             <tr key={program.path}>

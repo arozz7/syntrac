@@ -2,9 +2,12 @@ import { useState } from 'react';
 import { useApi } from '../api/ApiContext';
 import type { ProcessRowView } from '../api/types';
 import { DataGate } from '../components/DataGate';
+import { SortHeader } from '../components/SortHeader';
 import { formatDateTime } from '../format';
 import { useDebounced } from '../hooks/useDebounced';
 import { usePolled } from '../hooks/usePolled';
+import { useSort, type SortControl } from '../hooks/useSort';
+import type { Accessors } from '../sorting';
 
 const REFRESH_MS = 5000;
 const SEARCH_PAUSE_MS = 300;
@@ -17,7 +20,16 @@ function status(row: ProcessRowView): string {
   return row.endedApproximate ? 'Exited (approx.)' : 'Exited';
 }
 
-function ProcessTable({ rows }: { rows: ProcessRowView[] }) {
+const SORTABLE: Accessors<ProcessRowView> = {
+  name: (row) => row.name,
+  pid: (row) => row.pid,
+  status: (row) => status(row),
+  started: (row) => row.startedMs,
+  ended: (row) => row.endedMs,
+  path: (row) => row.imagePath,
+};
+
+function ProcessTable({ rows, sort }: { rows: ProcessRowView[]; sort: SortControl }) {
   return (
     <>
       <p className="muted">
@@ -26,16 +38,16 @@ function ProcessTable({ rows }: { rows: ProcessRowView[] }) {
       <table className="table">
         <thead>
           <tr>
-            <th>Name</th>
-            <th className="num">PID</th>
-            <th>Status</th>
-            <th>Started</th>
-            <th>Ended</th>
-            <th>Path</th>
+            <SortHeader sort={sort} column="name" label="Name" />
+            <SortHeader sort={sort} column="pid" label="PID" className="num" />
+            <SortHeader sort={sort} column="status" label="Status" />
+            <SortHeader sort={sort} column="started" label="Started" firstDirection="desc" />
+            <SortHeader sort={sort} column="ended" label="Ended" firstDirection="desc" />
+            <SortHeader sort={sort} column="path" label="Path" />
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
+          {sort.apply(rows, SORTABLE).map((row) => (
             <tr key={row.id}>
               <td>{row.name}</td>
               <td className="num">{row.pid}</td>
@@ -57,6 +69,7 @@ export function Processes() {
   const api = useApi();
   const [runningOnly, setRunningOnly] = useState(false);
   const [search, setSearch] = useState('');
+  const sort = useSort();
   const pausedSearch = useDebounced(search.trim(), SEARCH_PAUSE_MS);
   const result = usePolled(
     () => api.processes({ runningOnly, search: pausedSearch || undefined, limit: ROW_LIMIT }),
@@ -80,7 +93,7 @@ export function Processes() {
           Running only
         </label>
       </div>
-      <DataGate result={result}>{(rows) => <ProcessTable rows={rows} />}</DataGate>
+      <DataGate result={result}>{(rows) => <ProcessTable rows={rows} sort={sort} />}</DataGate>
     </>
   );
 }

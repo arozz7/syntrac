@@ -5,8 +5,11 @@ import { DataGate } from '../components/DataGate';
 import { IdentityCell } from '../components/IdentityBadge';
 import { DEFAULT_HISTORY_RANGE_SECS, HISTORY_RANGES } from '../components/historyRanges';
 import { RangePicker } from '../components/RangePicker';
+import { SortHeader } from '../components/SortHeader';
 import { formatBytes, formatDateTime, formatDay, formatPercent } from '../format';
 import { usePolled } from '../hooks/usePolled';
+import { useSort, type SortControl } from '../hooks/useSort';
+import type { Accessors } from '../sorting';
 import { ProgramDetail } from './ProgramDetail';
 
 const REFRESH_MS = 60_000;
@@ -56,8 +59,29 @@ function ProgramName({
   );
 }
 
-function ProgramsTable({ view, onSelect }: { view: ProgramsView; onSelect: (choice: Choice) => void }) {
+const SORTABLE: Accessors<ProgramRowView> = {
+  name: (program) => program.name,
+  cpuAvg: (program) => program.cpuAvgPercent,
+  cpuPeak: (program) => program.cpuPeakPercent,
+  memory: (program) => program.memoryPeakBytes,
+  starts: (program) => program.starts,
+  received: (program) => program.bytesReceived,
+  sent: (program) => program.bytesSent,
+  recorded: (program) => program.hoursPresent,
+  lastSeen: (program) => program.lastSeenMs,
+};
+
+function ProgramsTable({
+  view,
+  sort,
+  onSelect,
+}: {
+  view: ProgramsView;
+  sort: SortControl;
+  onSelect: (choice: Choice) => void;
+}) {
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  const programs = sort.apply(view.programs, SORTABLE);
   const toggle = (name: string) =>
     setOpen((current) => {
       const next = new Set(current);
@@ -71,20 +95,20 @@ function ProgramsTable({ view, onSelect }: { view: ProgramsView; onSelect: (choi
     <table className="table">
       <thead>
         <tr>
-          <th>Program</th>
+          <SortHeader sort={sort} column="name" label="Program" />
           <th>Identity</th>
-          <th className="num">CPU average</th>
-          <th className="num">CPU peak</th>
-          <th className="num">Memory peak</th>
-          <th className="num">Starts</th>
-          <th className="num">Received</th>
-          <th className="num">Sent</th>
-          <th className="num">Recorded in</th>
-          <th>Last seen</th>
+          <SortHeader sort={sort} column="cpuAvg" label="CPU average" firstDirection="desc" className="num" />
+          <SortHeader sort={sort} column="cpuPeak" label="CPU peak" firstDirection="desc" className="num" />
+          <SortHeader sort={sort} column="memory" label="Memory peak" firstDirection="desc" className="num" />
+          <SortHeader sort={sort} column="starts" label="Starts" firstDirection="desc" className="num" />
+          <SortHeader sort={sort} column="received" label="Received" firstDirection="desc" className="num" />
+          <SortHeader sort={sort} column="sent" label="Sent" firstDirection="desc" className="num" />
+          <SortHeader sort={sort} column="recorded" label="Recorded in" firstDirection="desc" className="num" />
+          <SortHeader sort={sort} column="lastSeen" label="Last seen" firstDirection="desc" />
         </tr>
       </thead>
       <tbody>
-        {view.programs.flatMap((program) => {
+        {programs.flatMap((program) => {
           const key = program.path ?? program.name;
           const expanded = open.has(key);
           const row = (
@@ -140,6 +164,7 @@ export function ProgramsHistory() {
   const [metric, setMetric] = useState<ProgramMetric>('cpu');
   const [grouped, setGrouped] = useState(false);
   const [selected, setSelected] = useState<Choice | null>(null);
+  const sort = useSort();
   // Bumped when the user changes the list of known programs, so the ranking and the open detail are read again at once.
   const [version, setVersion] = useState(0);
   const result = usePolled(
@@ -186,7 +211,7 @@ export function ProgramsHistory() {
               <p className="muted">No programs to rank for this metric in this period.</p>
             ) : (
               <section className="card card--wide">
-                <ProgramsTable view={data} onSelect={setSelected} />
+                <ProgramsTable view={data} sort={sort} onSelect={setSelected} />
               </section>
             )}
           </>
@@ -208,7 +233,8 @@ export function ProgramsHistory() {
         unknown-program row holds processes whose program could not be identified. The identity column is evidence read
         from each program&apos;s file, not a verdict: a signature shows who signed a file, not that it is safe. When
         grouped, CPU averages, starts and traffic of a product are added up; its peaks are the highest of any one
-        program.
+        program. Clicking a column heading sorts the programs listed here (the list is the busiest ones for the chosen
+        ranking); a third click returns to that ranking.
       </p>
     </>
   );

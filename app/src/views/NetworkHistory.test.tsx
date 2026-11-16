@@ -42,6 +42,31 @@ describe('NetworkHistory: top destinations', () => {
     expect(within(row).getByText('40')).toBeTruthy(); // flows
   });
 
+  it('sorts the listed destinations by a column heading, biggest first, and goes back on the third click', async () => {
+    show();
+    await screen.findByRole('button', { name: '142.251.40.238' });
+    const table = screen.getAllByRole('table')[0]!;
+    const addresses = () =>
+      within(table)
+        .getAllByRole('row')
+        .slice(1)
+        .map((row) => within(row).getAllByRole('button')[0]?.textContent);
+    const given = addresses();
+    const expected = destinationsView()
+      .destinations.map((row, index) => ({ addr: row.addr, sent: row.bytesSent, index }))
+      .sort((a, b) => b.sent - a.sent || a.index - b.index)
+      .map((row) => row.addr);
+
+    const heading = within(table).getByRole('button', { name: 'Sent' });
+    await userEvent.click(heading);
+    expect(addresses()).toEqual(expected);
+    expect(within(table).getByRole('columnheader', { name: 'Sent' }).getAttribute('aria-sort')).toBe('descending');
+
+    await userEvent.click(heading);
+    await userEvent.click(heading);
+    expect(addresses()).toEqual(given);
+  });
+
   it('says plainly when no name was recorded for an address', async () => {
     show();
     const row = (await screen.findByRole('button', { name: '203.0.113.50' })).closest('tr')!;
@@ -60,7 +85,10 @@ describe('NetworkHistory: top destinations', () => {
     const api = show();
     await screen.findByRole('button', { name: '142.251.40.238' });
 
-    await userEvent.click(screen.getByRole('button', { name: 'Programs' }));
+    // "Programs" is also a sortable column heading, so the ranking button is found inside its own group.
+    await userEvent.click(
+      within(screen.getByRole('group', { name: 'Order by' })).getByRole('button', { name: 'Programs' }),
+    );
     await waitFor(() => expect(api.topDestinations).toHaveBeenLastCalledWith(WEEK, 'programs', undefined, false));
 
     await userEvent.click(screen.getByRole('button', { name: '30 days' }));

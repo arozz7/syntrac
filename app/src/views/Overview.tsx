@@ -3,8 +3,11 @@ import { useApi } from '../api/ApiContext';
 import type { DestinationView, OverviewView } from '../api/types';
 import { RangePicker } from '../components/RangePicker';
 import { DataGate } from '../components/DataGate';
+import { SortHeader } from '../components/SortHeader';
 import { formatBytes, formatPercent } from '../format';
 import { usePolled } from '../hooks/usePolled';
+import { useSort, type SortControl } from '../hooks/useSort';
+import type { Accessors } from '../sorting';
 import { CpuContributors } from './CpuContributors';
 import { SystemChart } from './SystemChart';
 
@@ -19,7 +22,14 @@ function sum(values: number[]): number {
   return values.reduce((total, value) => total + value, 0);
 }
 
-function Destinations({ destinations }: { destinations: DestinationView[] }) {
+const SORTABLE: Accessors<DestinationView> = {
+  destination: (d) => endpoint(d),
+  received: (d) => d.bytesReceived,
+  sent: (d) => d.bytesSent,
+  flows: (d) => d.flowCount,
+};
+
+function Destinations({ destinations, sort }: { destinations: DestinationView[]; sort: SortControl }) {
   if (destinations.length === 0) {
     return <p className="muted">No network activity in this period.</p>;
   }
@@ -27,14 +37,14 @@ function Destinations({ destinations }: { destinations: DestinationView[] }) {
     <table className="table">
       <thead>
         <tr>
-          <th>Destination</th>
-          <th className="num">Received</th>
-          <th className="num">Sent</th>
-          <th className="num">Flows</th>
+          <SortHeader sort={sort} column="destination" label="Destination" />
+          <SortHeader sort={sort} column="received" label="Received" firstDirection="desc" className="num" />
+          <SortHeader sort={sort} column="sent" label="Sent" firstDirection="desc" className="num" />
+          <SortHeader sort={sort} column="flows" label="Flows" firstDirection="desc" className="num" />
         </tr>
       </thead>
       <tbody>
-        {destinations.map((d) => (
+        {sort.apply(destinations, SORTABLE).map((d) => (
           <tr key={endpoint(d)}>
             <td>{endpoint(d)}</td>
             <td className="num">{formatBytes(d.bytesReceived)}</td>
@@ -47,7 +57,7 @@ function Destinations({ destinations }: { destinations: DestinationView[] }) {
   );
 }
 
-function OverviewBody({ data }: { data: OverviewView }) {
+function OverviewBody({ data, sort }: { data: OverviewView; sort: SortControl }) {
   const latest = data.system.at(-1);
   return (
     <div className="grid">
@@ -88,7 +98,7 @@ function OverviewBody({ data }: { data: OverviewView }) {
       <section className="card">
         <h2>Network destinations</h2>
         <p className="muted">Excludes traffic to this machine itself.</p>
-        <Destinations destinations={data.destinations} />
+        <Destinations destinations={data.destinations} sort={sort} />
       </section>
     </div>
   );
@@ -97,6 +107,7 @@ function OverviewBody({ data }: { data: OverviewView }) {
 export function Overview() {
   const api = useApi();
   const [rangeSecs, setRangeSecs] = useState(DEFAULT_RANGE_SECS);
+  const sort = useSort();
   const result = usePolled(() => api.overview(rangeSecs), REFRESH_MS, `overview:${rangeSecs}`);
 
   return (
@@ -104,7 +115,7 @@ export function Overview() {
       <div className="toolbar">
         <RangePicker value={rangeSecs} onChange={setRangeSecs} />
       </div>
-      <DataGate result={result}>{(data) => <OverviewBody data={data} />}</DataGate>
+      <DataGate result={result}>{(data) => <OverviewBody data={data} sort={sort} />}</DataGate>
     </>
   );
 }
