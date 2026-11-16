@@ -14,6 +14,7 @@ use crate::history::SystemHistoryView;
 use crate::history_network::{DestinationHistoryView, DestinationOrderParam, DestinationsView, NewDestinationsView};
 use crate::history_programs::{Grouping, ProgramHistoryView, ProgramMetricParam, ProgramsView};
 use crate::known_view::KnownProgramsView;
+use crate::owner_data_view::OwnerDataStateView;
 use crate::views::{ConnectionRowView, OverviewView, ProcessListParams, ProcessRowView};
 
 pub type SharedBackend = Arc<Backend<SystemClock>>;
@@ -154,6 +155,39 @@ pub async fn unmark_known_program(backend: State<'_, SharedBackend>, id: i64) ->
     let backend = Arc::clone(&backend);
     let result = blocking(move || backend.unmark_known(id).map(|()| None)).await;
     Ok(WriteOutcome::from_result(result.unwrap_or_else(|| Err("The request could not be run.".to_owned()))))
+}
+
+/// The result of asking the service about owner data: its state, or why it could not say.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OwnerDataOutcome {
+    pub ok: bool,
+    pub state: Option<OwnerDataStateView>,
+    pub message: Option<String>,
+}
+
+impl OwnerDataOutcome {
+    fn from_result(result: Result<OwnerDataStateView, String>) -> Self {
+        match result {
+            Ok(state) => Self { ok: true, state: Some(state), message: None },
+            Err(message) => Self { ok: false, state: None, message: Some(message) },
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn get_owner_data_status(backend: State<'_, SharedBackend>) -> Result<OwnerDataOutcome, ()> {
+    let backend = Arc::clone(&backend);
+    let result = blocking(move || backend.owner_data_status()).await;
+    Ok(OwnerDataOutcome::from_result(result.unwrap_or_else(|| Err("The request could not be run.".to_owned()))))
+}
+
+/// Starts the download of the owner data. The window asks the user to confirm first; the service does the download.
+#[tauri::command]
+pub async fn refresh_owner_data(backend: State<'_, SharedBackend>) -> Result<OwnerDataOutcome, ()> {
+    let backend = Arc::clone(&backend);
+    let result = blocking(move || backend.refresh_owner_data()).await;
+    Ok(OwnerDataOutcome::from_result(result.unwrap_or_else(|| Err("The request could not be run.".to_owned()))))
 }
 
 #[tauri::command]

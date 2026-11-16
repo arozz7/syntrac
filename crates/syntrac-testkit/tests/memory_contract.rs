@@ -78,3 +78,8 @@ fn in_memory_repository_satisfies_the_destination_contract() {
 fn in_memory_repository_satisfies_the_context_contract() {
     syntrac_testkit::context_contract::context_contract(InMemoryRepository::default);
 }
+
+#[test]
+fn in_memory_repository_satisfies_the_owner_contract() {
+    syntrac_testkit::owner_contract::owner_contract(InMemoryRepository::default);
+}

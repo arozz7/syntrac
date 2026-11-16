@@ -57,3 +57,8 @@ identity_max_hash_mb = 512     # a larger file is not hashed (its size is still 
 context_enabled = true
 context_interval_secs = 30      # seconds between two looks; a program that runs for less than this can be missed
 context_refresh_minutes = 10    # a program that keeps running has its "last seen" moved this often, not every look
+
+# Owner data (docs/OWNER-PLAN.md): which network owns an address. This is the ONLY thing SYNTRAC ever downloads, and only when you
+# press "Download owner data" in the app (one public-domain file from iptoasn.com). Set this to false to make the service refuse
+# to download anything, even when asked.
+owner_data_allowed = true

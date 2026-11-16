@@ -1,6 +1,7 @@
 //! SYNTRAC core: domain types, interfaces and pure logic. No I/O, no vendor imports.
 
 pub mod addr_class;
+pub mod clean_text;
 pub mod context_run;
 pub mod correlator;
 pub mod destination_trend;
@@ -14,6 +15,8 @@ pub mod identity;
 pub mod identity_run;
 pub mod known;
 pub mod metrics;
+pub mod owner_dataset;
+pub mod owner_refresh;
 pub mod pipeline;
 pub mod ports;
 pub mod program_group;
@@ -27,6 +30,7 @@ pub mod time;
 pub mod trend;
 
 pub use addr_class::{classify_addr, AddrClass};
+pub use clean_text::clean_text;
 pub use context_run::{observe_context, ContextFailure, ContextPass, ContextSettings};
 pub use correlator::correlate;
 pub use destination_trend::{
@@ -54,6 +58,11 @@ pub use known::{
 pub use metrics::{
     CpuBreakdown, CpuContribution, MetricsSample, OtherProcesses, ProcessMetric, PurgeCounts, SystemMetrics,
     SystemPoint,
+};
+pub use owner_dataset::{addr_key, lookup_in, parse_ip2asn, Owner, OwnerRange, ParsedDataset};
+pub use owner_refresh::{
+    refresh_owner_data, DatasetFetcher, DatasetInfo, FetchError, FetchedFile, OwnerRefreshError, OwnerRepository,
+    RefreshLimits, RefreshOutcome,
 };
 pub use pipeline::{ingest_metrics, IngestError, Pipeline};
 pub use ports::{

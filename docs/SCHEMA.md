@@ -126,6 +126,18 @@ context worker, and a program the rollups have not met yet gets its `executables
 seen). Permanent: the purge of detail never touches either table. The account name contains the Windows user name and stays in
 this local database. Plan: `docs/RUNAS-PLAN.md`.
 
+## Owner data (v10)
+
+`asn_ranges` and `owner_dataset` (migration v10, additive): the downloaded IP-to-owner dataset. `asn_ranges`: one row per range,
+`range_start` (primary key) and `range_end` as 16 big-endian bytes (an IPv4 address is stored IPv4-mapped, so one ordering serves
+both families and a lookup is one seek: the range with the greatest start not above the address, then a check against its end),
+`asn`, `country` (the country the network is registered in, `ZZ` when unknown) and `org` (cleaned, at most 120 characters).
+Ranges the file marks as not routed (AS 0) are not kept; overlapping or malformed ranges are dropped and counted. `owner_dataset`
+is one row (id 1): `source` (host it came from), `downloaded_at`, `rows` kept, `bad_lines` dropped, `sha256` of the file as
+downloaded. The whole dataset is replaced at once: the new ranges are written into `asn_ranges_staging` in short transactions and
+swapped in with one transaction, so a reader sees the old dataset or the new one. Nothing is stored per address: an owner is
+looked up when a page is shown. Written only by the service when the user asks for a download. Plan: `docs/OWNER-PLAN.md`.
+
 ## Retention
 
 `Retention::purge_before(cutoff)` removes events, flows, metrics older than the cutoff, and ended processes that ended

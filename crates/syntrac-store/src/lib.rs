@@ -11,6 +11,8 @@ mod inspect;
 mod known_products;
 mod metrics;
 #[cfg(test)]
+mod migration_v10_tests;
+#[cfg(test)]
 mod migration_v4_tests;
 #[cfg(test)]
 mod migration_v5_tests;
@@ -24,6 +26,7 @@ mod migration_v8_tests;
 mod migration_v9_tests;
 mod migrations;
 mod names;
+mod owners;
 mod processes;
 mod rollups;
 mod storage;

@@ -11,15 +11,17 @@ mod memory_context;
 mod memory_destinations;
 mod memory_identity;
 mod memory_known;
+mod memory_owner;
 mod memory_rollup;
 pub mod mocks;
 pub mod names_contract;
+pub mod owner_contract;
 pub mod rollup_contract;
 pub mod storage_contract;
 pub mod trend_contract;
 
 pub use memory::InMemoryRepository;
 pub use mocks::{
-    FailingTelemetrySource, FakeContextSource, FakeInspector, ManualClock, MockMetricsSource, MockTelemetrySource,
-    RestartCounter, RestartableTelemetrySource, ScriptedTelemetrySource,
+    FailingTelemetrySource, FakeContextSource, FakeDatasetFetcher, FakeInspector, ManualClock, MockMetricsSource,
+    MockTelemetrySource, RestartCounter, RestartableTelemetrySource, ScriptedTelemetrySource,
 };

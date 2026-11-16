@@ -26,6 +26,7 @@ use crate::history_programs::{
     RangeTotals, DEFAULT_PROGRAM_ROWS,
 };
 use crate::known_view::{known_programs, KnownProgramsView};
+use crate::owner_data_view::OwnerDataStateView;
 use crate::settings::AppSettings;
 use crate::views::{
     connection_list, overview, process_list, ConnectionRowView, OverviewView, ProcessListParams, ProcessRowView,
@@ -270,14 +271,35 @@ impl<C: Clock + Send + Sync> Backend<C> {
         }
     }
 
+    /// What the service has for owner data (docs/OWNER-PLAN.md) and whether a download is under way. Makes no network request.
+    pub fn owner_data_status(&self) -> Result<OwnerDataStateView, String> {
+        self.owner_data_request(&Request::OwnerDataStatus)
+    }
+
+    /// Asks the service to download the owner data. The app never downloads anything itself; the service answers at once and
+    /// works in the background (ask for the status to see it finish).
+    pub fn refresh_owner_data(&self) -> Result<OwnerDataStateView, String> {
+        self.owner_data_request(&Request::OwnerDataRefresh)
+    }
+
+    fn owner_data_request(&self, wanted: &Request) -> Result<OwnerDataStateView, String> {
+        let not_running = "The SYNTRAC collector is not running, so owner data cannot be checked or downloaded.";
+        match self.send(wanted, not_running)? {
+            Response::OwnerData(report) => Ok(report.into()),
+            other => Err(unexpected(&other)),
+        }
+    }
+
     /// Sends a write request to the service. The app never writes the database itself.
     fn write(&self, wanted: &Request) -> Result<Response, String> {
+        self.send(wanted, "The SYNTRAC collector is not running, so the change could not be saved.")
+    }
+
+    fn send(&self, wanted: &Request, not_running: &str) -> Result<Response, String> {
         match request(&self.pipe_name, wanted, WRITE_TIMEOUT) {
             Ok(Response::Error { message }) => Err(message),
             Ok(response) => Ok(response),
-            Err(syntrac_ipc::pipe::ClientError::NotRunning) => {
-                Err("The SYNTRAC collector is not running, so the change could not be saved.".to_owned())
-            }
+            Err(syntrac_ipc::pipe::ClientError::NotRunning) => Err(not_running.to_owned()),
             Err(syntrac_ipc::pipe::ClientError::AccessDenied) => {
                 Err("This user is not allowed to change the collector's settings.".to_owned())
             }

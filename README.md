@@ -6,7 +6,10 @@
 2. **What is normal?** Learned baselines and per-application profiles.
 3. **What is unusual?** Explainable detections. An anomaly is not a threat.
 
-Local-first. Nothing leaves your machine. AI features (Phase 4) use your own local llama-server.
+Local-first. Nothing leaves your machine, with one exception that only happens when you press its button: **Download owner data**
+fetches one public-domain file (which network owns each range of internet addresses) from iptoasn.com, and sends no address of
+yours (the lookups happen locally). It can be switched off for good with `owner_data_allowed = false` in
+`config/service.toml`. AI features (Phase 4) use your own local llama-server.
 
 ## Status
 

@@ -116,7 +116,10 @@ impl<C: Clock + Send + Sync> Handler for StatusBoard<C> {
             Request::Ping => Response::Pong { version: self.info.version.clone() },
             Request::Status => Response::Status(self.report()),
             // The status board only reports; the write commands are answered by the service's own handler, which wraps it.
-            Request::KnownProductAdd { .. } | Request::KnownProductRemove { .. } => {
+            Request::KnownProductAdd { .. }
+            | Request::KnownProductRemove { .. }
+            | Request::OwnerDataStatus
+            | Request::OwnerDataRefresh => {
                 Response::Error { message: "this endpoint only answers status requests".into() }
             }
         }

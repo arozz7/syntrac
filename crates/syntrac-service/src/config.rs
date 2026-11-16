@@ -60,6 +60,9 @@ pub struct ServiceConfig {
     pub context_interval_secs: u64,
     /// Context worker: a program that keeps running has its "last seen" moved this often (minutes), not every look.
     pub context_refresh_minutes: u64,
+    /// Whether the service may ever download the owner dataset (docs/OWNER-PLAN.md). The download itself still happens only when
+    /// the user asks for it in the app; `false` makes the service refuse even then. The only network use SYNTRAC has.
+    pub owner_data_allowed: bool,
     /// How often a status line (events stored, drops, own CPU) is logged.
     pub status_interval_secs: u64,
     /// If ETW delivers nothing for this long, the trace session is restarted.
@@ -93,6 +96,7 @@ impl Default for ServiceConfig {
             context_enabled: true,
             context_interval_secs: 30,
             context_refresh_minutes: 10,
+            owner_data_allowed: true,
             status_interval_secs: 30,
             etw_silent_restart_secs: 180,
             etw_max_restarts: 3,

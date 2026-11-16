@@ -18,6 +18,7 @@ pub struct InMemoryRepository {
     pub(crate) known: Vec<syntrac_core::KnownProduct>,
     /// How many ids have been handed out: an id that was removed is never issued again.
     pub(crate) known_issued: i64,
+    pub(crate) owners: crate::memory_owner::OwnerState,
 }
 
 impl ProcessRepository for InMemoryRepository {

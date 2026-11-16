@@ -14,7 +14,7 @@ use syntrac_core::storage_guard::StorageStats;
 use syntrac_core::{
     classify_addr, new_destination_cutoff, rank_destination_programs, rank_destinations, select_new,
     top_destination_programs, AddrClass, AddressScope, DestinationOrder, DestinationProgram, DestinationTotals,
-    DestinationTrendRepository, Executable, RepoError, RollupRepository, Timestamp,
+    DestinationTrendRepository, Executable, OwnerRepository, RepoError, RollupRepository, Timestamp,
 };
 
 use crate::history::{clamp_history_secs, ms, range_start};
@@ -61,6 +61,41 @@ fn names_summary<R: RollupRepository>(repo: &R, addr: IpAddr) -> Result<(Option<
     Ok((names.into_iter().next().map(|n| n.name), other))
 }
 
+/// The owner of the network range an address sits in, as the screen shows it. Only addresses on the internet are looked up: an
+/// address on this network, link-local or multicast belongs to no one in a public dataset.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OwnerView {
+    pub asn: u32,
+    pub org: String,
+    /// The country the network is registered in (not where the machine is).
+    pub country: String,
+}
+
+/// The stored owner dataset, for the line "downloaded <date> from <source>".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OwnerDataView {
+    pub source: String,
+    pub downloaded_ms: i64,
+    pub rows: u32,
+}
+
+fn owner_of<R: OwnerRepository>(repo: &R, addr: IpAddr) -> Result<Option<OwnerView>, RepoError> {
+    if !classify_addr(addr).is_internet() {
+        return Ok(None);
+    }
+    Ok(repo.lookup_owner(addr)?.map(|owner| OwnerView { asn: owner.asn, org: owner.org, country: owner.country }))
+}
+
+fn owner_data<R: OwnerRepository>(repo: &R) -> Result<Option<OwnerDataView>, RepoError> {
+    Ok(repo.dataset_info()?.map(|info| OwnerDataView {
+        source: info.source,
+        downloaded_ms: ms(info.downloaded_at),
+        rows: info.rows,
+    }))
+}
+
 fn program_name(exe: &Option<Executable>) -> (String, Option<String>) {
     match exe {
         Some(exe) => (display_name(&exe.path, 0), Some(exe.path.clone())),
@@ -78,6 +113,8 @@ pub struct DestinationRowView {
     pub name: Option<String>,
     pub other_names: u32,
     pub class: &'static str,
+    /// Who owns the network range it is in; none without a downloaded dataset or outside every range.
+    pub owner: Option<OwnerView>,
     pub bytes_sent: u64,
     pub bytes_received: u64,
     pub flows: u64,
@@ -111,6 +148,8 @@ pub struct DestinationsView {
     pub history_starts_ms: Option<i64>,
     /// Hours of the range that have data at all.
     pub hours_in_range: u32,
+    /// The owner dataset, when one has been downloaded.
+    pub owner_data: Option<OwnerDataView>,
     pub destinations: Vec<DestinationRowView>,
 }
 
@@ -147,7 +186,7 @@ pub fn rank_destination_range<R>(
     limit: usize,
 ) -> Result<DestinationsView, RepoError>
 where
-    R: RollupRepository + DestinationTrendRepository + StorageStats,
+    R: RollupRepository + DestinationTrendRepository + OwnerRepository + StorageStats,
 {
     let limit = limit.clamp(1, MAX_DESTINATION_ROWS);
     let ranked = rank_destinations(range.totals.clone(), order, scope, limit);
@@ -175,6 +214,7 @@ where
             name,
             other_names,
             class: class_name(classify_addr(row.addr)),
+            owner: owner_of(repo, row.addr)?,
             bytes_sent: row.bytes_sent,
             bytes_received: row.bytes_received,
             flows: row.flows,
@@ -190,6 +230,7 @@ where
         to_ms: ms(range.to),
         history_starts_ms: StorageStats::usage(repo)?.oldest_rollup.map(ms),
         hours_in_range: range.hours_in_range,
+        owner_data: owner_data(repo)?,
         destinations,
     })
 }
@@ -203,7 +244,7 @@ pub fn destination_ranking<R>(
     limit: usize,
 ) -> Result<DestinationsView, RepoError>
 where
-    R: RollupRepository + DestinationTrendRepository + StorageStats,
+    R: RollupRepository + DestinationTrendRepository + OwnerRepository + StorageStats,
 {
     rank_destination_range(repo, &destination_range(repo, now, range_secs)?, order, scope, limit)
 }
@@ -217,6 +258,7 @@ pub struct NewDestinationRowView {
     pub name: Option<String>,
     pub other_names: u32,
     pub class: &'static str,
+    pub owner: Option<OwnerView>,
     pub first_seen_ms: i64,
     pub last_seen_ms: i64,
     /// The program that was first to talk to it (none when only unidentified programs ever did).
@@ -244,7 +286,7 @@ pub fn new_destinations_view<R>(
     limit: usize,
 ) -> Result<NewDestinationsView, RepoError>
 where
-    R: RollupRepository + DestinationTrendRepository + StorageStats,
+    R: RollupRepository + DestinationTrendRepository + OwnerRepository + StorageStats,
 {
     let limit = limit.clamp(1, MAX_DESTINATION_ROWS);
     let history_start = StorageStats::usage(repo)?.oldest_rollup;
@@ -264,6 +306,7 @@ where
             name,
             other_names,
             class: class_name(classify_addr(row.addr)),
+            owner: owner_of(repo, row.addr)?,
             first_seen_ms: ms(row.first_seen),
             last_seen_ms: ms(row.last_seen),
             first_program,
@@ -321,6 +364,7 @@ pub struct DestinationHourView {
 pub struct DestinationHistoryView {
     pub addr: String,
     pub class: &'static str,
+    pub owner: Option<OwnerView>,
     pub from_ms: i64,
     pub to_ms: i64,
     /// Permanent first and last sighting.
@@ -340,7 +384,7 @@ pub fn destination_history<R>(
     addr: &str,
 ) -> Result<DestinationHistoryView, RepoError>
 where
-    R: RollupRepository + DestinationTrendRepository,
+    R: RollupRepository + DestinationTrendRepository + OwnerRepository,
 {
     let addr: IpAddr = addr.trim().parse().map_err(|_| RepoError::Backend(format!("{addr:?} is not an IP address")))?;
     let addr = addr.to_canonical();
@@ -388,6 +432,7 @@ where
     Ok(DestinationHistoryView {
         addr: addr.to_string(),
         class: class_name(classify_addr(addr)),
+        owner: owner_of(repo, addr)?,
         from_ms: ms(from),
         to_ms: ms(now),
         first_seen_ms: ledger.map(|l| ms(l.first_seen)),

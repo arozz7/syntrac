@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useApi } from '../api/ApiContext';
 import type { DestinationOrder, DestinationRowView, DestinationsView } from '../api/types';
 import { DataGate } from '../components/DataGate';
@@ -6,9 +6,10 @@ import { DEFAULT_HISTORY_RANGE_SECS, HISTORY_RANGES } from '../components/histor
 import { RangePicker } from '../components/RangePicker';
 import { formatBytes, formatDateTime, formatDay } from '../format';
 import { usePolled } from '../hooks/usePolled';
-import { classLabel, nameLine } from '../networkLabels';
+import { classLabel, nameLine, ownerLine } from '../networkLabels';
 import { NetworkDialog, type NetworkFocus } from './NetworkDialog';
 import { NewDestinations } from './NewDestinations';
+import { OwnerDataBar } from './OwnerDataBar';
 import { ProgramLink } from './ProgramLink';
 
 const REFRESH_MS = 60_000;
@@ -84,6 +85,7 @@ function DestinationsTable({
                 </button>{' '}
                 {kind !== null && <span className="badge badge--quiet">{kind}</span>}
                 <div className="muted">{nameLine(row.name, row.otherNames)}</div>
+                {row.owner !== null && <div className="muted">{ownerLine(row.owner)}</div>}
               </td>
               <td className="num">{formatBytes(row.bytesReceived)}</td>
               <td className="num">{formatBytes(row.bytesSent)}</td>
@@ -106,12 +108,16 @@ export function NetworkHistory() {
   const [order, setOrder] = useState<DestinationOrder>('bytes');
   const [allAddresses, setAllAddresses] = useState(false);
   const [focus, setFocus] = useState<NetworkFocus | null>(null);
+  // Moves when new owner data has been downloaded, so the tables are read again and show the owners.
+  const [ownerVersion, setOwnerVersion] = useState(0);
+  const [nowMs] = useState(() => Date.now());
+  const ownerDataArrived = useCallback(() => setOwnerVersion((version) => version + 1), []);
   const openDestination = (addr: string) => setFocus({ kind: 'destination', addr });
   const openProgram: OpenProgram = (program, fromAddr) => setFocus({ kind: 'program', ...program, fromAddr });
   const result = usePolled(
     () => api.topDestinations(rangeSecs, order, undefined, allAddresses),
     REFRESH_MS,
-    `destinations:${rangeSecs}:${order}:${allAddresses}`,
+    `destinations:${rangeSecs}:${order}:${allAddresses}:${ownerVersion}`,
   );
 
   return (
@@ -143,6 +149,8 @@ export function NetworkHistory() {
         </div>
       </div>
 
+      <OwnerDataBar nowMs={nowMs} onDownloaded={ownerDataArrived} />
+
       <section className="card card--wide">
         <h2>Top destinations</h2>
         <DataGate result={result}>
@@ -163,7 +171,12 @@ export function NetworkHistory() {
         </DataGate>
       </section>
 
-      <NewDestinations allAddresses={allAddresses} onSelect={openDestination} onOpenProgram={openProgram} />
+      <NewDestinations
+        allAddresses={allAddresses}
+        refreshKey={ownerVersion}
+        onSelect={openDestination}
+        onOpenProgram={openProgram}
+      />
 
       {focus !== null && (
         <NetworkDialog focus={focus} rangeSecs={rangeSecs} onChange={setFocus} onClose={() => setFocus(null)} />
@@ -172,9 +185,11 @@ export function NetworkHistory() {
       <p className="muted">
         A name under an address is the name a program asked for when it reached that address. It is not who owns the
         address: large services answer thousands of names from one address, and one name from many addresses, so read it
-        as a clue. An address with no name was reached by address, or before names were kept. Traffic to this machine
-        itself is left out, and addresses on this network, link-local and multicast addresses are left out unless
-        included.
+        as a clue. An address with no name was reached by address, or before names were kept. A network owner is the
+        organisation that runs the range of addresses it sits in, and the country that network is registered in: often a
+        cloud or hosting company, not necessarily the service you reached, and not where this machine is. Traffic to
+        this machine itself is left out, and addresses on this network, link-local and multicast addresses are left out
+        unless included.
       </p>
     </>
   );

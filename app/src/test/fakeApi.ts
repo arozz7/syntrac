@@ -15,6 +15,8 @@ import type {
   KnownProgramsView,
   NewDestinationRowView,
   NewDestinationsView,
+  OwnerDataOutcome,
+  OwnerDataStateView,
   StandingView,
   WriteOutcome,
   ProgramHistoryView,
@@ -282,12 +284,23 @@ export function programHistoryView(overrides: Partial<ProgramHistoryView> = {}):
   };
 }
 
+export function ownerDataState(overrides: Partial<OwnerDataStateView> = {}): OwnerDataStateView {
+  return {
+    dataset: { source: 'iptoasn.com', downloadedMs: NOW - 3 * 86_400_000, rows: 480_000 },
+    refreshing: false,
+    lastError: null,
+    allowed: true,
+    ...overrides,
+  };
+}
+
 export function destinationRow(overrides: Partial<DestinationRowView> = {}): DestinationRowView {
   return {
     addr: '142.251.40.238',
     name: 'calendar.google.com',
     otherNames: 2,
     class: 'public',
+    owner: null,
     bytesSent: 2048,
     bytesReceived: 5 * 1024 ** 2,
     flows: 40,
@@ -309,6 +322,7 @@ export function destinationsView(overrides: Partial<DestinationsView> = {}): Des
     toMs: NOW,
     historyStartsMs: NOW - 5 * 86_400_000,
     hoursInRange: 100,
+    ownerData: null,
     destinations: [
       destinationRow(),
       destinationRow({
@@ -331,6 +345,7 @@ export function newDestinationRow(overrides: Partial<NewDestinationRowView> = {}
     name: 'later.example.org',
     otherNames: 0,
     class: 'public',
+    owner: null,
     firstSeenMs: NOW - 3_600_000,
     lastSeenMs: NOW - 1_800_000,
     firstProgram: 'code.exe',
@@ -353,6 +368,7 @@ export function destinationHistoryView(overrides: Partial<DestinationHistoryView
   return {
     addr: '142.251.40.238',
     class: 'public',
+    owner: null,
     fromMs: NOW - 7 * 86_400_000,
     toMs: NOW,
     firstSeenMs: NOW - 5 * 86_400_000,
@@ -388,6 +404,16 @@ export function makeFakeApi(overrides: Partial<Api> = {}): Api & { [K in keyof A
     health: vi.fn(async () => health()),
     overview: vi.fn(async () => ok(overview())),
     systemHistory: vi.fn(async () => ok(systemHistory())),
+    ownerDataStatus: vi.fn(async (): Promise<OwnerDataOutcome> => ({
+      ok: true,
+      state: ownerDataState(),
+      message: null,
+    })),
+    refreshOwnerData: vi.fn(async (): Promise<OwnerDataOutcome> => ({
+      ok: true,
+      state: ownerDataState({ refreshing: true }),
+      message: null,
+    })),
     topPrograms: vi.fn(async () => ok(programsView())),
     programHistory: vi.fn(async () => ok(programHistoryView())),
     topDestinations: vi.fn(async () => ok(destinationsView())),

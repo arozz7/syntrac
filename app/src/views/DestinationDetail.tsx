@@ -9,7 +9,7 @@ import { Chart } from '../components/Chart';
 import { DataGate } from '../components/DataGate';
 import { formatBytes, formatDateTime } from '../format';
 import { usePolled } from '../hooks/usePolled';
-import { classLabel } from '../networkLabels';
+import { classLabel, ownerLine } from '../networkLabels';
 import { ProgramLink } from './ProgramLink';
 
 const REFRESH_MS = 60_000;
@@ -54,6 +54,12 @@ function DetailBody({
           <div>
             <dt>Kind</dt>
             <dd>{kind}</dd>
+          </div>
+        )}
+        {data.owner !== null && (
+          <div>
+            <dt>Network owner</dt>
+            <dd>{ownerLine(data.owner)}</dd>
           </div>
         )}
       </dl>

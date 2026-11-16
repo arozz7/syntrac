@@ -52,22 +52,10 @@ pub fn trust_outcome(result: i32) -> TrustOutcome {
 
 const MAX_TEXT_CHARS: usize = 256;
 
-/// Characters that change how neighbouring text is displayed (direction overrides and marks): removed so a name cannot
-/// disguise itself.
-fn is_display_trick(c: char) -> bool {
-    matches!(c, '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
-}
-
 /// Text read from a file (signer, company, description...) is attacker-influenced: control characters and direction
 /// tricks are removed, ends are trimmed, and the length is capped. `None` when nothing printable is left.
 pub fn sanitize(text: &str) -> Option<String> {
-    let cleaned: String = text.chars().filter(|c| !c.is_control() && !is_display_trick(*c)).collect();
-    let trimmed = cleaned.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.chars().take(MAX_TEXT_CHARS).collect())
-    }
+    syntrac_core::clean_text(text, MAX_TEXT_CHARS)
 }
 
 pub fn thumbprint_hex(bytes: &[u8]) -> String {

@@ -238,3 +238,8 @@ fn sqlite_store_satisfies_the_destination_contract() {
 fn sqlite_store_satisfies_the_context_contract() {
     syntrac_testkit::context_contract::context_contract(in_memory_store);
 }
+
+#[test]
+fn sqlite_store_satisfies_the_owner_contract() {
+    syntrac_testkit::owner_contract::owner_contract(in_memory_store);
+}

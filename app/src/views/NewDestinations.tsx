@@ -4,7 +4,7 @@ import type { NewDestinationsView } from '../api/types';
 import { DataGate } from '../components/DataGate';
 import { formatDateTime } from '../format';
 import { usePolled } from '../hooks/usePolled';
-import { classLabel, nameLine } from '../networkLabels';
+import { classLabel, nameLine, ownerLine } from '../networkLabels';
 import { ProgramLink } from './ProgramLink';
 
 const REFRESH_MS = 60_000;
@@ -52,6 +52,7 @@ function NewTable({
                 </button>{' '}
                 {kind !== null && <span className="badge badge--quiet">{kind}</span>}
                 <div className="muted">{nameLine(row.name, row.otherNames)}</div>
+                {row.owner !== null && <div className="muted">{ownerLine(row.owner)}</div>}
               </td>
               <td>{formatDateTime(row.firstSeenMs)}</td>
               <td>
@@ -77,10 +78,13 @@ function NewTable({
 /** Destinations that appeared for the first time recently: the beginning of "something is different". */
 export function NewDestinations({
   allAddresses,
+  refreshKey = 0,
   onSelect,
   onOpenProgram,
 }: {
   allAddresses: boolean;
+  /** Changes when the screen should read again (for example after owner data was downloaded). */
+  refreshKey?: number;
   onSelect: (addr: string) => void;
   onOpenProgram: OpenProgram;
 }) {
@@ -89,7 +93,7 @@ export function NewDestinations({
   const result = usePolled(
     () => api.newDestinations(windowSecs, undefined, allAddresses),
     REFRESH_MS,
-    `new-destinations:${windowSecs}:${allAddresses}`,
+    `new-destinations:${windowSecs}:${allAddresses}:${refreshKey}`,
   );
   return (
     <section className="card card--wide">

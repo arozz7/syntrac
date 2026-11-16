@@ -328,6 +328,27 @@ pub const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (exe_id, service_name)
     ) WITHOUT ROWID;
     ",
+    // 10: which network owns an address (docs/OWNER-PLAN.md). Additive. The dataset (ranges of addresses and their owner) is
+    // replaced as a whole by a download the user asks for; owner_dataset is the one row that describes it. Addresses are 16
+    // big-endian bytes (an IPv4 address is stored IPv4-mapped), so a lookup is one seek on the primary key.
+    "
+    CREATE TABLE asn_ranges (
+        range_start BLOB NOT NULL PRIMARY KEY,
+        range_end   BLOB NOT NULL,
+        asn         INTEGER NOT NULL,
+        country     TEXT NOT NULL,
+        org         TEXT NOT NULL
+    ) WITHOUT ROWID;
+
+    CREATE TABLE owner_dataset (
+        id            INTEGER PRIMARY KEY CHECK (id = 1),
+        source        TEXT NOT NULL,
+        downloaded_at INTEGER NOT NULL,
+        rows          INTEGER NOT NULL,
+        bad_lines     INTEGER NOT NULL,
+        sha256        TEXT NOT NULL
+    );
+    ",
 ];
 
 /// The migration (1-based number) that rewrites every table. An existing database gets a backup copy before it is applied

@@ -245,3 +245,50 @@ impl syntrac_core::ProcessContextSource for FakeContextSource {
         self.answer.borrow().clone().map_err(syntrac_core::ContextSourceError)
     }
 }
+
+/// A `DatasetFetcher` that answers what it was told (a file, or a failure) and counts how often it was asked. Safe to share
+/// between threads, so the service's background refresh can use it.
+#[derive(Debug)]
+pub struct FakeDatasetFetcher {
+    answer: std::sync::Mutex<Result<syntrac_core::FetchedFile, String>>,
+    calls: std::sync::atomic::AtomicUsize,
+    /// How long a fetch takes, so a test can look at the "refreshing" state.
+    delay: std::time::Duration,
+}
+
+impl FakeDatasetFetcher {
+    pub fn new(text: &str) -> Self {
+        Self {
+            answer: std::sync::Mutex::new(Ok(syntrac_core::FetchedFile {
+                text: text.to_owned(),
+                source: "iptoasn.com (test)".to_owned(),
+                sha256: "00".repeat(32),
+            })),
+            calls: std::sync::atomic::AtomicUsize::new(0),
+            delay: std::time::Duration::ZERO,
+        }
+    }
+
+    pub fn failing(message: &str) -> Self {
+        let fetcher = Self::new("");
+        *fetcher.answer.lock().unwrap() = Err(message.to_owned());
+        fetcher
+    }
+
+    pub fn slow(mut self, delay: std::time::Duration) -> Self {
+        self.delay = delay;
+        self
+    }
+
+    pub fn calls(&self) -> usize {
+        self.calls.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+impl syntrac_core::DatasetFetcher for FakeDatasetFetcher {
+    fn fetch(&self) -> Result<syntrac_core::FetchedFile, syntrac_core::FetchError> {
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        std::thread::sleep(self.delay);
+        self.answer.lock().unwrap().clone().map_err(syntrac_core::FetchError)
+    }
+}

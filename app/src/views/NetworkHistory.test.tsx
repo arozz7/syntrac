@@ -9,6 +9,7 @@ import {
   destinationsView,
   makeFakeApi,
   newDestinationRow,
+  ownerDataState,
   newDestinationsView,
 } from '../test/fakeApi';
 import { NetworkHistory } from './NetworkHistory';
@@ -249,6 +250,76 @@ describe('NetworkHistory: one destination', () => {
 
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(document.activeElement).toBe(address);
+  });
+});
+
+describe('NetworkHistory: who owns the network', () => {
+  const OWNER = { asn: 15169, org: 'GOOGLE', country: 'US' };
+
+  it('shows the owner of the network range under the name, as a clue and not as the service', async () => {
+    show(
+      makeFakeApi({
+        topDestinations: vi.fn(async () => ({
+          state: 'ok' as const,
+          data: destinationsView({ destinations: [destinationRow({ owner: OWNER })] }),
+        })),
+      }),
+    );
+    const row = (await screen.findByRole('button', { name: '142.251.40.238' })).closest('tr')!;
+
+    expect(within(row).getByText('Network AS15169 GOOGLE, registered in US')).toBeTruthy();
+    expect(screen.getByText(/not necessarily the service/i)).toBeTruthy();
+  });
+
+  it('says nothing about an owner when none is known for an address', async () => {
+    show();
+    const row = (await screen.findByRole('button', { name: '142.251.40.238' })).closest('tr')!;
+
+    expect(within(row).queryByText(/^Network AS/)).toBeNull();
+  });
+
+  it('shows the owner in the new destinations and in the detail', async () => {
+    show(
+      makeFakeApi({
+        newDestinations: vi.fn(async () => ({
+          state: 'ok' as const,
+          data: newDestinationsView({ destinations: [newDestinationRow({ owner: OWNER })] }),
+        })),
+        destinationHistory: vi.fn(async () => ({
+          state: 'ok' as const,
+          data: destinationHistoryView({ owner: OWNER }),
+        })),
+      }),
+    );
+    const row = (await screen.findByRole('button', { name: '198.51.100.7' })).closest('tr')!;
+    expect(within(row).getByText('Network AS15169 GOOGLE, registered in US')).toBeTruthy();
+
+    await userEvent.click(within(row).getByRole('button', { name: '198.51.100.7' }));
+
+    const dialog = await screen.findByRole('dialog', { name: '198.51.100.7' });
+    expect(await within(dialog).findByText('Network AS15169 GOOGLE, registered in US')).toBeTruthy();
+  });
+
+  it('reads the screen again when new owner data has been downloaded', async () => {
+    let call = 0;
+    const api = makeFakeApi({
+      ownerDataStatus: vi.fn(async () => ({
+        ok: true,
+        message: null,
+        state: ownerDataState({
+          dataset: { source: 'iptoasn.com', downloadedMs: call++ < 1 ? 1 : 2, rows: 5 },
+        }),
+      })),
+    });
+    show(api);
+    await screen.findByRole('button', { name: '142.251.40.238' });
+    const before = api.topDestinations.mock.calls.length;
+
+    // The bar looks again when asked to refresh: the stamp has moved, so the table must be read again too.
+    await userEvent.click(await screen.findByRole('button', { name: 'Refresh owner data' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Download' }));
+
+    await waitFor(() => expect(api.topDestinations.mock.calls.length).toBeGreaterThan(before));
   });
 });
 

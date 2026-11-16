@@ -38,6 +38,11 @@ pub enum Request {
     },
     /// Remove a known product.
     KnownProductRemove { id: i64 },
+    /// What the owner dataset is and whether a download is under way. Makes no network request.
+    OwnerDataStatus,
+    /// Start downloading the owner dataset (docs/OWNER-PLAN.md) and answer at once with the status. The address downloaded
+    /// from is compiled into the service: a request cannot name one.
+    OwnerDataRefresh,
 }
 
 // A status reply is one small message every few seconds; boxing the report would only add noise at every use.
@@ -53,11 +58,36 @@ pub enum Response {
     KnownProductSaved {
         id: i64,
     },
+    /// The owner dataset and the state of its download.
+    OwnerData(OwnerDataReport),
     /// The request was carried out.
     Done,
     Error {
         message: String,
     },
+}
+
+/// The owner dataset as stored now.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OwnerDatasetReport {
+    /// Where it was downloaded from (a host name).
+    pub source: String,
+    pub downloaded_at_micros: i64,
+    /// Ranges of addresses it holds.
+    pub rows: u32,
+}
+
+/// What the service knows about the owner dataset.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OwnerDataReport {
+    /// `None` until a download succeeded.
+    pub dataset: Option<OwnerDatasetReport>,
+    /// A download is under way now.
+    pub refreshing: bool,
+    /// Why the last download failed, in plain words; cleared when one succeeds or starts.
+    pub last_error: Option<String>,
+    /// `false` when the service is configured never to download (`owner_data_allowed = false`).
+    pub allowed: bool,
 }
 
 /// Counters since the collector started. Plain data, independent of the collector's own types.

@@ -154,3 +154,9 @@ fn a_zero_context_interval_or_refresh_is_refused() {
         assert!(ServiceConfig::from_toml_str(bad).is_err(), "{bad} must be rejected");
     }
 }
+
+#[test]
+fn downloading_owner_data_is_allowed_by_default_and_can_be_switched_off() {
+    assert!(ServiceConfig::from_toml_str("").unwrap().owner_data_allowed);
+    assert!(!ServiceConfig::from_toml_str("owner_data_allowed = false").unwrap().owner_data_allowed);
+}

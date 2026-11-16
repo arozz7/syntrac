@@ -9,6 +9,7 @@ import type {
   KnownProgramsView,
   NewDestinationsView,
   OverviewView,
+  OwnerDataOutcome,
   ProcessListParams,
   ProcessRowView,
   ProgramHistoryView,
@@ -49,6 +50,10 @@ export interface Api {
   /** Asks the service to mark the product of the program at path as known. Never throws: a refusal is in the outcome. */
   markKnown(path: string, label: string, note?: string): Promise<WriteOutcome>;
   unmarkKnown(id: number): Promise<WriteOutcome>;
+  /** What the service holds as owner data and whether a download is under way. Makes no network request. Never throws. */
+  ownerDataStatus(): Promise<OwnerDataOutcome>;
+  /** Asks the service to download the owner data (the only thing SYNTRAC ever downloads). Call only after the user agreed. Never throws. */
+  refreshOwnerData(): Promise<OwnerDataOutcome>;
   processes(params: ProcessListParams): Promise<Data<ProcessRowView[]>>;
   connections(rangeSecs: number, limit?: number): Promise<Data<ConnectionRowView[]>>;
 }
@@ -73,6 +78,14 @@ async function write(command: string, args: Record<string, unknown>): Promise<Wr
     return await invoke<WriteOutcome>(command, args);
   } catch (error) {
     return { ok: false, id: null, message: failure(error) };
+  }
+}
+
+async function ownerData(command: string): Promise<OwnerDataOutcome> {
+  try {
+    return await invoke<OwnerDataOutcome>(command);
+  } catch (error) {
+    return { ok: false, state: null, message: failure(error) };
   }
 }
 
@@ -107,6 +120,8 @@ export const tauriApi: Api = {
   knownPrograms: () => data<KnownProgramsView>('get_known_programs'),
   markKnown: (path, label, note) => write('mark_known_program', { path, label, note }),
   unmarkKnown: (id) => write('unmark_known_program', { id }),
+  ownerDataStatus: () => ownerData('get_owner_data_status'),
+  refreshOwnerData: () => ownerData('refresh_owner_data'),
   processes: (params) => data<ProcessRowView[]>('list_processes', { params }),
   connections: (rangeSecs, limit) => data<ConnectionRowView[]>('list_connections', { rangeSecs, limit }),
 };

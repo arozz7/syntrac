@@ -15,6 +15,7 @@ pub mod file_trust;
 pub mod file_version;
 pub mod metrics_build;
 pub mod orphan_guard;
+pub mod owner_fetch;
 pub mod paths;
 pub mod process_context;
 pub mod snapshot;

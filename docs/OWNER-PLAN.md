@@ -1,8 +1,9 @@
 # IP owner (T3c): implementation plan
 
-Status: **source and licence APPROVED 2026-11-15** (user: "T3c approved"). **This plan waits for approval of the design below before
-any code** (`docs/NETWORK-PLAN.md` said T3c gets its own short plan). Nothing is downloaded until you press the button described
-under "Opt-in".
+Status: **APPROVED and BUILT 2026-11-15** (`aiChangeLog/phase-T3c.md` lists the deviations from this plan: no per-address owner
+table, no size preview, overlapping rows skipped rather than rejecting the file, no "Top owners" view). The source and licence
+were approved ("T3c approved") and the design was approved with the plan order. Nothing is downloaded until you press the button
+described under "Opt-in".
 
 ## Goal
 

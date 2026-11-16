@@ -3510,6 +3510,7 @@ name = "syntrac-collector"
 version = "0.1.0"
 dependencies = [
  "ferrisetw",
+ "flate2",
  "sha2 0.11.1",
  "syntrac-core",
  "syntrac-testkit",

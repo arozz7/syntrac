@@ -117,7 +117,7 @@ fn run_client(args: &CliArgs) -> ExitCode {
             ExitCode::from(EXIT_FAILURE)
         }
         // The command line only sends ping and status; these answer other requests.
-        Ok(Response::KnownProductSaved { .. } | Response::Done) => {
+        Ok(Response::KnownProductSaved { .. } | Response::Done | Response::OwnerData(_)) => {
             eprintln!("error: the collector sent an answer that does not belong to this request");
             ExitCode::from(EXIT_FAILURE)
         }

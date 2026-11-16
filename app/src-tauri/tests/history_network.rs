@@ -389,3 +389,88 @@ mod backend {
         assert_eq!(rows(&backend), ["198.51.100.7", "203.0.113.9"], "the new hour is not hidden by kept sums");
     }
 }
+
+// ---- who owns it (the owner dataset, docs/OWNER-PLAN.md)
+
+use syntrac_core::{parse_ip2asn, DatasetInfo, OwnerRepository};
+
+/// A dataset that says 203.0.113.0/24 (SITE's network) belongs to one network, and nothing else is in it.
+fn with_dataset(mut repo: InMemoryRepository) -> InMemoryRepository {
+    let ranges = parse_ip2asn("203.0.113.0\t203.0.113.255\t64500\tus\tEXAMPLE-NET Example Networks, Inc.\n").ranges;
+    let info = DatasetInfo {
+        source: "iptoasn.com".into(),
+        downloaded_at: at_secs(secs(50, 0)),
+        rows: 1,
+        bad_lines: 0,
+        sha256: "00".into(),
+    };
+    repo.replace_dataset(&ranges, &info).unwrap();
+    repo
+}
+
+#[test]
+fn a_destination_row_names_the_owner_of_its_network_range_and_says_when_the_data_was_downloaded() {
+    let view = destination_ranking(
+        &with_dataset(scenario()),
+        now(),
+        WEEK,
+        DestinationOrder::Bytes,
+        AddressScope::Internet,
+        10,
+    )
+    .unwrap();
+
+    let site = view.destinations.iter().find(|row| row.addr == "203.0.113.9").unwrap();
+    let owner = site.owner.as_ref().expect("an owner");
+    assert_eq!(
+        (owner.asn, owner.org.as_str(), owner.country.as_str()),
+        (64500, "EXAMPLE-NET Example Networks, Inc.", "US"),
+        "the country code is upper case"
+    );
+    let later = view.destinations.iter().find(|row| row.addr == "198.51.100.7").unwrap();
+    assert_eq!(later.owner, None, "an address outside every range has no owner");
+    let data = view.owner_data.expect("the dataset is described");
+    assert_eq!((data.source.as_str(), data.rows, data.downloaded_ms), ("iptoasn.com", 1, secs(50, 0) * 1000));
+}
+
+#[test]
+fn without_a_dataset_there_is_no_owner_and_no_dataset_to_describe() {
+    let view =
+        destination_ranking(&scenario(), now(), WEEK, DestinationOrder::Bytes, AddressScope::Internet, 10).unwrap();
+
+    assert!(view.destinations.iter().all(|row| row.owner.is_none()));
+    assert_eq!(view.owner_data, None);
+}
+
+#[test]
+fn an_address_on_this_network_is_never_looked_up_for_an_owner() {
+    // Even a dataset that (wrongly) covers a private range does not give the router an owner.
+    let mut repo = scenario();
+    let ranges = parse_ip2asn("192.168.0.0\t192.168.255.255\t1\tUS\tWrong\n").ranges;
+    let info = DatasetInfo {
+        source: "x".into(),
+        downloaded_at: at_secs(secs(50, 0)),
+        rows: 1,
+        bad_lines: 0,
+        sha256: "00".into(),
+    };
+    repo.replace_dataset(&ranges, &info).unwrap();
+
+    let view = destination_ranking(&repo, now(), WEEK, DestinationOrder::Bytes, AddressScope::All, 10).unwrap();
+
+    let router = view.destinations.iter().find(|row| row.addr == "192.168.1.1").unwrap();
+    assert_eq!(router.owner, None);
+}
+
+#[test]
+fn the_detail_and_the_new_destinations_name_the_owner_too() {
+    let repo = with_dataset(scenario());
+
+    let detail = destination_history(&repo, now(), WEEK, "203.0.113.9").unwrap();
+    let new = new_destinations_view(&repo, now(), WEEK, AddressScope::Internet, 10).unwrap();
+
+    assert_eq!(detail.owner.as_ref().map(|o| o.asn), Some(64500));
+    assert!(new.destinations.iter().all(|row| row.owner.is_none()), "198.51.100.7 is in no range");
+    let none = destination_history(&scenario(), now(), WEEK, "203.0.113.9").unwrap();
+    assert_eq!(none.owner, None);
+}

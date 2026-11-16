@@ -13,6 +13,7 @@ use syntrac_collector::etw::EtwSource;
 use syntrac_collector::etw_stats::{EtwReport, EtwStats};
 use syntrac_collector::file_inspector::{InspectorSettings, WindowsFileInspector};
 use syntrac_collector::orphan_guard::clean_up_orphans;
+use syntrac_collector::owner_fetch::WinHttpFetcher;
 use syntrac_collector::process_context::WindowsProcessContextSource;
 use syntrac_collector::snapshot::SnapshotSource;
 use syntrac_collector::sysmetrics::SysinfoMetricsSource;
@@ -26,7 +27,7 @@ use syntrac_core::{
     Clock, EventRepository, MetricsRepository, MetricsSource, ProcessRepository, Retention, RollupRepository,
     RollupSettings, TelemetrySource,
 };
-use syntrac_core::{ContextSettings, IdentitySettings};
+use syntrac_core::{ContextSettings, IdentitySettings, RefreshLimits};
 use syntrac_ipc::pipe::{PipeServer, PipeServerConfig};
 use syntrac_ipc::protocol::{Request, Response};
 use syntrac_ipc::serve::Handler;
@@ -35,7 +36,7 @@ use tracing::{error, info, warn};
 
 use crate::{
     BoardInfo, Collector, CollectorSettings, ContextWorker, ContextWorkerSettings, IdentityWorker,
-    IdentityWorkerSettings, KnownProductsAdmin, ServiceConfig, ServiceHandler, StatusBoard,
+    IdentityWorkerSettings, KnownProductsAdmin, OwnerControl, OwnerData, ServiceConfig, ServiceHandler, StatusBoard,
 };
 
 /// Teardown (stopping sources, final drain, summary) must finish within this long, or `on_stall` runs.
@@ -166,7 +167,9 @@ pub fn run_host(
         },
         SystemClock,
     ));
-    let pipe = options.pipe.as_ref().and_then(|pipe| start_pipe(pipe, Arc::clone(&board), &options.database_path));
+    let pipe = options.pipe.as_ref().and_then(|pipe| {
+        start_pipe(pipe, Arc::clone(&board), &options.database_path, options.config.owner_data_allowed)
+    });
 
     let worker_stop = Arc::new(AtomicBool::new(false));
     let identity_thread = start_identity_worker(options, &worker_stop);
@@ -353,12 +356,20 @@ impl Handler for BoardHandler {
 
 /// Starts the pipe. Besides status, it answers the write commands of the known-programs list, which need their own database
 /// connection; if that cannot be opened the pipe still serves status (the write commands then answer that they are not handled).
-fn start_pipe(options: &PipeOptions, board: Arc<StatusBoard<SystemClock>>, database_path: &Path) -> Option<PipeServer> {
+fn start_pipe(
+    options: &PipeOptions,
+    board: Arc<StatusBoard<SystemClock>>,
+    database_path: &Path,
+    owner_data_allowed: bool,
+) -> Option<PipeServer> {
     let mut config = PipeServerConfig::new(&options.name);
     config.allowed_sids = options.allowed_sids.clone();
     let status = BoardHandler(board);
     let handler: Arc<dyn Handler> = match SqliteStore::open(database_path) {
-        Ok(store) => Arc::new(ServiceHandler::new(status, KnownProductsAdmin::new(store, SystemClock))),
+        Ok(store) => Arc::new(
+            ServiceHandler::new(status, KnownProductsAdmin::new(store, SystemClock))
+                .with_owner(Arc::new(owner_control(database_path, owner_data_allowed))),
+        ),
         Err(error) => {
             warn!(%error, "The known-programs list could not open the database; the pipe answers status only");
             Arc::new(status)
@@ -374,6 +385,19 @@ fn start_pipe(options: &PipeOptions, board: Arc<StatusBoard<SystemClock>>, datab
             None
         }
     }
+}
+
+/// The owner dataset's commands: the download is the WinHTTP adapter for the compiled-in address, each job opens its own database
+/// connection.
+fn owner_control(database_path: &Path, allowed: bool) -> impl OwnerControl {
+    let path = database_path.to_path_buf();
+    OwnerData::new(
+        WinHttpFetcher::for_owner_data(),
+        Box::new(move || SqliteStore::open(&path)),
+        SystemClock,
+        allowed,
+        RefreshLimits::default(),
+    )
 }
 
 /// Calls `on_stall` if teardown takes longer than `limit`. A detached thread: when shutdown finishes

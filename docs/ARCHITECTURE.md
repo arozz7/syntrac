@@ -65,6 +65,7 @@ Client: `syntrac-service --status` / `--ping` (`--pipe <name>`), exit codes 0 ok
 | `StorageStats` / `FreeSpace` / `DetailStore` | Memory + Tool | Implemented (SQLite, in-memory; Windows `GetDiskFreeSpaceExW`): size accounting, space recovery and the narrow view the storage guard works on |
 | `RollupRepository` | Memory | Implemented (SQLite, in-memory; shared contract suite): loads one hour of detail, stores its rollup + ledgers + watermark atomically, reads history and ledgers. The maths is the pure `syntrac_core::rollup::roll_up_hour` |
 | `DestinationTrendRepository` | Memory | Implemented (SQLite, in-memory; shared contract suite): per-destination sums over a range, destinations first seen after an instant (with the first program), and the programs of one destination. Ranking, scope and the "new" rule are pure (`destination_trend.rs`, `addr_class.rs`) |
+| `OwnerRepository` / `DatasetFetcher` | Memory + Tool | Implemented (SQLite, in-memory; shared contract suite; WinHTTP adapter and a test fake): the downloaded IP-to-owner dataset and how it is fetched. The rules are pure (`owner_dataset.rs`, `owner_refresh.rs`) |
 | `ContextRepository` / `ProcessContextSource` | Memory + Tool | Implemented (SQLite, in-memory; shared contract suite; Windows adapter and a test fake): which account each program has been seen running as and which services it hosts, per executable. The rules are pure (`exe_context.rs`, `context_run.rs`) |
 | `TelemetrySource` | Tool | Implemented: `EtwSource`, `SnapshotSource` (Windows), `MockTelemetrySource` |
 | `MetricsSource` | Tool | Implemented: `SysinfoMetricsSource`, `MockMetricsSource` |
@@ -148,6 +149,17 @@ per address. Second, the existing rollups and ledgers: `DestinationTrendReposito
 with the pure `addr_class.rs`) BEFORE the limit, and decides what is new: first seen after the window start, but never inside the
 first 24 hours of history (the baseline). A name is what a program ASKED for, never an owner, and the screen says so. The backend
 (`history_network.rs`) keeps each range's sums until the rollup watermark moves, like the Programs ranking. Plan: `docs/NETWORK-PLAN.md`.
+
+## Owner data (which network owns an address)
+
+The one part of SYNTRAC that touches the internet, and only when the user asks. Pure core: `owner_dataset.rs` (parse the IPtoASN
+file into sorted non-overlapping ranges, look an address up; IPv4 lives in IPv4-mapped IPv6 space so one ordering serves both),
+`owner_refresh.rs` (the `OwnerRepository` and `DatasetFetcher` ports, and `refresh_owner_data`, which checks a download before it
+may replace the stored dataset). Adapter: `syntrac-collector/src/owner_fetch.rs` (WinHTTP for the compiled-in address, size caps,
+gzip). Store: `asn_ranges` and `owner_dataset` (schema v10), replaced through a staging table. Service: `owner_data.rs` runs a
+download on its own thread when the pipe receives `owner_data_refresh` and reports through `owner_data_status`. App: owners are
+looked up when a page is shown (one index seek per listed address; nothing is stored per address), and the Network tab has the
+button with its confirmation. Plan: `docs/OWNER-PLAN.md`.
 
 ## How programs run (run-as account and services)
 

@@ -212,3 +212,31 @@ fn a_write_request_over_the_size_cap_is_refused_before_it_is_parsed() {
 
     assert!(matches!(decode_request(line.as_bytes()), Err(ProtocolError::TooLarge { .. })));
 }
+
+#[test]
+fn the_owner_data_requests_carry_nothing_and_cannot_name_an_address_to_fetch() {
+    assert_eq!(encode_request(&Request::OwnerDataStatus), "{\"request\":\"owner_data_status\"}\n");
+    assert_eq!(encode_request(&Request::OwnerDataRefresh), "{\"request\":\"owner_data_refresh\"}\n");
+    // A client cannot say where to download from: any extra field is ignored, so there is nowhere to put an address.
+    let decoded = decode_request(br#"{"request":"owner_data_refresh","url":"https://evil.example/x"}"#).unwrap();
+    assert_eq!(decoded, Request::OwnerDataRefresh);
+}
+
+#[test]
+fn the_owner_data_report_round_trips() {
+    use syntrac_ipc::protocol::{OwnerDataReport, OwnerDatasetReport};
+    let report = OwnerDataReport {
+        dataset: Some(OwnerDatasetReport { source: "iptoasn.com".into(), downloaded_at_micros: 12, rows: 500_000 }),
+        refreshing: true,
+        last_error: Some("the server answered 503".into()),
+        allowed: true,
+    };
+    let response = Response::OwnerData(report.clone());
+
+    let line = encode_response(&response);
+
+    let value: serde_json::Value = serde_json::from_str(line.trim_end()).unwrap();
+    assert_eq!(value["response"], "owner_data");
+    assert_eq!(value["dataset"]["rows"], 500_000);
+    assert_eq!(decode_response(line.as_bytes()).unwrap(), response);
+}
