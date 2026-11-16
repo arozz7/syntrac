@@ -136,7 +136,7 @@ describe('NetworkHistory: new destinations', () => {
     show();
     const row = (await screen.findByRole('button', { name: '198.51.100.7' })).closest('tr')!;
     expect(within(row).getByText('later.example.org')).toBeTruthy();
-    expect(within(row).getByText('code.exe')).toBeTruthy();
+    expect(within(row).getByRole('button', { name: 'code.exe' })).toBeTruthy();
   });
 
   it('opens on the last 7 days of news', async () => {
@@ -194,7 +194,7 @@ describe('NetworkHistory: one destination', () => {
 
     expect(await screen.findByLabelText('Traffic to this address over time')).toBeTruthy();
     expect(api.destinationHistory).toHaveBeenLastCalledWith(WEEK, '142.251.40.238');
-    expect(screen.getByRole('heading', { name: '142.251.40.238' })).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: '142.251.40.238' })).toBeTruthy();
   });
 
   it('opens a destination from the list of new ones', async () => {
@@ -209,10 +209,10 @@ describe('NetworkHistory: one destination', () => {
     show();
     await userEvent.click(await screen.findByRole('button', { name: '142.251.40.238' }));
 
-    const detail = (await screen.findByRole('heading', { name: '142.251.40.238' })).closest('section')!;
-    expect(within(detail).getByText('calendar.google.com')).toBeTruthy();
+    const detail = await screen.findByRole('dialog', { name: '142.251.40.238' });
+    expect(await within(detail).findByText('calendar.google.com')).toBeTruthy();
     expect(within(detail).getByText('clients4.google.com')).toBeTruthy();
-    expect(within(detail).getByText('chrome.exe')).toBeTruthy();
+    expect(within(detail).getByRole('button', { name: 'chrome.exe' })).toBeTruthy();
   });
 
   it('says plainly when no name was ever recorded for it', async () => {
@@ -236,5 +236,105 @@ describe('NetworkHistory: one destination', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Close' }));
 
     expect(screen.queryByLabelText('Traffic to this address over time')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('closes with Escape and gives focus back to the address that was clicked', async () => {
+    show();
+    const address = await screen.findByRole('button', { name: '142.251.40.238' });
+    await userEvent.click(address);
+    await screen.findByLabelText('Traffic to this address over time');
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(address);
+  });
+});
+
+describe('NetworkHistory: seeing the programs', () => {
+  const MANY = destinationRow({
+    programs: 6,
+    topPrograms: [
+      { name: 'chrome.exe', path: 'C:\\apps\\chrome.exe' },
+      { name: 'Teams.exe', path: 'C:\\apps\\Teams.exe' },
+      { name: 'Unknown program', path: null },
+    ],
+    morePrograms: 3,
+  });
+
+  function showMany() {
+    return show(
+      makeFakeApi({
+        topDestinations: vi.fn(async () => ({
+          state: 'ok' as const,
+          data: destinationsView({ destinations: [MANY] }),
+        })),
+      }),
+    );
+  }
+
+  it('names the biggest programs in the row and counts the rest', async () => {
+    showMany();
+    const row = (await screen.findByRole('button', { name: '142.251.40.238' })).closest('tr')!;
+
+    expect(within(row).getByRole('button', { name: 'chrome.exe' })).toBeTruthy();
+    expect(within(row).getByRole('button', { name: 'Teams.exe' })).toBeTruthy();
+    expect(within(row).getByText('Unknown program')).toBeTruthy();
+    expect(within(row).getByRole('button', { name: '+3 more' })).toBeTruthy();
+  });
+
+  it('does not make the unidentified bucket a link, and says nothing about more when there is none', async () => {
+    show();
+    const row = (await screen.findByRole('button', { name: '203.0.113.50' })).closest('tr')!;
+
+    expect(within(row).getByText('Unknown program').closest('button')).toBeNull();
+    expect(within(row).queryByText(/more/)).toBeNull();
+  });
+
+  it('opens that program’s history in a dialog when its name is clicked in the row', async () => {
+    const api = showMany();
+    const row = (await screen.findByRole('button', { name: '142.251.40.238' })).closest('tr')!;
+
+    await userEvent.click(within(row).getByRole('button', { name: 'Teams.exe' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Teams.exe' });
+    await waitFor(() => expect(api.programHistory).toHaveBeenLastCalledWith(WEEK, 'C:\\apps\\Teams.exe'));
+    expect(within(dialog).getByRole('button', { name: /back to 142\.251\.40\.238/i })).toBeTruthy();
+  });
+
+  it('opens the destination from “+N more”', async () => {
+    showMany();
+    const row = (await screen.findByRole('button', { name: '142.251.40.238' })).closest('tr')!;
+
+    await userEvent.click(within(row).getByRole('button', { name: '+3 more' }));
+
+    expect(await screen.findByRole('dialog', { name: '142.251.40.238' })).toBeTruthy();
+  });
+
+  it('opens a program from inside the destination and goes back to the destination', async () => {
+    const api = show();
+    await userEvent.click(await screen.findByRole('button', { name: '142.251.40.238' }));
+    const destination = await screen.findByRole('dialog', { name: '142.251.40.238' });
+
+    await userEvent.click(await within(destination).findByRole('button', { name: 'chrome.exe' }));
+
+    const program = await screen.findByRole('dialog', { name: 'chrome.exe' });
+    await waitFor(() => expect(api.programHistory).toHaveBeenLastCalledWith(WEEK, 'C:\\apps\\chrome.exe'));
+
+    await userEvent.click(within(program).getByRole('button', { name: /back to 142\.251\.40\.238/i }));
+
+    expect(await screen.findByRole('dialog', { name: '142.251.40.238' })).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: 'chrome.exe' })).toBeNull();
+  });
+
+  it('opens the program that was first to talk to a new destination', async () => {
+    const api = show();
+    const row = (await screen.findByRole('button', { name: '198.51.100.7' })).closest('tr')!;
+
+    await userEvent.click(within(row).getByRole('button', { name: 'code.exe' }));
+
+    await screen.findByRole('dialog', { name: 'code.exe' });
+    await waitFor(() => expect(api.programHistory).toHaveBeenLastCalledWith(WEEK, 'C:\\apps\\code.exe'));
   });
 });

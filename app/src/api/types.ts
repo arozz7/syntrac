@@ -344,8 +344,18 @@ export interface DestinationRowView {
   flows: number;
   /** How many different programs talked to it. */
   programs: number;
+  /** The biggest of those programs by traffic, so a row says who without a click. */
+  topPrograms: RowProgramView[];
+  /** How many programs are not in `topPrograms`. */
+  morePrograms: number;
   firstSeenMs: number | null;
   lastSeenMs: number | null;
+}
+
+/** A program named in a row. `path` is null for the bucket of programs that could not be identified. */
+export interface RowProgramView {
+  name: string;
+  path: string | null;
 }
 
 export interface DestinationsView {

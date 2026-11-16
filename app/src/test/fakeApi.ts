@@ -292,6 +292,11 @@ export function destinationRow(overrides: Partial<DestinationRowView> = {}): Des
     bytesReceived: 5 * 1024 ** 2,
     flows: 40,
     programs: 2,
+    topPrograms: [
+      { name: 'chrome.exe', path: 'C:\\apps\\chrome.exe' },
+      { name: 'Teams.exe', path: 'C:\\apps\\Teams.exe' },
+    ],
+    morePrograms: 0,
     firstSeenMs: NOW - 5 * 86_400_000,
     lastSeenMs: NOW - 3_600_000,
     ...overrides,
@@ -306,7 +311,15 @@ export function destinationsView(overrides: Partial<DestinationsView> = {}): Des
     hoursInRange: 100,
     destinations: [
       destinationRow(),
-      destinationRow({ addr: '203.0.113.50', name: null, otherNames: 0, bytesReceived: 1024, flows: 3, programs: 1 }),
+      destinationRow({
+        addr: '203.0.113.50',
+        name: null,
+        otherNames: 0,
+        bytesReceived: 1024,
+        flows: 3,
+        programs: 1,
+        topPrograms: [{ name: 'Unknown program', path: null }],
+      }),
     ],
     ...overrides,
   };

@@ -10,10 +10,17 @@ import { DataGate } from '../components/DataGate';
 import { formatBytes, formatDateTime } from '../format';
 import { usePolled } from '../hooks/usePolled';
 import { classLabel } from '../networkLabels';
+import { ProgramLink } from './ProgramLink';
 
 const REFRESH_MS = 60_000;
 
-function DetailBody({ data }: { data: DestinationHistoryView }) {
+function DetailBody({
+  data,
+  onOpenProgram,
+}: {
+  data: DestinationHistoryView;
+  onOpenProgram: (program: { name: string; path: string }) => void;
+}) {
   const granularity = granularityFor((data.toMs - data.fromMs) / 1000);
   const buckets = useMemo(() => bucketDestinationHours(data.hours, granularity), [data.hours, granularity]);
   const palette = useMemo(() => readPalette(), []);
@@ -87,7 +94,13 @@ function DetailBody({ data }: { data: DestinationHistoryView }) {
           <tbody>
             {data.programs.map((program) => (
               <tr key={program.path ?? program.name}>
-                <td>{program.name}</td>
+                <td>
+                  {program.path === null ? (
+                    program.name
+                  ) : (
+                    <ProgramLink name={program.name} path={program.path} onOpen={onOpenProgram} />
+                  )}
+                </td>
                 <td className="num">{formatBytes(program.bytesReceived)}</td>
                 <td className="num">{formatBytes(program.bytesSent)}</td>
                 <td className="num">{program.flows}</td>
@@ -107,11 +120,11 @@ function DetailBody({ data }: { data: DestinationHistoryView }) {
 export function DestinationDetail({
   addr,
   rangeSecs,
-  onClose,
+  onOpenProgram,
 }: {
   addr: string;
   rangeSecs: number;
-  onClose: () => void;
+  onOpenProgram: (program: { name: string; path: string }) => void;
 }) {
   const api = useApi();
   const result = usePolled(
@@ -119,15 +132,5 @@ export function DestinationDetail({
     REFRESH_MS,
     `destination:${addr}:${rangeSecs}`,
   );
-  return (
-    <section className="card card--wide">
-      <div className="card__head">
-        <h2>{addr}</h2>
-        <button type="button" className="range__button" onClick={onClose}>
-          Close
-        </button>
-      </div>
-      <DataGate result={result}>{(data) => <DetailBody data={data} />}</DataGate>
-    </section>
-  );
+  return <DataGate result={result}>{(data) => <DetailBody data={data} onOpenProgram={onOpenProgram} />}</DataGate>;
 }

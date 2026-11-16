@@ -1,6 +1,6 @@
 ﻿# Network history (T3): implementation plan
 
-Status: **APPROVED 2026-11-15** (T3-0, T3a, T3b; T3c waits for the source and licence). **T3-0, T3a and T3b done 2026-11-15** (`aiChangeLog/phase-T3-0.md`, `phase-T3a.md`, `phase-T3b.md`); T3c: source and licence approved 2026-11-15, design in `docs/OWNER-PLAN.md` (waiting for approval). T3d (seeing the programs): addendum at the end, waiting for approval.
+Status: **APPROVED 2026-11-15** (T3-0, T3a, T3b; T3c waits for the source and licence). **T3-0, T3a and T3b done 2026-11-15** (`aiChangeLog/phase-T3-0.md`, `phase-T3a.md`, `phase-T3b.md`); T3c: source and licence approved 2026-11-15, design in `docs/OWNER-PLAN.md` (waiting for approval). T3d (seeing the programs): approved and built 2026-11-15 (`aiChangeLog/phase-T3d.md`).
 T3 is the third slice of
 `docs/TRENDS-PLAN.md` (approved 2026-11-13); this document replaces its one-line T3 entry with a full design.
 
@@ -129,7 +129,7 @@ country, exporting, names per hour (only first and last seen are kept), DNS even
 3. "New destination" baseline of the first 24 hours of history, and Public-only as the default scope: OK?
 4. Cap of 50 names per address: OK?
 
-## Addendum 2026-11-15: slice T3d, seeing the programs (waiting for approval)
+## Addendum 2026-11-15: slice T3d, seeing the programs (approved and built)
 
 **What you found.** The Network tab shows only a number of programs per destination. The names are in the drill-down, but that card
 opens at the bottom of a long page, so it looks as if nothing happened; and the program names inside it are plain text, not links

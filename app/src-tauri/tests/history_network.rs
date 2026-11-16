@@ -117,6 +117,44 @@ fn an_address_nobody_asked_a_name_for_has_none() {
 }
 
 #[test]
+fn a_row_names_the_programs_that_talked_to_it_biggest_first() {
+    let view = destination_ranking(&scenario(), now(), WEEK, DestinationOrder::Bytes, AddressScope::All, 10).unwrap();
+
+    let site = view.destinations.iter().find(|row| row.addr == "203.0.113.9").unwrap();
+    let names: Vec<&str> = site.top_programs.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(names, ["chrome.exe", "code.exe"]);
+    assert_eq!(site.top_programs[0].path.as_deref(), Some(CHROME));
+    assert_eq!(site.more_programs, 0);
+    let router = view.destinations.iter().find(|row| row.addr == "192.168.1.1").unwrap();
+    assert_eq!(router.top_programs.len(), 1);
+}
+
+#[test]
+fn a_row_with_many_programs_shows_the_biggest_few_and_counts_the_rest_and_names_the_unidentified_bucket() {
+    let mut repo = InMemoryRepository::default();
+    let mut f = EventFactory::default();
+    let mut events = Vec::new();
+    for (index, bytes) in [400_u64, 300, 200, 100, 50].into_iter().enumerate() {
+        let owner = start(&mut repo, 20 + index as u32, &format!(r"C:\Apps\app{index}.exe"));
+        let mut event = f.make(at_secs(secs(0, 10)), net_flow(owner.pid, SITE, bytes, 0, secs(0, 10)));
+        event.process_instance_id = Some(owner.id);
+        events.push(event);
+    }
+    events.push(f.make(at_secs(secs(0, 20)), net_flow(99, SITE, 1, 0, secs(0, 20))));
+    repo.append(&events).unwrap();
+    let settings = RollupSettings { settle: Duration::from_secs(300), max_hours_per_pass: 100 };
+    roll_up_due(&mut repo, at_secs(secs(40, 0)), &settings).unwrap();
+
+    let view = destination_ranking(&repo, now(), WEEK, DestinationOrder::Bytes, AddressScope::All, 10).unwrap();
+
+    let row = &view.destinations[0];
+    let names: Vec<&str> = row.top_programs.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(names, ["app0.exe", "app1.exe", "app2.exe"]);
+    assert_eq!(row.more_programs, 3, "two more identified programs and the unidentified bucket");
+    assert_eq!(row.programs, 6);
+}
+
+#[test]
 fn the_router_is_hidden_unless_every_address_is_asked_for() {
     let repo = scenario();
 

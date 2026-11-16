@@ -103,23 +103,63 @@ impl DestinationTrendRepository for SqliteStore {
             .map_err(backend)?;
         let mut programs = Vec::new();
         while let Some(row) = rows.next().map_err(backend)? {
-            let id: i64 = row.get(0).map_err(backend)?;
-            let exe = if id == UNATTRIBUTED {
-                None
-            } else {
-                Some(Executable { key: row.get(1).map_err(backend)?, path: row.get(2).map_err(backend)? })
-            };
-            programs.push(DestinationProgram {
-                exe,
-                bytes_sent: to_u64(row.get(3).map_err(backend)?),
-                bytes_received: to_u64(row.get(4).map_err(backend)?),
-                flows: to_u64(row.get(5).map_err(backend)?),
-                first_seen: ts(row, 6)?,
-                last_seen: ts(row, 7)?,
-            });
+            programs.push(program_from_row(row, 0)?);
         }
         Ok(programs)
     }
+
+    fn programs_of_destinations(
+        &self,
+        addrs: &[IpAddr],
+        from: Timestamp,
+        to: Timestamp,
+    ) -> Result<Vec<(IpAddr, DestinationProgram)>, RepoError> {
+        let mut found = Vec::new();
+        // SQLite allows 999 variables per statement (older builds); two are the range.
+        for chunk in addrs.chunks(MAX_ADDRS_PER_READ) {
+            let mut statement = self.conn.prepare(&programs_of_destinations_sql(chunk.len())).map_err(backend)?;
+            let mut values: Vec<rusqlite::types::Value> = vec![from.as_micros().into(), to.as_micros().into()];
+            values.extend(chunk.iter().map(|addr| addr.to_canonical().to_string().into()));
+            let mut rows = statement.query(rusqlite::params_from_iter(values)).map_err(backend)?;
+            while let Some(row) = rows.next().map_err(backend)? {
+                let addr: String = row.get(0).map_err(backend)?;
+                found.push((parse_addr(&addr)?, program_from_row(row, 1)?));
+            }
+        }
+        Ok(found)
+    }
+}
+
+/// How many addresses one statement asks for (the screen asks for at most 200).
+const MAX_ADDRS_PER_READ: usize = 200;
+
+fn programs_of_destinations_sql(addrs: usize) -> String {
+    let marks = vec!["?"; addrs.max(1)].join(",");
+    format!(
+        "SELECT t.addr, e.id, e.path_key, e.path, SUM(t.bytes_sent), SUM(t.bytes_received), SUM(t.flows),
+                MIN(t.first_seen), MAX(t.last_seen)
+         FROM rollup_traffic_hour t JOIN executables e ON e.id = t.exe_id
+         WHERE t.hour_start >= ?1 AND t.hour_start <= ?2 AND t.addr IN ({marks})
+         GROUP BY t.addr, e.id"
+    )
+}
+
+/// One `DestinationProgram` from columns `at ..` (id, path_key, path, sent, received, flows, first, last).
+fn program_from_row(row: &Row<'_>, at: usize) -> Result<DestinationProgram, RepoError> {
+    let id: i64 = row.get(at).map_err(backend)?;
+    let exe = if id == UNATTRIBUTED {
+        None
+    } else {
+        Some(Executable { key: row.get(at + 1).map_err(backend)?, path: row.get(at + 2).map_err(backend)? })
+    };
+    Ok(DestinationProgram {
+        exe,
+        bytes_sent: to_u64(row.get(at + 3).map_err(backend)?),
+        bytes_received: to_u64(row.get(at + 4).map_err(backend)?),
+        flows: to_u64(row.get(at + 5).map_err(backend)?),
+        first_seen: ts(row, at + 6)?,
+        last_seen: ts(row, at + 7)?,
+    })
 }
 
 #[cfg(test)]
@@ -144,6 +184,16 @@ mod plan_tests {
         let plan = plan(&store, &new_destinations_sql(), 1);
 
         assert!(plan.contains("idx_exe_destinations_addr"), "{plan}");
+    }
+
+    #[test]
+    fn the_programs_of_many_addresses_use_the_address_index_not_a_scan_of_the_rollup_table() {
+        let store = SqliteStore::open_in_memory().unwrap();
+
+        let plan = plan(&store, &programs_of_destinations_sql(3), 5);
+
+        assert!(plan.contains("idx_rollup_traffic_addr"), "{plan}");
+        assert!(!plan.contains("SCAN t") && !plan.contains("SCAN rollup_traffic_hour"), "{plan}");
     }
 
     #[test]

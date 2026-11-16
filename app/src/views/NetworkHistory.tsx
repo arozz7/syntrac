@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import { useApi } from '../api/ApiContext';
-import type { DestinationOrder, DestinationsView } from '../api/types';
+import type { DestinationOrder, DestinationRowView, DestinationsView } from '../api/types';
 import { DataGate } from '../components/DataGate';
 import { DEFAULT_HISTORY_RANGE_SECS, HISTORY_RANGES } from '../components/historyRanges';
 import { RangePicker } from '../components/RangePicker';
 import { formatBytes, formatDateTime, formatDay } from '../format';
 import { usePolled } from '../hooks/usePolled';
 import { classLabel, nameLine } from '../networkLabels';
-import { DestinationDetail } from './DestinationDetail';
+import { NetworkDialog, type NetworkFocus } from './NetworkDialog';
 import { NewDestinations } from './NewDestinations';
+import { ProgramLink } from './ProgramLink';
 
 const REFRESH_MS = 60_000;
 
@@ -18,7 +19,47 @@ const ORDERS: Array<{ id: DestinationOrder; label: string }> = [
   { id: 'programs', label: 'Programs' },
 ];
 
-function DestinationsTable({ view, onSelect }: { view: DestinationsView; onSelect: (addr: string) => void }) {
+type OpenProgram = (program: { name: string; path: string }, fromAddr: string) => void;
+
+/** The biggest programs of a row, each a link to its history, and what is left over as one button that opens the address. */
+function ProgramsCell({
+  row,
+  onSelect,
+  onOpenProgram,
+}: {
+  row: DestinationRowView;
+  onSelect: (addr: string) => void;
+  onOpenProgram: OpenProgram;
+}) {
+  return (
+    <td className="programs-cell">
+      {row.topPrograms.map((program) =>
+        program.path === null ? (
+          <span key={program.name}>{program.name}</span>
+        ) : (
+          <span key={program.path}>
+            <ProgramLink name={program.name} path={program.path} onOpen={(chosen) => onOpenProgram(chosen, row.addr)} />
+          </span>
+        ),
+      )}
+      {row.morePrograms > 0 && (
+        <button type="button" className="linklike" onClick={() => onSelect(row.addr)}>
+          +{row.morePrograms} more
+        </button>
+      )}
+    </td>
+  );
+}
+
+function DestinationsTable({
+  view,
+  onSelect,
+  onOpenProgram,
+}: {
+  view: DestinationsView;
+  onSelect: (addr: string) => void;
+  onOpenProgram: OpenProgram;
+}) {
   return (
     <table className="table">
       <thead>
@@ -27,7 +68,7 @@ function DestinationsTable({ view, onSelect }: { view: DestinationsView; onSelec
           <th className="num">Received</th>
           <th className="num">Sent</th>
           <th className="num">Flows</th>
-          <th className="num">Programs</th>
+          <th>Programs</th>
           <th>First seen</th>
           <th>Last seen</th>
         </tr>
@@ -47,7 +88,7 @@ function DestinationsTable({ view, onSelect }: { view: DestinationsView; onSelec
               <td className="num">{formatBytes(row.bytesReceived)}</td>
               <td className="num">{formatBytes(row.bytesSent)}</td>
               <td className="num">{row.flows}</td>
-              <td className="num">{row.programs}</td>
+              <ProgramsCell row={row} onSelect={onSelect} onOpenProgram={onOpenProgram} />
               <td>{row.firstSeenMs === null ? '—' : formatDateTime(row.firstSeenMs)}</td>
               <td>{row.lastSeenMs === null ? '—' : formatDateTime(row.lastSeenMs)}</td>
             </tr>
@@ -64,7 +105,9 @@ export function NetworkHistory() {
   const [rangeSecs, setRangeSecs] = useState(DEFAULT_HISTORY_RANGE_SECS);
   const [order, setOrder] = useState<DestinationOrder>('bytes');
   const [allAddresses, setAllAddresses] = useState(false);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [focus, setFocus] = useState<NetworkFocus | null>(null);
+  const openDestination = (addr: string) => setFocus({ kind: 'destination', addr });
+  const openProgram: OpenProgram = (program, fromAddr) => setFocus({ kind: 'program', ...program, fromAddr });
   const result = usePolled(
     () => api.topDestinations(rangeSecs, order, undefined, allAddresses),
     REFRESH_MS,
@@ -113,17 +156,17 @@ export function NetworkHistory() {
               {data.destinations.length === 0 ? (
                 <p className="muted">No destinations to show for this period.</p>
               ) : (
-                <DestinationsTable view={data} onSelect={setSelected} />
+                <DestinationsTable view={data} onSelect={openDestination} onOpenProgram={openProgram} />
               )}
             </>
           )}
         </DataGate>
       </section>
 
-      <NewDestinations allAddresses={allAddresses} onSelect={setSelected} />
+      <NewDestinations allAddresses={allAddresses} onSelect={openDestination} onOpenProgram={openProgram} />
 
-      {selected !== null && (
-        <DestinationDetail addr={selected} rangeSecs={rangeSecs} onClose={() => setSelected(null)} />
+      {focus !== null && (
+        <NetworkDialog focus={focus} rangeSecs={rangeSecs} onChange={setFocus} onClose={() => setFocus(null)} />
       )}
 
       <p className="muted">

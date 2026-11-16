@@ -36,6 +36,7 @@ pub fn destination_contract<R: DestinationSubject>(make: impl Fn() -> R) {
     new_destinations_come_from_the_permanent_ledger_with_the_first_program(make());
     new_destinations_survive_the_purge_of_detail(make());
     the_programs_of_one_destination_are_summed_within_the_range(make());
+    the_programs_of_many_destinations_come_back_in_one_read(make());
 }
 
 fn ip(addr: Ipv4Addr) -> IpAddr {
@@ -200,5 +201,34 @@ fn the_programs_of_one_destination_are_summed_within_the_range<R: DestinationSub
         hour_two,
         vec![program(Some(A_EXE), 50, 50, 1, micros(2, 10), micros(2, 10))],
         "first and last are within the range"
+    );
+}
+
+fn the_programs_of_many_destinations_come_back_in_one_read<R: DestinationSubject>(mut repo: R) {
+    scenario(&mut repo);
+    let asked = [ip(BEACON_TARGET), ip(TIED), ip(Ipv4Addr::new(192, 0, 2, 200))];
+
+    let rows = repo.programs_of_destinations(&asked, t(0, 0), t(5, 0)).unwrap();
+
+    let mut got: Vec<(IpAddr, Option<String>, u64)> = rows
+        .into_iter()
+        .map(|(addr, row)| (addr, row.exe.map(|exe| exe.path), row.bytes_sent + row.bytes_received))
+        .collect();
+    got.sort();
+    let mut expected = vec![
+        (ip(BEACON_TARGET), Some(A_EXE.to_owned()), 400),
+        (ip(BEACON_TARGET), Some(B_EXE.to_owned()), 20),
+        (ip(BEACON_TARGET), None, 3),
+        (ip(TIED), Some(A_EXE.to_owned()), 4),
+        (ip(TIED), Some(B_EXE.to_owned()), 4),
+    ];
+    expected.sort();
+    assert_eq!(got, expected, "only the addresses asked for, and none for an address nobody talked to");
+
+    let narrow = repo.programs_of_destinations(&[ip(BEACON_TARGET)], t(2, 0), t(5, 0)).unwrap();
+    assert_eq!(narrow.len(), 1, "only the hours in the range count");
+    assert!(
+        repo.programs_of_destinations(&[], t(0, 0), t(5, 0)).unwrap().is_empty(),
+        "asking for nothing reads nothing"
     );
 }

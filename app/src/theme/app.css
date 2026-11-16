@@ -448,3 +448,61 @@
 .mark-form input {
   min-width: 18rem;
 }
+
+/* A pop-up over the page (components/Dialog.tsx). The backdrop covers the window; the panel scrolls inside, so nothing is ever
+   below the fold. */
+.dialog__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 3vh 1rem;
+  background: rgba(40, 32, 20, 0.45);
+}
+
+.dialog {
+  width: min(64rem, 100%);
+  max-height: 94vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  box-shadow: 0 12px 40px rgba(40, 32, 20, 0.3);
+  overflow-wrap: anywhere;
+}
+
+.dialog:focus {
+  outline: none;
+}
+
+.dialog__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dialog__head h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.dialog__actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.dialog__body {
+  padding: 1rem 1.25rem 1.25rem;
+  overflow: auto;
+}
+
+.programs-cell > * {
+  margin-right: 0.5rem;
+}

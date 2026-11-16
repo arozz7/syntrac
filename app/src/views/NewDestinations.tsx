@@ -5,6 +5,7 @@ import { DataGate } from '../components/DataGate';
 import { formatDateTime } from '../format';
 import { usePolled } from '../hooks/usePolled';
 import { classLabel, nameLine } from '../networkLabels';
+import { ProgramLink } from './ProgramLink';
 
 const REFRESH_MS = 60_000;
 const DAY_SECS = 86_400;
@@ -16,7 +17,17 @@ const WINDOWS: Array<{ label: string; secs: number }> = [
 ];
 const DEFAULT_WINDOW_SECS = 7 * DAY_SECS;
 
-function NewTable({ view, onSelect }: { view: NewDestinationsView; onSelect: (addr: string) => void }) {
+type OpenProgram = (program: { name: string; path: string }, fromAddr: string) => void;
+
+function NewTable({
+  view,
+  onSelect,
+  onOpenProgram,
+}: {
+  view: NewDestinationsView;
+  onSelect: (addr: string) => void;
+  onOpenProgram: OpenProgram;
+}) {
   if (view.destinations.length === 0) {
     return <p className="muted">Nothing new in this period.</p>;
   }
@@ -43,7 +54,17 @@ function NewTable({ view, onSelect }: { view: NewDestinationsView; onSelect: (ad
                 <div className="muted">{nameLine(row.name, row.otherNames)}</div>
               </td>
               <td>{formatDateTime(row.firstSeenMs)}</td>
-              <td>{row.firstProgram ?? 'Unknown program'}</td>
+              <td>
+                {row.firstProgram !== null && row.firstProgramPath !== null ? (
+                  <ProgramLink
+                    name={row.firstProgram}
+                    path={row.firstProgramPath}
+                    onOpen={(program) => onOpenProgram(program, row.addr)}
+                  />
+                ) : (
+                  (row.firstProgram ?? 'Unknown program')
+                )}
+              </td>
               <td>{formatDateTime(row.lastSeenMs)}</td>
             </tr>
           );
@@ -57,9 +78,11 @@ function NewTable({ view, onSelect }: { view: NewDestinationsView; onSelect: (ad
 export function NewDestinations({
   allAddresses,
   onSelect,
+  onOpenProgram,
 }: {
   allAddresses: boolean;
   onSelect: (addr: string) => void;
+  onOpenProgram: OpenProgram;
 }) {
   const api = useApi();
   const [windowSecs, setWindowSecs] = useState(DEFAULT_WINDOW_SECS);
@@ -90,7 +113,7 @@ export function NewDestinations({
       <DataGate result={result}>
         {(data) => (
           <>
-            <NewTable view={data} onSelect={onSelect} />
+            <NewTable view={data} onSelect={onSelect} onOpenProgram={onOpenProgram} />
             {data.sinceMs !== null && data.sinceMs === data.baselineUntilMs && (
               <p className="muted">
                 Everything first seen before {formatDateTime(data.baselineUntilMs)} counts as the baseline, not as new:

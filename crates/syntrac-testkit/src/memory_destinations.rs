@@ -91,4 +91,17 @@ impl DestinationTrendRepository for InMemoryRepository {
         }
         Ok(by_key.into_values().collect())
     }
+
+    fn programs_of_destinations(
+        &self,
+        addrs: &[IpAddr],
+        from: Timestamp,
+        to: Timestamp,
+    ) -> Result<Vec<(IpAddr, DestinationProgram)>, RepoError> {
+        let mut found = Vec::new();
+        for addr in addrs.iter().copied().collect::<HashSet<_>>() {
+            found.extend(self.destination_programs(addr, from, to)?.into_iter().map(|program| (addr, program)));
+        }
+        Ok(found)
+    }
 }

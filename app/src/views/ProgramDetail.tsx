@@ -72,19 +72,17 @@ function DetailBody({ data, name, onChanged }: { data: ProgramHistoryView; name:
   );
 }
 
-/** One program, hour by hour (or day by day for long ranges), below the ranking. */
-export function ProgramDetail({
+/** One program, hour by hour (or day by day for long ranges): the path and everything below it, without a frame around it. */
+export function ProgramDetailBody({
   name,
   path,
   rangeSecs,
-  onClose,
   onChanged,
   version = 0,
 }: {
   name: string;
   path: string;
   rangeSecs: number;
-  onClose: () => void;
   /** Called after the user changed something about this program (for example marked it as known). */
   onChanged: () => void;
   /** Changes whenever the list of known programs changed, so the screen is read again. */
@@ -97,6 +95,30 @@ export function ProgramDetail({
     `program:${path}:${rangeSecs}:${version}`,
   );
   return (
+    <>
+      <p className="muted">{path}</p>
+      <DataGate result={result}>{(data) => <DetailBody data={data} name={name} onChanged={onChanged} />}</DataGate>
+    </>
+  );
+}
+
+/** One program below the ranking, in a card of its own with a Close button. */
+export function ProgramDetail({
+  name,
+  path,
+  rangeSecs,
+  onClose,
+  onChanged,
+  version = 0,
+}: {
+  name: string;
+  path: string;
+  rangeSecs: number;
+  onClose: () => void;
+  onChanged: () => void;
+  version?: number;
+}) {
+  return (
     <section className="card card--wide">
       <div className="card__head">
         <h2>{name}</h2>
@@ -104,8 +126,7 @@ export function ProgramDetail({
           Close
         </button>
       </div>
-      <p className="muted">{path}</p>
-      <DataGate result={result}>{(data) => <DetailBody data={data} name={name} onChanged={onChanged} />}</DataGate>
+      <ProgramDetailBody name={name} path={path} rangeSecs={rangeSecs} onChanged={onChanged} version={version} />
     </section>
   );
 }

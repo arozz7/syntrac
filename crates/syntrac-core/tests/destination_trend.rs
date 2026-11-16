@@ -3,8 +3,8 @@
 use std::net::IpAddr;
 
 use syntrac_core::destination_trend::{
-    new_destination_cutoff, rank_destination_programs, rank_destinations, select_new, AddressScope, DestinationOrder,
-    DestinationProgram, DestinationTotals, NewDestination, BASELINE_HOURS,
+    new_destination_cutoff, rank_destination_programs, rank_destinations, select_new, top_destination_programs,
+    AddressScope, DestinationOrder, DestinationProgram, DestinationTotals, NewDestination, BASELINE_HOURS,
 };
 use syntrac_core::rollup::HOUR_MICROS;
 use syntrac_core::{Executable, Timestamp};
@@ -126,6 +126,36 @@ fn the_programs_that_talked_to_an_address_are_ranked_by_bytes_with_the_unattribu
 
     let names: Vec<Option<&str>> = ranked.iter().map(|p| p.exe.as_ref().map(|e| e.path.as_str())).collect();
     assert_eq!(names, [Some(r"C:\big.exe"), Some(r"C:\a.exe"), Some(r"C:\b.exe"), None]);
+}
+
+#[test]
+fn a_row_keeps_the_biggest_programs_and_counts_the_rest() {
+    let rows = vec![
+        program(Some(r"C:\small.exe"), 1, 1),
+        program(Some(r"C:\big.exe"), 500, 0),
+        program(None, 100, 0),
+        program(Some(r"C:\mid.exe"), 50, 50),
+        program(Some(r"C:\tiny.exe"), 0, 1),
+    ];
+
+    let (kept, more) = top_destination_programs(rows, 3);
+
+    let names: Vec<Option<&str>> = kept.iter().map(|p| p.exe.as_ref().map(|e| e.path.as_str())).collect();
+    assert_eq!(names, [Some(r"C:\big.exe"), Some(r"C:\mid.exe"), None], "100 bytes each: the unidentified one last");
+    assert_eq!(more, 2);
+}
+
+#[test]
+fn a_row_with_few_programs_keeps_them_all_and_has_no_more() {
+    let (kept, more) = top_destination_programs(vec![program(Some(r"C:\a.exe"), 5, 5)], 3);
+
+    assert_eq!((kept.len(), more), (1, 0));
+    assert_eq!(top_destination_programs(Vec::new(), 3), (Vec::new(), 0));
+    assert_eq!(
+        top_destination_programs(vec![program(Some(r"C:\a.exe"), 5, 5)], 0).1,
+        1,
+        "keeping none still counts what was left out"
+    );
 }
 
 // ---- what is new

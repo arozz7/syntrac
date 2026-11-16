@@ -12,9 +12,9 @@ use serde::Serialize;
 use syntrac_core::rollup::HOUR_MICROS;
 use syntrac_core::storage_guard::StorageStats;
 use syntrac_core::{
-    classify_addr, new_destination_cutoff, rank_destination_programs, rank_destinations, select_new, AddrClass,
-    AddressScope, DestinationOrder, DestinationTotals, DestinationTrendRepository, Executable, RepoError,
-    RollupRepository, Timestamp,
+    classify_addr, new_destination_cutoff, rank_destination_programs, rank_destinations, select_new,
+    top_destination_programs, AddrClass, AddressScope, DestinationOrder, DestinationProgram, DestinationTotals,
+    DestinationTrendRepository, Executable, RepoError, RollupRepository, Timestamp,
 };
 
 use crate::history::{clamp_history_secs, ms, range_start};
@@ -83,9 +83,25 @@ pub struct DestinationRowView {
     pub flows: u64,
     /// How many different programs talked to it.
     pub programs: u32,
+    /// The biggest of those programs by traffic (at most `PROGRAMS_PER_ROW`), so a row says who without a click.
+    pub top_programs: Vec<RowProgramView>,
+    /// How many programs are not in `top_programs`.
+    pub more_programs: u32,
     pub first_seen_ms: Option<i64>,
     pub last_seen_ms: Option<i64>,
 }
+
+/// A program named in a row of the ranking.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RowProgramView {
+    pub name: String,
+    /// `None` for the bucket of programs that could not be identified.
+    pub path: Option<String>,
+}
+
+/// How many programs a row names before saying "+N more".
+pub const PROGRAMS_PER_ROW: usize = 3;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -131,13 +147,29 @@ pub fn rank_destination_range<R>(
     limit: usize,
 ) -> Result<DestinationsView, RepoError>
 where
-    R: RollupRepository + StorageStats,
+    R: RollupRepository + DestinationTrendRepository + StorageStats,
 {
     let limit = limit.clamp(1, MAX_DESTINATION_ROWS);
+    let ranked = rank_destinations(range.totals.clone(), order, scope, limit);
+    // One read for the whole page, not one per row.
+    let addrs: Vec<IpAddr> = ranked.iter().map(|row| row.addr).collect();
+    let mut by_addr: BTreeMap<IpAddr, Vec<DestinationProgram>> = BTreeMap::new();
+    for (addr, program) in repo.programs_of_destinations(&addrs, range.from, range.to)? {
+        by_addr.entry(addr).or_default().push(program);
+    }
     let mut destinations = Vec::new();
-    for row in rank_destinations(range.totals.clone(), order, scope, limit) {
+    for row in ranked {
         let (name, other_names) = names_summary(repo, row.addr)?;
         let ledger = repo.destination_ledger(row.addr)?;
+        let (top, more_programs) =
+            top_destination_programs(by_addr.remove(&row.addr).unwrap_or_default(), PROGRAMS_PER_ROW);
+        let top_programs = top
+            .iter()
+            .map(|program| {
+                let (name, path) = program_name(&program.exe);
+                RowProgramView { name, path }
+            })
+            .collect();
         destinations.push(DestinationRowView {
             addr: row.addr.to_string(),
             name,
@@ -147,6 +179,8 @@ where
             bytes_received: row.bytes_received,
             flows: row.flows,
             programs: row.programs,
+            top_programs,
+            more_programs,
             first_seen_ms: ledger.map(|l| ms(l.first_seen)),
             last_seen_ms: ledger.map(|l| ms(l.last_seen)),
         });

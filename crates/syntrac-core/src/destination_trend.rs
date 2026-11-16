@@ -73,6 +73,15 @@ pub trait DestinationTrendRepository {
         from: Timestamp,
         to: Timestamp,
     ) -> Result<Vec<DestinationProgram>, RepoError>;
+
+    /// The programs that talked to each of `addrs` over the hours in `[from, to]`, in ONE read (a page of the ranking needs
+    /// them all at once). One entry per (address, program); an address nobody talked to has none; any order.
+    fn programs_of_destinations(
+        &self,
+        addrs: &[IpAddr],
+        from: Timestamp,
+        to: Timestamp,
+    ) -> Result<Vec<(IpAddr, DestinationProgram)>, RepoError>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -121,6 +130,14 @@ pub fn rank_destinations(
     rows.sort_by(|a, b| value(b, order).cmp(&value(a, order)).then_with(|| a.addr.cmp(&b.addr)));
     rows.truncate(limit);
     rows
+}
+
+/// The `keep` biggest programs of one address (ranked as `rank_destination_programs`) and how many more there were.
+pub fn top_destination_programs(rows: Vec<DestinationProgram>, keep: usize) -> (Vec<DestinationProgram>, u32) {
+    let mut ranked = rank_destination_programs(rows);
+    let more = u32::try_from(ranked.len().saturating_sub(keep)).unwrap_or(u32::MAX);
+    ranked.truncate(keep);
+    (ranked, more)
 }
 
 /// The programs that talked to one address, most bytes first. A tie is broken by path, the unidentified bucket last.

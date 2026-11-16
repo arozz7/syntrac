@@ -30,8 +30,8 @@ pub use addr_class::{classify_addr, AddrClass};
 pub use context_run::{observe_context, ContextFailure, ContextPass, ContextSettings};
 pub use correlator::correlate;
 pub use destination_trend::{
-    new_destination_cutoff, rank_destination_programs, rank_destinations, select_new, AddressScope, DestinationOrder,
-    DestinationProgram, DestinationTotals, DestinationTrendRepository, NewDestination,
+    new_destination_cutoff, rank_destination_programs, rank_destinations, select_new, top_destination_programs,
+    AddressScope, DestinationOrder, DestinationProgram, DestinationTotals, DestinationTrendRepository, NewDestination,
 };
 pub use dns_names::{backfill_names, AddressName, DnsAnswerRow, NamesBackfill};
 pub use event::{EventCategory, EventEnvelope, EventPayload, NetAction, NetProtocol, Severity};
