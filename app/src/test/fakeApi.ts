@@ -407,6 +407,7 @@ export function findingRow(overrides: Partial<FindingView> = {}): FindingView {
     hits: 3,
     decidedAtMs: null,
     snoozedUntilMs: null,
+    folderScope: null,
     ...overrides,
   };
 }

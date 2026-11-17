@@ -125,3 +125,20 @@ fn an_empty_database_gives_an_empty_view() {
     assert!(view.findings.is_empty() && view.expectations.is_empty());
     assert_eq!((view.counts.open, view.detection), (0, None));
 }
+
+#[test]
+fn a_program_finding_offers_the_install_folder_as_a_scope_and_other_findings_do_not() {
+    let mut repo = InMemoryRepository::default();
+    let mut program = candidate(r"c:\users\someone\.cargo\bin\cargo.exe", Tier::Suspicious, 100);
+    program.dedupe_key = "new_program:cargo".into();
+    let mut other = candidate(r"c:\users\someone\.cargo\bin\cargo.exe", Tier::Suspicious, 200);
+    other.kind = "new_start_entry".into();
+    other.dedupe_key = "new_start_entry:cargo".into();
+    repo.apply_writes(&[FindingWrite::Insert(program), FindingWrite::Insert(other)]).unwrap();
+
+    let view = view(&repo, None);
+
+    let by_kind = |kind: &str| view.findings.iter().find(|f| f.kind == kind).unwrap();
+    assert_eq!(by_kind("new_program").folder_scope.as_deref(), Some(r"c:\users\someone\.cargo"));
+    assert_eq!(by_kind("new_start_entry").folder_scope, None);
+}

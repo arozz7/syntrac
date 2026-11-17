@@ -72,7 +72,8 @@ launch_interval_minutes = 10
 
 # Findings (docs/ALERTS-PLAN.md): the detect worker looks for what is new or unusual and keeps it as findings for the Findings tab.
 # A finding is evidence, never a verdict. OFF until you have read the backtest: the first time it runs is the moment "new" starts
-# counting, and everything that exists then counts as already here. Nothing it does leaves the machine.
+# counting, and everything that exists then counts as already here. Nothing it does leaves the machine. Run the backtest first:
+#   cargo run --release -p syntrac-store --example rehearse_detect -- <database> <work folder> 1 2 3 5
 detect_enabled = false
 detect_interval_minutes = 5
 # At most this many NEW findings per run; the rest are counted, most serious first.

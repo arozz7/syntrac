@@ -118,11 +118,15 @@ function FindingCard({ finding, onChanged }: { finding: FindingView; onChanged: 
   const [problem, setProblem] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
   const [note, setNote] = useState('');
+  const [wholeFolder, setWholeFolder] = useState(false);
   const [days, setDays] = useState('7');
   const tier = TIERS[finding.tier];
   const line = statusLine(finding);
 
-  const decide = async (decision: FindingDecision, options?: { days?: number; note?: string }) => {
+  const decide = async (
+    decision: FindingDecision,
+    options?: { days?: number; note?: string; scope?: 'this_folder' },
+  ) => {
     setBusy(true);
     setProblem(null);
     const outcome = await api.decideFinding(finding.id, decision, options);
@@ -165,7 +169,30 @@ function FindingCard({ finding, onChanged }: { finding: FindingView; onChanged: 
         </div>
       ) : asking ? (
         <div className="finding__actions">
-          <p className="muted">Only this kind of finding about this program is silenced; nothing wider.</p>
+          <p className="muted">Only this kind of finding is silenced, and only for what you choose here.</p>
+          {finding.folderScope !== null && (
+            <fieldset className="finding__scope">
+              <legend className="muted">What should this cover?</legend>
+              <label>
+                <input
+                  type="radio"
+                  name={`scope-${finding.id}`}
+                  checked={!wholeFolder}
+                  onChange={() => setWholeFolder(false)}
+                />{' '}
+                Only this program
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name={`scope-${finding.id}`}
+                  checked={wholeFolder}
+                  onChange={() => setWholeFolder(true)}
+                />{' '}
+                Everything below {finding.folderScope}
+              </label>
+            </fieldset>
+          )}
           <input
             type="text"
             className="field"
@@ -179,7 +206,13 @@ function FindingCard({ finding, onChanged }: { finding: FindingView; onChanged: 
             type="button"
             className="range__button"
             disabled={busy}
-            onClick={() => void decide('always_expected', note.trim() === '' ? undefined : { note: note.trim() })}
+            onClick={() => {
+              const options = {
+                ...(note.trim() === '' ? {} : { note: note.trim() }),
+                ...(wholeFolder && finding.folderScope !== null ? { scope: 'this_folder' as const } : {}),
+              };
+              void decide('always_expected', Object.keys(options).length === 0 ? undefined : options);
+            }}
           >
             Save as always expected
           </button>

@@ -32,7 +32,7 @@ fn admin() -> FindingsAdmin<InMemoryRepository, ManualClock> {
 }
 
 fn decide(admin: &impl FindingsControl, id: i64, decision: &str, days: Option<u32>, note: Option<&str>) -> Response {
-    admin.decide(id, decision, days, note)
+    admin.decide(id, decision, days, note, None)
 }
 
 fn error_text(response: Response) -> String {
@@ -139,8 +139,13 @@ fn service(findings: Option<Arc<dyn FindingsControl>>) -> impl Handler {
 fn the_pipe_handler_carries_findings_requests_to_the_admin_and_keeps_the_old_commands() {
     let handler = service(Some(Arc::new(admin())));
 
-    let decided =
-        handler.handle(Request::FindingDecide { id: 1, decision: "not_expected".into(), days: None, note: None });
+    let decided = handler.handle(Request::FindingDecide {
+        id: 1,
+        decision: "not_expected".into(),
+        days: None,
+        note: None,
+        scope: None,
+    });
 
     assert_eq!(decided, Response::Done);
     assert!(matches!(handler.handle(Request::Ping), Response::Pong { .. }));
@@ -153,4 +158,43 @@ fn without_findings_the_requests_say_they_are_not_available() {
     let response = handler.handle(Request::ExpectationRemove { id: 1 });
 
     assert!(error_text(response).contains("not available"));
+}
+
+fn program_admin(path: &str) -> FindingsAdmin<InMemoryRepository, ManualClock> {
+    let mut repo = InMemoryRepository::default();
+    repo.apply_writes(&[FindingWrite::Insert(candidate(path))]).unwrap();
+    FindingsAdmin::new(repo, ManualClock::new(Timestamp::from_micros(NOW)))
+}
+
+#[test]
+fn always_expected_for_the_folder_stores_the_install_folder_the_service_works_out_itself() {
+    let admin = program_admin(r"c:\users\someone\.cargo\bin\cargo.exe");
+
+    let response = admin.decide(1, "always_expected", None, Some("build tools"), Some("this_folder"));
+
+    assert_eq!(response, Response::Done);
+    let expectations = admin.with_repository(|repo| repo.expectations().unwrap());
+    assert_eq!(expectations[0].subject, r"folder:c:\users\someone\.cargo");
+    assert_eq!(expectations[0].kind, "new_program");
+}
+
+#[test]
+fn the_scope_defaults_to_this_item_and_an_unknown_or_unsuitable_scope_is_refused() {
+    let admin = program_admin(r"c:\users\someone\.cargo\bin\cargo.exe");
+    assert!(
+        error_text(admin.decide(1, "always_expected", None, None, Some("the_whole_disk"))).contains("Unknown scope")
+    );
+    assert!(admin.with_repository(|repo| repo.expectations().unwrap()).is_empty());
+
+    assert_eq!(admin.decide(1, "always_expected", None, None, None), Response::Done);
+    assert_eq!(
+        admin.with_repository(|repo| repo.expectations().unwrap())[0].subject,
+        r"c:\users\someone\.cargo\bin\cargo.exe"
+    );
+
+    // A finding with no install folder cannot be expected as a folder.
+    let drive = program_admin(r"c:\tool.exe");
+    assert!(
+        error_text(drive.decide(1, "always_expected", None, None, Some("this_folder"))).contains("no install folder")
+    );
 }

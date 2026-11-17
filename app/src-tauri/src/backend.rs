@@ -251,8 +251,9 @@ impl<C: Clock + Send + Sync> Backend<C> {
         decision: String,
         days: Option<u32>,
         note: Option<String>,
+        scope: Option<String>,
     ) -> Result<(), String> {
-        match self.write(&Request::FindingDecide { id, decision, days, note })? {
+        match self.write(&Request::FindingDecide { id, decision, days, note, scope })? {
             Response::Done => Ok(()),
             other => Err(unexpected(&other)),
         }

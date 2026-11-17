@@ -526,6 +526,8 @@ export interface FindingView {
   hits: number;
   decidedAtMs: number | null;
   snoozedUntilMs: number | null;
+  /** The install folder "always expected" could cover as a whole (program findings only); null when there is none to offer. */
+  folderScope: string | null;
 }
 
 /** Something the user said is expected: one kind of finding about exactly one subject. */

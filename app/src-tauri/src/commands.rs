@@ -126,9 +126,10 @@ pub async fn decide_finding(
     decision: String,
     days: Option<u32>,
     note: Option<String>,
+    scope: Option<String>,
 ) -> Result<WriteOutcome, ()> {
     let backend = Arc::clone(&backend);
-    let result = blocking(move || backend.decide_finding(id, decision, days, note).map(|()| None)).await;
+    let result = blocking(move || backend.decide_finding(id, decision, days, note, scope).map(|()| None)).await;
     Ok(WriteOutcome::from_result(result.unwrap_or_else(|| Err("The request could not be run.".to_owned()))))
 }
 

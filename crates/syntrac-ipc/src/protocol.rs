@@ -53,6 +53,10 @@ pub enum Request {
         days: Option<u32>,
         #[serde(default)]
         note: Option<String>,
+        /// For `always_expected`: `this_item` (the default) or `this_folder` (everything of that kind below the program's install
+        /// folder, which the service works out itself).
+        #[serde(default)]
+        scope: Option<String>,
     },
     /// Remove something the user said is expected.
     ExpectationRemove { id: i64 },

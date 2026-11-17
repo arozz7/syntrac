@@ -34,7 +34,7 @@ use syntrac_core::{
     Clock, EventRepository, MetricsRepository, MetricsSource, ProcessRepository, Retention, RollupRepository,
     RollupSettings, TelemetrySource,
 };
-use syntrac_core::{ContextSettings, Detector, IdentitySettings, LaunchSource, RefreshLimits};
+use syntrac_core::{ContextSettings, Detector, IdentitySettings, LaunchSource, NewThingsDetector, RefreshLimits};
 use syntrac_ipc::pipe::{PipeServer, PipeServerConfig};
 use syntrac_ipc::protocol::{Request, Response};
 use syntrac_ipc::serve::Handler;
@@ -374,9 +374,15 @@ fn start_launch_worker(options: &HostOptions, stop: &Arc<AtomicBool>) -> Option<
     }
 }
 
-/// The rules that raise findings. None yet in this build step: F2 adds the "new thing" rules, F3 the usage rules.
-fn detectors() -> Vec<Box<dyn Detector + Send>> {
-    Vec::new()
+/// The rules that raise findings: the "new thing" rules (F2), each reading through its own database connection. F3 adds the usage rules.
+fn detectors(database_path: &Path) -> Vec<Box<dyn Detector + Send>> {
+    match SqliteStore::open(database_path) {
+        Ok(store) => vec![Box::new(NewThingsDetector::new(store))],
+        Err(error) => {
+            warn!(%error, "The detection rules could not open the database; detection runs without rules");
+            Vec::new()
+        }
+    }
 }
 
 /// Starts the detect worker (findings: what is new, what is unusual) on its own thread with its own database connection. Off by
@@ -398,7 +404,7 @@ fn start_detect_worker(options: &HostOptions, stop: &Arc<AtomicBool>) -> Option<
         interval: Duration::from_secs(config.detect_interval_minutes * 60),
         reconcile: ReconcileSettings { max_new: config.detect_max_new_per_run },
     };
-    let worker = DetectWorker::new(store, detectors(), SystemClock, settings);
+    let worker = DetectWorker::new(store, detectors(&options.database_path), SystemClock, settings);
     let stop = Arc::clone(stop);
     let spawned = std::thread::Builder::new()
         .name("syntrac-detect".into())

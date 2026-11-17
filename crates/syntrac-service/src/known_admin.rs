@@ -131,8 +131,8 @@ where
                 Some(owner) => owner.refresh(),
                 None => refuse("Owner data is not available in this service."),
             },
-            Request::FindingDecide { id, decision, days, note } => match &self.findings {
-                Some(findings) => findings.decide(id, &decision, days, note.as_deref()),
+            Request::FindingDecide { id, decision, days, note, scope } => match &self.findings {
+                Some(findings) => findings.decide(id, &decision, days, note.as_deref(), scope.as_deref()),
                 None => refuse("Findings are not available in this service."),
             },
             Request::ExpectationRemove { id } => match &self.findings {

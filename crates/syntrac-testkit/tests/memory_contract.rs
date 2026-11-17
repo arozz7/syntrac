@@ -98,3 +98,8 @@ fn in_memory_repository_satisfies_the_install_contract() {
 fn in_memory_repository_satisfies_the_findings_contract() {
     syntrac_testkit::findings_contract::findings_contract(InMemoryRepository::default);
 }
+
+#[test]
+fn in_memory_repository_satisfies_the_identity_change_contract() {
+    syntrac_testkit::identity_contract::identity_change_contract(InMemoryRepository::default);
+}

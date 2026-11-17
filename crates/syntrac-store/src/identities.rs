@@ -4,8 +4,9 @@
 use rusqlite::{params, OptionalExtension, Row};
 use syntrac_core::rollup::executable_key;
 use syntrac_core::{
-    Executable, FileFacts, FileStamp, IdentityEntry, IdentityFailure, IdentityRecord, IdentityRepository,
-    InspectErrorKind, LedgerEntry, RepoError, Signature, SignatureKind, SignatureStatus, Timestamp, VersionInfo,
+    ChangeFacts, Executable, FileFacts, FileStamp, IdentityChange, IdentityChangeRepository, IdentityEntry,
+    IdentityFailure, IdentityRecord, IdentityRepository, InspectErrorKind, LedgerEntry, RepoError, Signature,
+    SignatureKind, SignatureStatus, Timestamp, VersionInfo,
 };
 
 use crate::codec::{to_i64, to_u64};
@@ -116,6 +117,37 @@ impl IdentityRepository for SqliteStore {
 
         let facts = record.facts.as_ref();
         let failure = record.failure.as_ref();
+        // New CONTENT is a change worth remembering: both readings must have been hashed (docs/ALERTS-PLAN.md, F2).
+        let old: Option<(Option<String>, Option<String>, Option<String>)> = self
+            .conn
+            .query_row(
+                "SELECT sha256, signer, signature_status FROM executable_identity WHERE exe_id = ?1",
+                [exe_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()
+            .map_err(backend)?;
+        if let (Some((Some(old_sha), old_signer, old_status)), Some(new)) = (old, facts) {
+            if new.sha256.as_deref().is_some_and(|new_sha| new_sha != old_sha) {
+                self.conn
+                    .execute(
+                        "INSERT INTO identity_changes
+                            (exe_id, old_sha256, old_signer, old_status, new_sha256, new_signer, new_status, changed_at)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                        params![
+                            exe_id,
+                            old_sha,
+                            old_signer,
+                            old_status,
+                            new.sha256,
+                            new.signature.signer,
+                            new.signature.status.as_str(),
+                            record.inspected_at.unwrap_or(record.last_attempt).as_micros()
+                        ],
+                    )
+                    .map_err(backend)?;
+            }
+        }
         self.conn
             .execute(
                 "INSERT OR REPLACE INTO executable_identity
@@ -157,5 +189,42 @@ impl IdentityRepository for SqliteStore {
             Some(row) => Ok(entry_from(row)?.record),
             None => Ok(None),
         }
+    }
+}
+
+fn change_side(row: &Row<'_>, at: usize) -> Result<ChangeFacts, RepoError> {
+    let status: Option<String> = row.get(at + 2).map_err(backend)?;
+    Ok(ChangeFacts {
+        sha256: row.get(at).map_err(backend)?,
+        signer: row.get(at + 1).map_err(backend)?,
+        status: match status {
+            None => None,
+            Some(text) => Some(SignatureStatus::parse(&text).ok_or_else(|| decode_error("signature status", &text))?),
+        },
+    })
+}
+
+impl IdentityChangeRepository for SqliteStore {
+    fn identity_changes_since(&self, since: Timestamp) -> Result<Vec<IdentityChange>, RepoError> {
+        let mut statement = self
+            .conn
+            .prepare(
+                "SELECT e.path_key, e.path, c.old_sha256, c.old_signer, c.old_status,
+                        c.new_sha256, c.new_signer, c.new_status, c.changed_at
+                 FROM identity_changes c JOIN executables e ON e.id = c.exe_id
+                 WHERE c.changed_at >= ?1 ORDER BY c.changed_at, c.id",
+            )
+            .map_err(backend)?;
+        let mut rows = statement.query([since.as_micros()]).map_err(backend)?;
+        let mut changes = Vec::new();
+        while let Some(row) = rows.next().map_err(backend)? {
+            changes.push(IdentityChange {
+                exe: Executable { key: row.get(0).map_err(backend)?, path: row.get(1).map_err(backend)? },
+                old: change_side(row, 2)?,
+                new: change_side(row, 5)?,
+                at: Timestamp::from_micros(row.get(8).map_err(backend)?),
+            });
+        }
+        Ok(changes)
     }
 }

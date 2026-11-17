@@ -435,6 +435,23 @@ pub const MIGRATIONS: &[&str] = &[
         last_error    TEXT
     );
     ",
+    // 14: when a program's file is found with different CONTENT (docs/ALERTS-PLAN.md, F2). Additive. `save_identity` adds a row when
+    // both the old and the new reading were hashed and the hashes differ; both sides keep the hash, the signer and the signature
+    // status, so "a new version by the same maker" can be told from "the signer changed". Permanent.
+    "
+    CREATE TABLE identity_changes (
+        id          INTEGER PRIMARY KEY,
+        exe_id      INTEGER NOT NULL,
+        old_sha256  TEXT,
+        old_signer  TEXT,
+        old_status  TEXT,
+        new_sha256  TEXT,
+        new_signer  TEXT,
+        new_status  TEXT,
+        changed_at  INTEGER NOT NULL
+    );
+    CREATE INDEX idx_identity_changes_at ON identity_changes (changed_at);
+    ",
 ];
 
 /// The migration (1-based number) that rewrites every table. An existing database gets a backup copy before it is applied

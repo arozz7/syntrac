@@ -2,7 +2,8 @@
 //! these, so the two cannot drift apart. The last tests run whole detection runs through the repositories.
 
 use syntrac_core::findings::{
-    apply_decision, Candidate, Decision, FindingStatus, FindingWrite, NewExpectation, ReconcileSettings, Tier,
+    apply_decision, Candidate, Decision, ExpectationScope, FindingStatus, FindingWrite, NewExpectation,
+    ReconcileSettings, Tier,
 };
 use syntrac_core::{
     run_detection, DetectError, DetectionStateRepository, Detector, ExpectationRepository, FindingRepository,
@@ -230,7 +231,9 @@ fn a_run_stores_then_touches_and_expectations_silence_it<R: FindingsSubject>(mut
 
     // The user says a.exe is always expected: it is marked and an expectation is stored, and the run stops raising it.
     let a = repo.findings_for_keys(&["new_program:a.exe".into()]).unwrap().remove(0);
-    let effect = apply_decision(&a, &Decision::AlwaysExpected { note: None }, at(2500)).unwrap();
+    let effect =
+        apply_decision(&a, &Decision::AlwaysExpected { note: None, scope: ExpectationScope::ThisItem }, at(2500))
+            .unwrap();
     repo.set_status(a.id, effect.status, at(2500), effect.snoozed_until).unwrap();
     repo.add_expectation(&effect.new_expectation.unwrap(), at(2500)).unwrap();
 

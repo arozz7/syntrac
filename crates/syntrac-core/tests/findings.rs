@@ -1,8 +1,8 @@
 //! Findings: what a detector found, how repeats and expectations are handled, and what each decision of the user does. All pure.
 
 use syntrac_core::findings::{
-    apply_decision, reconcile, Candidate, Decision, DecisionEffect, Expectation, Finding, FindingStatus, FindingWrite,
-    ReconcileSettings, Tier,
+    apply_decision, folder_scope_of, reconcile, Candidate, Decision, DecisionEffect, Expectation, ExpectationScope,
+    Finding, FindingStatus, FindingWrite, ReconcileSettings, Tier,
 };
 use syntrac_core::Timestamp;
 
@@ -215,7 +215,10 @@ fn expected_this_time_only_changes_the_status() {
 
 #[test]
 fn always_expected_also_creates_an_expectation_for_the_kind_and_subject_of_the_finding() {
-    let result = effect(Decision::AlwaysExpected { note: Some("my backup".into()) }, FindingStatus::Open);
+    let result = effect(
+        Decision::AlwaysExpected { note: Some("my backup".into()), scope: ExpectationScope::ThisItem },
+        FindingStatus::Open,
+    );
 
     assert_eq!(result.status, FindingStatus::Expected);
     let expectation = result.new_expectation.expect("an expectation");
@@ -258,13 +261,13 @@ fn a_note_is_cleaned_and_limited() {
     let long = "x".repeat(500);
     assert!(apply_decision(
         &finding(7, "k", FindingStatus::Open),
-        &Decision::AlwaysExpected { note: Some(long) },
+        &Decision::AlwaysExpected { note: Some(long), scope: ExpectationScope::ThisItem },
         at(10)
     )
     .is_err());
     let cleaned = apply_decision(
         &finding(7, "k", FindingStatus::Open),
-        &Decision::AlwaysExpected { note: Some("  fine\u{0007} note ".into()) },
+        &Decision::AlwaysExpected { note: Some("  fine\u{0007} note ".into()), scope: ExpectationScope::ThisItem },
         at(10),
     )
     .unwrap();
@@ -287,4 +290,83 @@ fn status_and_tier_names_round_trip_and_unknown_names_are_refused() {
     }
     assert_eq!(FindingStatus::parse("bogus"), None);
     assert_eq!(Tier::parse("malicious"), None);
+}
+
+// ---- a folder scope (everything under a program's install folder)
+
+fn program_finding(kind: &str, subject: &str) -> Finding {
+    Finding { kind: kind.into(), subject: subject.into(), ..finding(7, "k", FindingStatus::Open) }
+}
+
+fn folder_expectation(root: &str) -> Expectation {
+    expectation("new_program", &format!("folder:{root}"))
+}
+
+#[test]
+fn a_folder_expectation_covers_programs_below_that_folder_of_its_own_kind_and_nothing_else() {
+    let root = r"c:\users\someone\.cargo";
+    let result = run(
+        vec![
+            candidate("new_program", r"c:\users\someone\.cargo\bin\cargo.exe", Tier::Unusual),
+            candidate("new_program", r"c:\users\someone\.cargo\registry\deep\x.exe", Tier::Unusual),
+            candidate("new_program", r"c:\users\someone\.cargo2\bin\y.exe", Tier::Unusual),
+            candidate("new_program", r"c:\users\someone\other\z.exe", Tier::Unusual),
+            candidate("new_start_entry", r"c:\users\someone\.cargo\bin\cargo.exe", Tier::Unusual),
+        ],
+        &[],
+        &[folder_expectation(root)],
+    );
+
+    let raised: Vec<String> = result
+        .writes
+        .iter()
+        .filter_map(|write| match write {
+            FindingWrite::Insert(c) => Some(format!("{}:{}", c.kind, c.subject)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        raised,
+        vec![
+            r"new_program:c:\users\someone\.cargo2\bin\y.exe",
+            r"new_program:c:\users\someone\other\z.exe",
+            r"new_start_entry:c:\users\someone\.cargo\bin\cargo.exe",
+        ],
+        "a folder named like the start of another is not below it, and another kind is not covered"
+    );
+    assert_eq!(result.suppressed, 2);
+}
+
+#[test]
+fn always_expected_for_the_folder_stores_the_install_folder_of_the_program() {
+    let finding = program_finding("new_program", r"c:\users\someone\.cargo\bin\cargo.exe");
+
+    let effect =
+        apply_decision(&finding, &Decision::AlwaysExpected { note: None, scope: ExpectationScope::ThisFolder }, at(10))
+            .unwrap();
+
+    let expectation = effect.new_expectation.expect("an expectation");
+    assert_eq!(
+        (expectation.kind.as_str(), expectation.subject.as_str()),
+        ("new_program", r"folder:c:\users\someone\.cargo")
+    );
+    assert_eq!(effect.status, FindingStatus::Expected);
+}
+
+#[test]
+fn a_folder_scope_is_only_for_programs_and_never_for_a_drive_or_a_path_with_no_folder() {
+    let folder = Decision::AlwaysExpected { note: None, scope: ExpectationScope::ThisFolder };
+    assert!(apply_decision(&program_finding("new_start_entry", r"c:\a\b.exe"), &folder, at(10)).is_err());
+    assert!(apply_decision(&program_finding("new_program", r"c:\tool.exe"), &folder, at(10)).is_err(), "a drive root");
+    assert!(apply_decision(&program_finding("new_program", "tool.exe"), &folder, at(10)).is_err(), "no folder");
+}
+
+#[test]
+fn the_folder_a_finding_could_be_expected_for_is_offered_only_where_it_makes_sense() {
+    assert_eq!(
+        folder_scope_of("new_program", r"c:\program files\vendor\app\tool.exe").as_deref(),
+        Some(r"c:\program files\vendor")
+    );
+    assert_eq!(folder_scope_of("new_program", r"c:\tool.exe"), None);
+    assert_eq!(folder_scope_of("changed_file", r"c:\a\b\c.exe"), None);
 }

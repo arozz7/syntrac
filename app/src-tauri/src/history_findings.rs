@@ -5,7 +5,7 @@
 //! The app only reads. A decision or removing an expectation goes to the service over the pipe, which checks it.
 
 use serde::Serialize;
-use syntrac_core::findings::{Expectation, Finding, FindingStatus};
+use syntrac_core::findings::{folder_scope_of, Expectation, Finding, FindingStatus};
 use syntrac_core::{DetectionStateRepository, ExpectationRepository, FindingRepository, RepoError};
 
 use crate::history::ms;
@@ -32,6 +32,8 @@ pub struct FindingView {
     pub hits: u32,
     pub decided_at_ms: Option<i64>,
     pub snoozed_until_ms: Option<i64>,
+    /// The install folder "always expected" could cover as a whole (a program finding only); the service works it out again itself.
+    pub folder_scope: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -79,7 +81,9 @@ pub struct FindingsView {
 }
 
 fn finding_view(finding: Finding) -> FindingView {
+    let folder_scope = folder_scope_of(&finding.kind, &finding.subject);
     FindingView {
+        folder_scope,
         id: finding.id,
         kind: finding.kind,
         subject: finding.subject,

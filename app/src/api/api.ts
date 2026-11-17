@@ -54,7 +54,7 @@ export interface Api {
   decideFinding(
     id: number,
     decision: FindingDecision,
-    options?: { days?: number; note?: string },
+    options?: { days?: number; note?: string; scope?: 'this_item' | 'this_folder' },
   ): Promise<WriteOutcome>;
   /** Asks the service to remove something the user said is expected. Never throws. */
   removeExpectation(id: number): Promise<WriteOutcome>;
@@ -141,7 +141,7 @@ export const tauriApi: Api = {
   topOwners: (rangeSecs, limit, allAddresses) => data<OwnersView>('get_top_owners', { rangeSecs, limit, allAddresses }),
   findings: (status) => data<FindingsView>('get_findings', { status, limit: undefined }),
   decideFinding: (id, decision, options) =>
-    write('decide_finding', { id, decision, days: options?.days, note: options?.note }),
+    write('decide_finding', { id, decision, days: options?.days, note: options?.note, scope: options?.scope }),
   removeExpectation: (id) => write('remove_expectation', { id }),
   programDestinations: (rangeSecs, path, limit, allAddresses) =>
     data<ProgramDestinationsView>('get_program_destinations', { rangeSecs, path, limit, allAddresses }),

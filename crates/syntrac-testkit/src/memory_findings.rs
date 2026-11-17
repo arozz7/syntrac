@@ -15,6 +15,8 @@ pub(crate) struct FindingsState {
     expectations: Vec<Expectation>,
     expectation_issued: i64,
     detection: Option<DetectionState>,
+    /// Changes of a file's content, recorded by `save_identity` (see `memory_identity.rs`).
+    pub(crate) identity_changes: Vec<syntrac_core::IdentityChange>,
 }
 
 impl FindingRepository for InMemoryRepository {

@@ -22,6 +22,7 @@ pub mod launch_target;
 pub mod launchers;
 pub mod metrics;
 pub mod mini_xml;
+pub mod new_things;
 pub mod owner_dataset;
 pub mod owner_refresh;
 pub mod owner_totals;
@@ -60,8 +61,9 @@ pub use exe_identity::{
 };
 pub use exe_location::{classify_location, install_root, product_key, LocationClass, ProductKey};
 pub use findings::{
-    apply_decision, reconcile, Candidate, Decision, DecisionEffect, DecisionError, Expectation, Finding, FindingStatus,
-    FindingWrite, NewExpectation, ReconcileSettings, Reconciled, Tier,
+    apply_decision, folder_scope_of, reconcile, Candidate, Decision, DecisionEffect, DecisionError, Expectation,
+    ExpectationScope, Finding, FindingStatus, FindingWrite, NewExpectation, ReconcileSettings, Reconciled, Tier,
+    FOLDER_SCOPE_PREFIX,
 };
 pub use findings_run::{
     clean_candidate, run_detection, DetectError, DetectionState, DetectionStateRepository, Detector,
@@ -86,6 +88,10 @@ pub use launchers::{
 pub use metrics::{
     CpuBreakdown, CpuContribution, MetricsSample, OtherProcesses, ProcessMetric, PurgeCounts, SystemMetrics,
     SystemPoint,
+};
+pub use new_things::{
+    new_thing_candidates, ChangeFacts, IdentityChange, IdentityChangeRepository, NewThingsDetector, NewThingsFacts,
+    MAX_NEW_PER_RULE,
 };
 pub use owner_dataset::{addr_key, lookup_in, parse_ip2asn, Owner, OwnerRange, ParsedDataset};
 pub use owner_refresh::{

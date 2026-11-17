@@ -7,7 +7,7 @@
 
 use std::sync::{Mutex, PoisonError};
 
-use syntrac_core::findings::{apply_decision, Decision};
+use syntrac_core::findings::{apply_decision, Decision, ExpectationScope};
 use syntrac_core::{Clock, ExpectationRepository, FindingRepository};
 use syntrac_ipc::protocol::Response;
 use tracing::{info, warn};
@@ -15,7 +15,7 @@ use tracing::{info, warn};
 /// What the pipe handler needs from the findings.
 pub trait FindingsControl: Send + Sync {
     /// Applies the user's decision to a finding. `decision` is one of the names in `Request::FindingDecide`.
-    fn decide(&self, id: i64, decision: &str, days: Option<u32>, note: Option<&str>) -> Response;
+    fn decide(&self, id: i64, decision: &str, days: Option<u32>, note: Option<&str>, scope: Option<&str>) -> Response;
     fn remove_expectation(&self, id: i64) -> Response;
 }
 
@@ -28,10 +28,15 @@ fn refuse(message: impl Into<String>) -> Response {
     Response::Error { message: message.into() }
 }
 
-fn parse(decision: &str, days: Option<u32>, note: Option<&str>) -> Result<Decision, String> {
+fn parse(decision: &str, days: Option<u32>, note: Option<&str>, scope: Option<&str>) -> Result<Decision, String> {
+    let scope = match scope {
+        None | Some("this_item") => ExpectationScope::ThisItem,
+        Some("this_folder") => ExpectationScope::ThisFolder,
+        Some(other) => return Err(format!("Unknown scope: {other}.")),
+    };
     match decision {
         "expected_this_time" => Ok(Decision::ExpectedThisTime),
-        "always_expected" => Ok(Decision::AlwaysExpected { note: note.map(str::to_owned) }),
+        "always_expected" => Ok(Decision::AlwaysExpected { note: note.map(str::to_owned), scope }),
         "not_expected" => Ok(Decision::NotExpected),
         "reopen" => Ok(Decision::Reopen),
         "snooze" => {
@@ -57,8 +62,8 @@ where
     R: FindingRepository + ExpectationRepository + Send,
     C: Clock + Send + Sync,
 {
-    fn decide(&self, id: i64, decision: &str, days: Option<u32>, note: Option<&str>) -> Response {
-        let decision = match parse(decision, days, note) {
+    fn decide(&self, id: i64, decision: &str, days: Option<u32>, note: Option<&str>, scope: Option<&str>) -> Response {
+        let decision = match parse(decision, days, note, scope) {
             Ok(decision) => decision,
             Err(message) => return refuse(message),
         };

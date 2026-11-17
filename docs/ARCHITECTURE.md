@@ -172,7 +172,7 @@ stays quiet until it ends, not-expected stays visible) and inserts the rest, mos
 `detect_state`, schema v13) are behind `FindingRepository`, `ExpectationRepository` and `DetectionStateRepository` with one shared contract suite. The user's
 decisions (`expected_this_time`, `always_expected`, `not_expected`, `snooze`, `reopen`) and removing an expectation reach the service over the pipe
 (`FindingDecide`, `ExpectationRemove`); the service builds any expectation from the finding IT stored, never from what the client names. The app reads the
-tables read-only (`history_findings.rs`) and shows the Findings tab. No detectors ship in this step (F2 adds the "new thing" rules, F3 the usage rules).
+tables read-only (`history_findings.rs`) and shows the Findings tab. The first detector is `NewThingsDetector` (`syntrac-core/src/new_things.rs`, F2): it loads the programs, start entries, accounts, known products and file changes through read ports and applies four pure rules (new program, new start entry, changed file, new account), each limited to what appeared AFTER detection was first switched on. A new version of a product already here (same maker, same install folder) is an update, not a new program; a new version by the same signer is not a changed file. F3 adds the usage rules. An expectation covers exactly one subject, or (when the user chose "everything below this folder") one install folder.
 
 ## Install records (where a program came from)
 

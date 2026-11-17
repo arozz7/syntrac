@@ -583,3 +583,12 @@
   align-items: center;
   gap: 0.5rem;
 }
+
+.finding__scope {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.25rem 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+}

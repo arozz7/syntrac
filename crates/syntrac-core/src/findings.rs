@@ -7,10 +7,14 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::clean_text::clean_text;
+use crate::exe_location::install_root;
 use crate::time::Timestamp;
 
 /// Longest note the user can attach to an expectation.
 pub const MAX_NOTE_CHARS: usize = 200;
+
+/// An expectation whose subject starts with this covers every finding of its kind whose subject is below the folder after it.
+pub const FOLDER_SCOPE_PREFIX: &str = "folder:";
 
 const DAY_MICROS: i64 = 86_400 * 1_000_000;
 const MAX_SNOOZE_DAYS: u32 = 365;
@@ -191,7 +195,7 @@ pub fn reconcile(
     let mut inserts: Vec<Candidate> = Vec::new();
 
     for candidate in candidates {
-        if expectations.iter().any(|e| e.kind == candidate.kind && e.subject == candidate.subject) {
+        if expectations.iter().any(|e| covers(e, &candidate)) {
             result.suppressed += 1;
             continue;
         }
@@ -222,6 +226,36 @@ pub fn reconcile(
     result
 }
 
+/// Whether an expectation covers a candidate: the same kind and exactly the same subject, or (a folder expectation the user chose)
+/// the same kind and a subject below that folder.
+fn covers(expectation: &Expectation, candidate: &Candidate) -> bool {
+    if expectation.kind != candidate.kind {
+        return false;
+    }
+    match expectation.subject.strip_prefix(FOLDER_SCOPE_PREFIX) {
+        Some(root) => candidate.subject.strip_prefix(root).is_some_and(|rest| rest.starts_with('\\')),
+        None => expectation.subject == candidate.subject,
+    }
+}
+
+/// The folder a finding could be expected for as a whole: the install folder of the program of a `new_program` finding, never a
+/// drive root. `None` where it makes no sense (other kinds, a path with no folder).
+pub fn folder_scope_of(kind: &str, subject: &str) -> Option<String> {
+    if kind != "new_program" {
+        return None;
+    }
+    install_root(subject).filter(|root| !root.ends_with('\\'))
+}
+
+/// What an "always expected" covers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExpectationScope {
+    /// Exactly this finding's subject (the default, the narrowest).
+    ThisItem,
+    /// Every finding of this kind below the program's install folder (see `folder_scope_of`).
+    ThisFolder,
+}
+
 /// What the user can do with a finding.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Decision {
@@ -229,6 +263,7 @@ pub enum Decision {
     /// Expected every time, for this kind of finding about this subject.
     AlwaysExpected {
         note: Option<String>,
+        scope: ExpectationScope,
     },
     NotExpected,
     Snooze {
@@ -263,7 +298,7 @@ pub fn apply_decision(finding: &Finding, decision: &Decision, now: Timestamp) ->
             let until = Timestamp::from_micros(now.as_micros().saturating_add(i64::from(*days) * DAY_MICROS));
             Ok(DecisionEffect { status: FindingStatus::Snoozed, snoozed_until: Some(until), new_expectation: None })
         }
-        Decision::AlwaysExpected { note } => {
+        Decision::AlwaysExpected { note, scope } => {
             let note = match note.as_deref().map(str::trim).filter(|text| !text.is_empty()) {
                 None => None,
                 Some(text) if text.chars().count() > MAX_NOTE_CHARS => {
@@ -271,12 +306,23 @@ pub fn apply_decision(finding: &Finding, decision: &Decision, now: Timestamp) ->
                 }
                 Some(text) => clean_text(text, MAX_NOTE_CHARS),
             };
+            let subject = match scope {
+                ExpectationScope::ThisItem => finding.subject.clone(),
+                ExpectationScope::ThisFolder => match folder_scope_of(&finding.kind, &finding.subject) {
+                    Some(root) => format!("{FOLDER_SCOPE_PREFIX}{root}"),
+                    None => {
+                        return Err(DecisionError(
+                            "That finding has no install folder that could be expected as a whole.".into(),
+                        ));
+                    }
+                },
+            };
             Ok(DecisionEffect {
                 status: FindingStatus::Expected,
                 snoozed_until: None,
                 new_expectation: Some(NewExpectation {
                     kind: finding.kind.clone(),
-                    subject: finding.subject.clone(),
+                    subject,
                     note,
                     source_finding: Some(finding.id),
                     ceiling: None,

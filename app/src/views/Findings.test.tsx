@@ -106,11 +106,35 @@ describe('Findings: teaching SYNTRAC what is expected', () => {
 
     await userEvent.click(within(first).getByRole('button', { name: 'Always expected' }));
     expect(api.decideFinding).not.toHaveBeenCalled();
-    expect(within(first).getByText(/only this kind of finding about this program/i)).toBeTruthy();
+    expect(within(first).getByText(/only this kind of finding is silenced/i)).toBeTruthy();
     await userEvent.type(within(first).getByRole('textbox', { name: /note/i }), 'my backup tool');
     await userEvent.click(within(first).getByRole('button', { name: 'Save as always expected' }));
 
     expect(api.decideFinding).toHaveBeenCalledWith(1, 'always_expected', { note: 'my backup tool' });
+  });
+
+  it('"Always expected" can cover everything in the program\'s folder, naming that folder first', async () => {
+    const withFolder = findingRow({ folderScope: 'c:\\users\\someone\\.cargo' });
+    const api = show(makeFakeApi({ findings: vi.fn(async () => ok(findingsView({ findings: [withFolder] }))) }));
+    await screen.findByText('New program tool.exe');
+    const first = card('New program tool.exe');
+
+    await userEvent.click(within(first).getByRole('button', { name: 'Always expected' }));
+    expect(within(first).getByRole('radio', { name: /only this program/i })).toHaveProperty('checked', true);
+    await userEvent.click(within(first).getByRole('radio', { name: /everything below c:\\users\\someone\\.cargo/i }));
+    await userEvent.click(within(first).getByRole('button', { name: 'Save as always expected' }));
+
+    expect(api.decideFinding).toHaveBeenCalledWith(1, 'always_expected', { scope: 'this_folder' });
+  });
+
+  it('offers no folder choice when the finding has no folder to offer', async () => {
+    show();
+    await screen.findByText('New program tool.exe');
+    const first = card('New program tool.exe');
+
+    await userEvent.click(within(first).getByRole('button', { name: 'Always expected' }));
+
+    expect(within(first).queryByRole('radio')).toBeNull();
   });
 
   it('"Always expected" can be cancelled without sending anything', async () => {

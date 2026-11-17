@@ -170,6 +170,14 @@ decided (`decided_at`, `snoozed_until`). `expectations`: what the user said is e
 rules count only what came after), `last_run_at` and `last_error`. Permanent: the purge of detail never touches them. Written only by the service (the app asks
 through the pipe). Plan: `docs/ALERTS-PLAN.md`.
 
+## File changes (v14)
+
+`identity_changes` (migration v14, additive): when a program's file is found with different CONTENT. `save_identity` adds a row when both the old and the new
+reading were hashed and the hashes differ; each row keeps both sides (`old_`/`new_` `sha256`, `signer`, `status`) and `changed_at` (when the new content was read), so "a new version
+by the same maker" can be told from "the signer changed". A look that failed, or a file too large to hash, adds nothing. Permanent. The rules that read it: `docs/ALERTS-PLAN.md`, F2.
+
+A folder expectation (F2) is an `expectations` row whose `subject` is `folder:<install folder>`: it covers findings of that `kind` whose subject is below that folder.
+
 ## Retention
 
 `Retention::purge_before(cutoff)` removes events, flows, metrics older than the cutoff, and ended processes that ended

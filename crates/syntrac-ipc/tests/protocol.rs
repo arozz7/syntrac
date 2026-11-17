@@ -243,7 +243,7 @@ fn the_owner_data_report_round_trips() {
 
 #[test]
 fn deciding_about_a_finding_names_it_by_id_with_a_decision_and_optional_days_and_note() {
-    let request = Request::FindingDecide { id: 4, decision: "snooze".into(), days: Some(7), note: None };
+    let request = Request::FindingDecide { id: 4, decision: "snooze".into(), days: Some(7), note: None, scope: None };
 
     let line = encode_request(&request);
 
@@ -260,7 +260,10 @@ fn deciding_about_a_finding_names_it_by_id_with_a_decision_and_optional_days_and
 fn days_and_note_may_be_left_out_of_a_decision() {
     let decoded = decode_request(br#"{"request":"finding_decide","id":4,"decision":"not_expected"}"#).unwrap();
 
-    assert_eq!(decoded, Request::FindingDecide { id: 4, decision: "not_expected".into(), days: None, note: None });
+    assert_eq!(
+        decoded,
+        Request::FindingDecide { id: 4, decision: "not_expected".into(), days: None, note: None, scope: None }
+    );
 }
 
 #[test]
@@ -271,4 +274,23 @@ fn removing_an_expectation_names_it_by_id_and_a_decision_without_its_fields_is_m
     assert_eq!(decode_request(encode_request(&request).as_bytes()).unwrap(), request);
     assert!(matches!(decode_request(br#"{"request":"finding_decide","id":4}"#), Err(ProtocolError::Malformed(_))));
     assert!(matches!(decode_request(br#"{"request":"expectation_remove"}"#), Err(ProtocolError::Malformed(_))));
+}
+
+#[test]
+fn an_always_expected_decision_may_name_its_scope() {
+    let decoded = decode_request(
+        br#"{"request":"finding_decide","id":4,"decision":"always_expected","scope":"this_folder","note":"build tools"}"#,
+    )
+    .unwrap();
+
+    assert_eq!(
+        decoded,
+        Request::FindingDecide {
+            id: 4,
+            decision: "always_expected".into(),
+            days: None,
+            note: Some("build tools".into()),
+            scope: Some("this_folder".into())
+        }
+    );
 }

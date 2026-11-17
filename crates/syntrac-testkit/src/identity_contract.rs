@@ -379,3 +379,114 @@ fn a_look_cut_short_by_a_stop_is_not_saved_and_ends_the_pass<R: IdentitySubject>
     assert_eq!(later.inspected, 2, "the next pass looks again at both");
     assert_eq!(repo.identity(A).unwrap().unwrap().failure, None);
 }
+
+// ---- the changes of a file's content (docs/ALERTS-PLAN.md, F2)
+
+use syntrac_core::{ChangeFacts, Executable, IdentityChangeRepository, IdentityRecord};
+
+pub trait IdentityChangeSubject: IdentitySubject + IdentityChangeRepository {}
+impl<T> IdentityChangeSubject for T where T: IdentitySubject + IdentityChangeRepository {}
+
+pub fn identity_change_contract<R: IdentityChangeSubject>(make: impl Fn() -> R) {
+    nothing_has_changed_in_an_empty_database(make());
+    only_new_content_is_a_change_not_the_first_reading_or_the_same_content(make());
+    a_change_keeps_both_sides_and_when_the_new_content_was_read(make());
+    a_failed_look_or_content_that_could_not_be_hashed_is_not_a_change(make());
+    changes_survive_the_purge_of_detail(make());
+}
+
+fn record(path: &str, facts: Option<FileFacts>, at: Timestamp) -> IdentityRecord {
+    IdentityRecord {
+        exe: Executable::from_path(path).unwrap(),
+        facts,
+        inspected_at: Some(at),
+        last_attempt: at,
+        failure: None,
+    }
+}
+
+fn signed(sha: Option<&str>, signer: &str, status: SignatureStatus) -> FileFacts {
+    FileFacts {
+        stamp: FileStamp { size: 10, modified: Some(t(0, 0)) },
+        sha256: sha.map(str::to_owned),
+        signature: Signature { status, signer: Some(signer.to_owned()), ..Signature::default() },
+        ..FileFacts::default()
+    }
+}
+
+fn known_program<R: IdentityChangeSubject>() -> impl Fn(&mut R) {
+    |repo| {
+        run_in_hour(repo, 10, A, 0);
+        roll_through(repo, 5);
+    }
+}
+
+fn nothing_has_changed_in_an_empty_database<R: IdentityChangeSubject>(repo: R) {
+    assert!(repo.identity_changes_since(t(0, 0)).unwrap().is_empty());
+}
+
+fn only_new_content_is_a_change_not_the_first_reading_or_the_same_content<R: IdentityChangeSubject>(mut repo: R) {
+    known_program()(&mut repo);
+
+    repo.save_identity(&record(A, Some(signed(Some("aa"), "Acme", SignatureStatus::Valid)), t(1, 0))).unwrap();
+    assert!(repo.identity_changes_since(t(0, 0)).unwrap().is_empty(), "the first reading is not a change");
+
+    repo.save_identity(&record(A, Some(signed(Some("aa"), "Acme", SignatureStatus::Valid)), t(2, 0))).unwrap();
+    assert!(repo.identity_changes_since(t(0, 0)).unwrap().is_empty(), "the same content read again is not a change");
+
+    repo.save_identity(&record(A, Some(signed(Some("bb"), "Acme", SignatureStatus::Valid)), t(3, 0))).unwrap();
+    assert_eq!(repo.identity_changes_since(t(0, 0)).unwrap().len(), 1);
+}
+
+fn a_change_keeps_both_sides_and_when_the_new_content_was_read<R: IdentityChangeSubject>(mut repo: R) {
+    known_program()(&mut repo);
+    repo.save_identity(&record(A, Some(signed(Some("aa"), "Acme", SignatureStatus::Valid)), t(1, 0))).unwrap();
+    repo.save_identity(&record(A, Some(signed(Some("bb"), "Someone", SignatureStatus::Untrusted)), t(3, 0))).unwrap();
+    repo.save_identity(&record(A, Some(signed(Some("cc"), "Someone", SignatureStatus::Altered)), t(4, 0))).unwrap();
+
+    let changes = repo.identity_changes_since(t(0, 0)).unwrap();
+
+    assert_eq!(changes.len(), 2, "oldest first");
+    let first = &changes[0];
+    assert_eq!(first.exe.path, A);
+    assert_eq!(
+        first.old,
+        ChangeFacts { sha256: Some("aa".into()), signer: Some("Acme".into()), status: Some(SignatureStatus::Valid) }
+    );
+    assert_eq!(
+        first.new,
+        ChangeFacts {
+            sha256: Some("bb".into()),
+            signer: Some("Someone".into()),
+            status: Some(SignatureStatus::Untrusted)
+        }
+    );
+    assert_eq!(first.at, t(3, 0));
+    assert_eq!(changes[1].old.sha256.as_deref(), Some("bb"));
+    assert_eq!(changes[1].new.status, Some(SignatureStatus::Altered));
+
+    let later = repo.identity_changes_since(t(4, 0)).unwrap();
+    assert_eq!(later.len(), 1, "only the changes read at or after the time asked for");
+    assert_eq!(later[0].new.sha256.as_deref(), Some("cc"));
+}
+
+fn a_failed_look_or_content_that_could_not_be_hashed_is_not_a_change<R: IdentityChangeSubject>(mut repo: R) {
+    known_program()(&mut repo);
+    repo.save_identity(&record(A, Some(signed(Some("aa"), "Acme", SignatureStatus::Valid)), t(1, 0))).unwrap();
+
+    // A look that failed has no facts; a file too large to hash has no content to compare.
+    repo.save_identity(&record(A, None, t(2, 0))).unwrap();
+    repo.save_identity(&record(A, Some(signed(None, "Acme", SignatureStatus::Valid)), t(3, 0))).unwrap();
+
+    assert!(repo.identity_changes_since(t(0, 0)).unwrap().is_empty());
+}
+
+fn changes_survive_the_purge_of_detail<R: IdentityChangeSubject>(mut repo: R) {
+    known_program()(&mut repo);
+    repo.save_identity(&record(A, Some(signed(Some("aa"), "Acme", SignatureStatus::Valid)), t(1, 0))).unwrap();
+    repo.save_identity(&record(A, Some(signed(Some("bb"), "Acme", SignatureStatus::Valid)), t(3, 0))).unwrap();
+
+    repo.purge_before(Timestamp::from_micros(1_000_000_000_000_000)).unwrap();
+
+    assert_eq!(repo.identity_changes_since(t(0, 0)).unwrap().len(), 1);
+}

@@ -19,7 +19,7 @@ pub(crate) const B_EXE: &str = r"C:\Apps\B.exe";
 pub(crate) const OTHER_TARGET: Ipv4Addr = Ipv4Addr::new(198, 51, 100, 7);
 
 /// Hour `hour` (0 = the base hour) plus `minutes`, as a timestamp.
-pub(crate) fn t(hour: i64, minutes: i64) -> Timestamp {
+pub fn t(hour: i64, minutes: i64) -> Timestamp {
     Timestamp::from_micros((T0 + hour * 3600 + minutes * 60) * SEC)
 }
 
