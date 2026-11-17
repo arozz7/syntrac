@@ -6,8 +6,9 @@
 //! pattern needs the file. Each pattern is one kind of finding (`pattern_<id>`), the subject is the program (or, for a start entry,
 //! the program and the entry), and the pack version is NOT part of the key, so updating the pack does not raise everything again.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
+use crate::destination_trend::DestinationTrendRepository;
 use crate::exe_identity::{FileFacts, IdentityEntry, IdentityRepository};
 use crate::exe_location::{classify_location, LocationClass};
 use crate::findings::{Candidate, Tier};
@@ -18,6 +19,7 @@ use crate::new_things::{concerns, location_label, signature_line};
 use crate::patterns::{Pattern, PatternPack, Subject, When};
 use crate::ports::RepoError;
 use crate::rollup::Executable;
+use crate::spawns::{SpawnPair, SpawnRepository};
 use crate::time::Timestamp;
 
 /// Only programs seen running within this many days are judged.
@@ -46,6 +48,10 @@ pub struct PatternFacts<'a> {
     pub known: &'a [KnownProduct],
     pub entries: &'a [IdentityEntry],
     pub launchers: &'a [(Executable, Vec<LauncherSeen>)],
+    /// Programs that used the network for the first time after the switch-on.
+    pub first_online: &'a [Executable],
+    /// Which program started which, from the raw process rows (the detail retention).
+    pub spawns: &'a [SpawnPair],
 }
 
 /// The number of single-character edits (change, add, remove, or swap two neighbours) between two names: optimal string
@@ -70,7 +76,7 @@ pub fn osa_distance(a: &str, b: &str) -> usize {
     rows[a.len()][b.len()]
 }
 
-/// What a pattern is judged on: a program, and for a start entry the entry too.
+/// What a pattern is judged on: a program, and for a start entry the entry, and for a started program the start.
 struct Target<'a> {
     exe: &'a Executable,
     /// The file name as written.
@@ -79,6 +85,8 @@ struct Target<'a> {
     class: LocationClass,
     already_here: bool,
     entry: Option<&'a LauncherSeen>,
+    spawn: Option<&'a SpawnPair>,
+    first_online: bool,
 }
 
 fn facts_of(entry: &IdentityEntry) -> Option<&FileFacts> {
@@ -138,13 +146,24 @@ fn holds(when: &When, target: &Target<'_>) -> bool {
         && (!when.double_extension || has_double_extension(&lower))
         && (!when.direction_override || direction_control(target.name).is_some())
         && (when.entry_kinds.is_empty() || target.entry.is_some_and(|entry| when.entry_kinds.contains(&entry.kind)))
+        && (when.parent_is.is_empty()
+            || target.spawn.is_some_and(|spawn| when.parent_is.contains(&file_name(&spawn.parent.path).to_lowercase())))
+        && (!when.first_network_use || target.first_online)
 }
 
 fn candidate(pattern: &Pattern, pack: &PatternPack, target: &Target<'_>, now: Timestamp) -> Candidate {
     let name = target.name.to_owned();
-    let (subject, mut evidence) = match target.entry {
-        None => (target.exe.key.clone(), vec![format!("Path: {}", target.exe.path)]),
-        Some(entry) => (
+    let (subject, mut evidence) = match (target.entry, target.spawn) {
+        (_, Some(spawn)) => (
+            format!("{}|{}", spawn.parent.key, spawn.child.key),
+            vec![
+                format!("Parent: {}", spawn.parent.path),
+                format!("Program: {}", spawn.child.path),
+                started_line(spawn, now),
+            ],
+        ),
+        (None, None) => (target.exe.key.clone(), vec![format!("Path: {}", target.exe.path)]),
+        (Some(entry), None) => (
             format!("{}|{}|{}", target.exe.key, entry.kind.as_str(), entry.location.to_lowercase()),
             vec![
                 format!("Program: {}", target.exe.path),
@@ -168,12 +187,26 @@ fn candidate(pattern: &Pattern, pack: &PatternPack, target: &Target<'_>, now: Ti
         subject,
         subject_label: name.clone(),
         tier: if raised { Tier::Suspicious } else { pattern.tier },
-        title: format!("{}: {name}", pattern.title),
+        title: match target.spawn {
+            Some(spawn) => format!("{}: {} -> {name}", pattern.title, file_name(&spawn.parent.path)),
+            None => format!("{}: {name}", pattern.title),
+        },
         why: pattern.why.clone(),
         evidence,
         level: None,
         at: now,
     }
+}
+
+/// How often and how recently the parent started the program, in words (command lines are not stored, so none is claimed).
+fn started_line(spawn: &SpawnPair, now: Timestamp) -> String {
+    let days = ((now.as_micros() - spawn.last.as_micros()) / DAY_MICROS).max(0);
+    let when = match days {
+        0 => "today".to_owned(),
+        1 => "1 day ago".to_owned(),
+        n => format!("{n} days ago"),
+    };
+    format!("Started {} time(s) in the days SYNTRAC keeps process records, the last {when}", spawn.count)
 }
 
 /// Every candidate of every pattern in the pack.
@@ -183,6 +216,8 @@ pub fn pattern_candidates(pack: &PatternPack, facts: &PatternFacts<'_>) -> Vec<C
         KnownIndex::build(facts.known.to_vec(), facts.entries.iter().map(|e| (e.exe.path.as_str(), facts_of(e))));
     let is_known = |path: &str, file: Option<&FileFacts>| matches!(index.standing(path, file), Standing::Known { .. });
     let by_key: HashMap<&str, &IdentityEntry> = facts.entries.iter().map(|e| (e.exe.key.as_str(), e)).collect();
+
+    let online: HashSet<&str> = facts.first_online.iter().map(|exe| exe.key.as_str()).collect();
 
     let mut targets: Vec<(Subject, Target<'_>)> = Vec::new();
     for entry in facts.entries {
@@ -200,6 +235,8 @@ pub fn pattern_candidates(pack: &PatternPack, facts: &PatternFacts<'_>) -> Vec<C
                 class: classify_location(&entry.exe.path),
                 already_here: seen.first_seen < facts.since,
                 entry: None,
+                spawn: None,
+                first_online: online.contains(entry.exe.key.as_str()),
             },
         ));
     }
@@ -218,9 +255,26 @@ pub fn pattern_candidates(pack: &PatternPack, facts: &PatternFacts<'_>) -> Vec<C
                     class: classify_location(&exe.path),
                     already_here: launcher.first_seen < facts.since,
                     entry: Some(launcher),
+                    spawn: None,
+                    first_online: false,
                 },
             ));
         }
+    }
+    for spawn in facts.spawns.iter().filter(|spawn| spawn.last >= recent_since) {
+        targets.push((
+            Subject::ProcessStart,
+            Target {
+                exe: &spawn.child,
+                name: file_name(&spawn.child.path),
+                facts: by_key.get(spawn.child.key.as_str()).copied().and_then(facts_of),
+                class: classify_location(&spawn.child.path),
+                already_here: false,
+                entry: None,
+                spawn: Some(spawn),
+                first_online: false,
+            },
+        ));
     }
 
     let mut all = Vec::new();
@@ -255,7 +309,7 @@ impl<R> PatternDetector<R> {
 
 impl<R> Detector for PatternDetector<R>
 where
-    R: IdentityRepository + LauncherRepository + KnownProductRepository,
+    R: IdentityRepository + LauncherRepository + KnownProductRepository + DestinationTrendRepository + SpawnRepository,
 {
     fn name(&self) -> &'static str {
         "known patterns"
@@ -265,6 +319,16 @@ where
         let entries = self.repo.identity_entries().map_err(failed("the programs"))?;
         let known = self.repo.known_products().map_err(failed("the known programs"))?;
         let launchers = self.repo.all_launchers().map_err(failed("the start entries"))?;
+        // Only what the pack asks about is read: the process rows are the big table.
+        let first_online = if self.pack.uses_first_network_use() {
+            self.repo.first_online_since(since).map_err(failed("the first network use"))?
+        } else {
+            Vec::new()
+        };
+        let child_names = self.pack.started_program_names();
+        let recent_since = Timestamp::from_micros(now.as_micros() - RECENT_DAYS * DAY_MICROS);
+        let spawns =
+            self.repo.spawn_pairs(recent_since, &child_names).map_err(failed("which programs started which"))?;
         Ok(pattern_candidates(
             &self.pack,
             &PatternFacts {
@@ -274,6 +338,8 @@ where
                 known: &known,
                 entries: &entries,
                 launchers: &launchers,
+                first_online: &first_online,
+                spawns: &spawns,
             },
         ))
     }

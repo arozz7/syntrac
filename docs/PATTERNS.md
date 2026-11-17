@@ -25,6 +25,10 @@ A pattern is data: an id, a title, a technique id, a tier, a "why", a "benign" t
 | `double_extension` | a document or picture name that really ends in a program extension (`invoice.pdf.exe`). `python3.11.exe` and `setup.x64.exe` do not match |
 | `direction_override` | the name contains a text-direction control character (U+202A to U+202E, U+2066 to U+2069) that can disguise an extension. The finding names the character; it never repeats the disguised name |
 | `entry_kind_is` | (start entries only) service_auto, task, run_key, run_once, startup_folder |
+| `parent_is` | (started programs only) the file name of the program that STARTED it equals one of these |
+| `first_network_use` | the program had no network sighting at all before detection was switched on and has one now |
+
+A pattern is about one of three things (`applies_to`): a `program` that has been seen running, a `start_entry`, or a `process_start` (a program started by another program; it must name its parents with `parent_is` and the programs it cares about with `name_is`).
 
 `raise_if_concerning = true` lifts the tier to `suspicious` when the program is unsigned or untrusted in a place users can write.
 
@@ -41,7 +45,7 @@ stops the pack loading; a test parses the shipped pack, so such a mistake fails 
 - At most **50** findings of one pattern per run (the most serious stay); the global cap of the detect worker still applies.
 - "Always expected" offers this item only (no "this folder" for patterns in F5a).
 
-## The shipped patterns (pack 2026.11.1)
+## The shipped patterns (pack 2026.11.2)
 
 | Id | Technique | Tier | What it says |
 |---|---|---|---|
@@ -54,13 +58,21 @@ stops the pack loading; a test parses the shipped pack, so such a mistake fails 
 | `remote_access_tool` | T1219 | unusual (suspicious if unsigned/untrusted in a writable place) | AnyDesk, TeamViewer, RustDesk, ScreenConnect, MeshAgent, VNC, Radmin, Supremo, Atera |
 | `tunnel_tool` | T1572 | unusual (same lift) | ngrok, cloudflared, frp, chisel, plink |
 | `bulk_copy_tool` | T1567.002 | unusual (same lift) | rclone |
+| `office_starts_shell` | T1059 | suspicious | Word, Excel, PowerPoint, Outlook, OneNote, Access, Publisher, Visio or Acrobat started cmd, PowerShell, wscript, cscript or mshta (F5b) |
+| `browser_starts_shell` | T1059 | unusual | Chrome, Edge, Firefox, Brave, Opera, Vivaldi or Internet Explorer started one of those (F5b) |
+| `script_helper_first_network_use` | T1218 | suspicious | powershell, pwsh, wscript, cscript, mshta, regsvr32, rundll32, certutil, bitsadmin or msiexec used the network for the FIRST time since detection was switched on (F5b) |
 
 Readings of the plan that were narrowed on purpose (the backtest on this machine's copy is in `aiChangeLog/phase-F5a.md`):
 - "A start entry whose target is unsigned **or** user-writable" is built as unsigned **and** in a user-writable folder. The "or" would match every validly signed app that starts from AppData (OneDrive, Teams, Discord): the backtest found 9 of those against 3 unsigned targets anywhere.
 - "An unsigned program in a user folder" requires the download mark. Without it, build outputs and developer tools match (31 unsigned programs in user folders on this machine in 30 days). A plain unsigned program in a user folder is already handled by the new-program rule (for new programs) and by the review screen (for what was here at the switch-on).
 - Technique T1036.004 (task or service masquerading) was dropped: the lookalike pattern is T1036.005.
 
-Not in F5a (planned): processes starting from a new parent, script helpers using the network for the first time (F5b, needs raw processes, 30 days); a user-imported hash list, the only route to `confirmed` (F5c); clock-like beaconing (F5c, only after a backtest shows it is usable); the pack version on the Findings tab header (it is in each finding's evidence).
+F5b, as built, differs from the plan in three ways, all because of what SYNTRAC actually stores:
+- **No command lines.** SYNTRAC does not store process command lines (none of the 711,000 process rows on this machine has one), so "started a shell" is judged by the parent and the program only, and no finding claims to know what the shell was asked to do.
+- **14 days, not 30.** The raw process rows are kept for the detail retention (14 days by default), so the started-by patterns see 14 days.
+- **"From a new parent" is not built.** With 14 days of history there is no baseline of which parents are normal for a helper. "First network use" reads the permanent record of which program talked to which address, so it covers the whole history.
+
+Not built (planned): a user-imported hash list, the only route to `confirmed` (F5c); clock-like beaconing (F5c, only after a backtest shows it is usable); the pack version on the Findings tab header (it is in each finding's evidence).
 
 ## Switching it on
 

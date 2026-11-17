@@ -41,6 +41,7 @@ pub fn destination_contract<R: DestinationSubject>(make: impl Fn() -> R) {
     the_programs_of_many_destinations_come_back_in_one_read(make());
     the_destinations_of_one_program_are_summed_per_address_within_the_range(make());
     the_pairs_first_seen_after_a_time_come_from_the_permanent_ledger(make());
+    the_programs_first_online_after_a_time_are_those_whose_earliest_pair_is_that_late(make());
 }
 
 fn ip(addr: Ipv4Addr) -> IpAddr {
@@ -272,6 +273,41 @@ fn the_pairs_first_seen_after_a_time_come_from_the_permanent_ledger<R: Destinati
     assert_eq!(all.len(), 5, "A to three addresses, B to two; nothing for loopback or the unidentified program");
     assert!(all.iter().all(|(_, addr, _)| *addr != ip(Ipv4Addr::LOCALHOST)));
     assert!(repo.new_pairs(t(5, 0)).unwrap().is_empty());
+}
+
+/// A talks at hour 0 and again at hour 2; C only at hour 2; D only to loopback at hour 2; B never.
+fn the_programs_first_online_after_a_time_are_those_whose_earliest_pair_is_that_late<R: DestinationSubject>(
+    mut repo: R,
+) {
+    let a = start_process(&mut repo, 10, t(0, 0), A_EXE);
+    start_process(&mut repo, 11, t(0, 0), B_EXE);
+    let c = start_process(&mut repo, 12, t(0, 0), r"C:AppsC.exe");
+    let d = start_process(&mut repo, 13, t(0, 0), r"C:AppsD.exe");
+    let mut f = EventFactory::default();
+    repo.append(&[
+        flow_event(&mut f, Some(a.id), BEACON_TARGET, 1, 1, secs(0, 10)),
+        flow_event(&mut f, Some(a.id), OTHER_TARGET, 1, 1, secs(2, 10)),
+        flow_event(&mut f, Some(c.id), OTHER_TARGET, 1, 1, secs(2, 20)),
+        flow_event(&mut f, Some(d.id), Ipv4Addr::LOCALHOST, 1, 1, secs(2, 30)),
+    ])
+    .unwrap();
+    for hour in 0..3 {
+        sample_at(&mut repo, hour, 1, 1.0);
+    }
+    roll_up_due(&mut repo, t(4, 0), &settings(10)).unwrap();
+    let paths = |since| {
+        let mut paths: Vec<String> = repo.first_online_since(since).unwrap().into_iter().map(|exe| exe.path).collect();
+        paths.sort();
+        paths
+    };
+
+    assert_eq!(
+        paths(t(1, 0)),
+        vec![r"C:AppsC.exe".to_owned()],
+        "A was online at hour 0; loopback is not the network; B never was"
+    );
+    assert_eq!(paths(t(0, 0)).len(), 2, "A and C, whose first sighting is at or after the time");
+    assert!(paths(t(3, 0)).is_empty());
 }
 
 fn the_programs_of_many_destinations_come_back_in_one_read<R: DestinationSubject>(mut repo: R) {

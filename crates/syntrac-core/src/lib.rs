@@ -38,6 +38,7 @@ pub mod rollup;
 pub mod rollup_ledger;
 pub mod rollup_run;
 pub mod silence;
+pub mod spawns;
 pub mod storage_guard;
 pub mod task_xml;
 pub mod time;
@@ -119,6 +120,7 @@ pub use review::{review_groups, ReviewGroup, ReviewProgram, PROGRAMS_LISTED};
 pub use rollup::{Executable, HourInput, HourRollup, LedgerEntry, ProcessHour, SystemHour, TrafficHour};
 pub use rollup_ledger::LedgerObservations;
 pub use rollup_run::{roll_up_due, RollupPass, RollupRepository, RollupSettings};
+pub use spawns::{SpawnPair, SpawnRepository};
 pub use time::{Clock, SystemClock, Timestamp};
 pub use trend::{
     all_programs, collect_totals, rank_totals, top_programs, ProcessTotals, ProgramMetric, ProgramSummary,

@@ -29,6 +29,26 @@ impl DestinationTrendRepository for InMemoryRepository {
             .collect())
     }
 
+    fn first_online_since(&self, since: Timestamp) -> Result<Vec<Executable>, RepoError> {
+        let state = &self.rollups;
+        let mut earliest: BTreeMap<&String, Timestamp> = BTreeMap::new();
+        for ((key, addr), ledger) in &state.pairs {
+            if addr.is_loopback() {
+                continue;
+            }
+            let entry = earliest.entry(key).or_insert(ledger.first_seen);
+            *entry = (*entry).min(ledger.first_seen);
+        }
+        Ok(earliest
+            .into_iter()
+            .filter(|(_, first)| *first >= since)
+            .map(|(key, _)| Executable {
+                key: key.clone(),
+                path: state.paths.get(key).cloned().unwrap_or_else(|| key.clone()),
+            })
+            .collect())
+    }
+
     fn program_destinations(
         &self,
         path: &str,

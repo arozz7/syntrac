@@ -25,6 +25,8 @@ pub enum Subject {
     Program,
     /// An entry that starts a program (a service, a task, a Run key, a Startup file).
     StartEntry,
+    /// A program started by another program (the parent is named by `parent_is`, the started program by the other conditions).
+    ProcessStart,
 }
 
 /// The conditions of a pattern; every one that is present must hold.
@@ -47,6 +49,10 @@ pub struct When {
     pub double_extension: bool,
     pub direction_override: bool,
     pub entry_kinds: Vec<LauncherKind>,
+    /// (started programs only) the file name of the PARENT equals one of these (lower case).
+    pub parent_is: Vec<String>,
+    /// The program used the network for the first time after detection was switched on (it had no earlier sighting at all).
+    pub first_network_use: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -113,6 +119,8 @@ struct RawWhen {
     double_extension: Option<bool>,
     direction_override: Option<bool>,
     entry_kind_is: Option<Vec<String>>,
+    parent_is: Option<Vec<String>>,
+    first_network_use: Option<bool>,
 }
 
 fn words(id: &str, field: &str, list: Option<Vec<String>>) -> Result<Vec<String>, PackError> {
@@ -181,6 +189,8 @@ fn when_of(id: &str, raw: RawWhen) -> Result<When, PackError> {
         double_extension: only_true(id, "double_extension", raw.double_extension)?,
         direction_override: only_true(id, "direction_override", raw.direction_override)?,
         entry_kinds: named(id, "entry_kind_is", raw.entry_kind_is, LauncherKind::parse)?,
+        parent_is: words(id, "parent_is", raw.parent_is)?,
+        first_network_use: only_true(id, "first_network_use", raw.first_network_use)?,
     })
 }
 
@@ -207,7 +217,12 @@ fn pattern_of(raw: RawPattern) -> Result<Pattern, PackError> {
     let subject = match raw.applies_to.trim() {
         "program" => Subject::Program,
         "start_entry" => Subject::StartEntry,
-        other => return Err(PackError(format!("{id}: applies_to must be program or start_entry, not \"{other}\""))),
+        "process_start" => Subject::ProcessStart,
+        other => {
+            return Err(PackError(format!(
+                "{id}: applies_to must be program, start_entry or process_start, not \"{other}\""
+            )));
+        }
     };
     if !is_technique(raw.technique.trim()) {
         return Err(PackError(format!("{id}: technique must look like T1036 or T1036.005")));
@@ -218,6 +233,20 @@ fn pattern_of(raw: RawPattern) -> Result<Pattern, PackError> {
     }
     if !when.entry_kinds.is_empty() && subject != Subject::StartEntry {
         return Err(PackError(format!("{id}: entry_kind_is only makes sense for start entries")));
+    }
+    if !when.parent_is.is_empty() && subject != Subject::ProcessStart {
+        return Err(PackError(format!("{id}: parent_is only makes sense for patterns about a started program")));
+    }
+    if subject == Subject::ProcessStart && (when.parent_is.is_empty() || when.name_is.is_empty()) {
+        return Err(PackError(format!(
+            "{id}: a started-by pattern names its parents (parent_is) and the programs it cares about (name_is)"
+        )));
+    }
+    if subject == Subject::ProcessStart && when.already_here {
+        return Err(PackError(format!("{id}: already_here makes no sense for a started program")));
+    }
+    if when.first_network_use && subject != Subject::Program {
+        return Err(PackError(format!("{id}: first_network_use only makes sense for a program")));
     }
     Ok(Pattern {
         title: text(&id, "title", &raw.title, 80)?,
@@ -246,6 +275,25 @@ pub fn parse_pack(source: &str) -> Result<PatternPack, PackError> {
         patterns.push(pattern);
     }
     Ok(PatternPack { version, patterns })
+}
+
+impl PatternPack {
+    /// The file names of the programs the started-by patterns care about (lower case, once each): what the process read asks for.
+    pub fn started_program_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self
+            .patterns
+            .iter()
+            .filter(|pattern| pattern.subject == Subject::ProcessStart)
+            .flat_map(|pattern| pattern.when.name_is.iter().cloned())
+            .collect();
+        names.sort();
+        names.dedup();
+        names
+    }
+
+    pub fn uses_first_network_use(&self) -> bool {
+        self.patterns.iter().any(|pattern| pattern.when.first_network_use)
+    }
 }
 
 /// The shipped pack. A mistake in it fails the test that parses it, so reaching a user with a broken pack is not possible.

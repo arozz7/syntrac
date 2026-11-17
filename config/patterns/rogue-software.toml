@@ -15,9 +15,12 @@
 #   double_extension        a document or picture name that really ends in a program extension (invoice.pdf.exe)
 #   direction_override      the name contains a text-direction control character, used to disguise an extension
 #   entry_kind_is           (start entries only) service_auto, task, run_key, run_once, startup_folder
+#   parent_is               (process_start only) the file name of the program that started it equals one of these
+#   first_network_use       the program had no network sighting before detection was switched on and has one now
+# applies_to: program, start_entry, or process_start (a program started by another; needs parent_is and name_is)
 # raise_if_concerning = true lifts the tier to "suspicious" when the program is unsigned or untrusted in a place users can write.
 
-version = "2026.11.1"
+version = "2026.11.2"
 
 [[pattern]]
 id = "system_name_outside_windows"
@@ -130,3 +133,44 @@ why = "Rclone copies large amounts of data to cloud storage. Backup setups use i
 benign = "A backup or sync you set up. Mark it expected once and it stays quiet."
 [pattern.when]
 name_is = ["rclone.exe"]
+
+# ---- F5b: a program started by another program, and a helper's first use of the network
+# "process_start" patterns read which program started which (parent and child, from the raw process records: the detail retention,
+# 14 days by default; command lines are not stored, so none is judged). "first_network_use" means the program had no network sighting
+# at all before detection was switched on and has one now.
+
+[[pattern]]
+id = "office_starts_shell"
+title = "A document program started a command shell"
+technique = "T1059"
+tier = "suspicious"
+applies_to = "process_start"
+why = "An office or PDF program started a command shell or script host. Documents that do this are a common way for malicious files to run code."
+benign = "An add-in or macro you wrote or installed can do this on purpose. If you know why, mark it expected."
+[pattern.when]
+parent_is = ["winword.exe", "excel.exe", "powerpnt.exe", "outlook.exe", "onenote.exe", "msaccess.exe", "mspub.exe", "visio.exe", "acrord32.exe", "acrobat.exe"]
+name_is = ["cmd.exe", "powershell.exe", "pwsh.exe", "wscript.exe", "cscript.exe", "mshta.exe"]
+
+[[pattern]]
+id = "browser_starts_shell"
+title = "A web browser started a command shell"
+technique = "T1059"
+tier = "unusual"
+applies_to = "process_start"
+why = "A web browser started a command shell or script host, which browsers rarely do."
+benign = "A browser extension or developer tool that runs a helper script, or a download you opened. If you know why, mark it expected."
+[pattern.when]
+parent_is = ["chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe", "vivaldi.exe", "iexplore.exe"]
+name_is = ["cmd.exe", "powershell.exe", "pwsh.exe", "wscript.exe", "cscript.exe", "mshta.exe"]
+
+[[pattern]]
+id = "script_helper_first_network_use"
+title = "A script or download helper used the network for the first time"
+technique = "T1218"
+tier = "suspicious"
+applies_to = "program"
+why = "A Windows helper that can run scripts or download files used the network for the first time since detection was switched on."
+benign = "An update, an installer or a script you ran yourself. Each of these helpers has normal uses, which is why only the first time is raised."
+[pattern.when]
+name_is = ["powershell.exe", "pwsh.exe", "wscript.exe", "cscript.exe", "mshta.exe", "regsvr32.exe", "rundll32.exe", "certutil.exe", "bitsadmin.exe", "msiexec.exe"]
+first_network_use = true

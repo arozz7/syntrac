@@ -90,6 +90,10 @@ pub trait DestinationTrendRepository {
     /// attributed programs have pairs.
     fn new_pairs(&self, since: Timestamp) -> Result<Vec<NewPair>, RepoError>;
 
+    /// The programs whose EARLIEST (program, address) sighting is at or after `since`: they used the network for the first time then
+    /// (loopback left out; only attributed programs). Any order.
+    fn first_online_since(&self, since: Timestamp) -> Result<Vec<Executable>, RepoError>;
+
     /// Every address the program at `path` (matched without regard to case) talked to over the hours in `[from, to]`, loopback
     /// left out, one row per address, in any order. A path that was never recorded has none.
     fn program_destinations(

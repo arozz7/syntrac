@@ -19,9 +19,9 @@ use std::time::Instant;
 use rusqlite::{Connection, OpenFlags};
 use syntrac_core::findings::Tier;
 use syntrac_core::{
-    built_in_pack, cpu_floor_for_cores, parse_pack, pattern_candidates, Clock, Detector, IdentityRepository,
-    KnownProductRepository, LauncherRepository, NewThingsDetector, PatternFacts, SystemClock, Timestamp, UsageDetector,
-    UsageSettings, RECENT_DAYS,
+    built_in_pack, cpu_floor_for_cores, parse_pack, pattern_candidates, Clock, DestinationTrendRepository, Detector,
+    IdentityRepository, KnownProductRepository, LauncherRepository, NewThingsDetector, PatternFacts, SpawnRepository,
+    SystemClock, Timestamp, UsageDetector, UsageSettings, RECENT_DAYS,
 };
 use syntrac_store::SqliteStore;
 
@@ -131,6 +131,7 @@ fn pattern_report(copy: &std::path::Path, now: Timestamp) {
     let known = store.known_products().expect("known programs");
     let launchers = store.all_launchers().expect("start entries");
     let since = Timestamp::from_micros(now.as_micros() - DAY_MICROS); // as if switched on yesterday: older things are "already here"
+    let first_online = store.first_online_since(since).expect("first network use");
     let shipped = built_in_pack();
     let branches = parse_pack(START_ENTRY_BRANCHES).expect("rehearsal pack");
     println!("\nknown patterns (pack {}), {} program(s) in the copy", shipped.version, entries.len());
@@ -138,10 +139,27 @@ fn pattern_report(copy: &std::path::Path, now: Timestamp) {
         [("seen in the last 30 days (as the service judges)", RECENT_DAYS), ("all time (comparison only)", 36_500)]
     {
         println!("\n  {label}:");
+        let child_names = shipped.started_program_names();
+        let recent_since = Timestamp::from_micros(now.as_micros() - recent_days * DAY_MICROS);
+        let spawns = store.spawn_pairs(recent_since, &child_names).expect("which programs started which");
+        println!(
+            "   {} start pair(s) of the programs the patterns care about, {} program(s) first online since yesterday",
+            spawns.len(),
+            first_online.len()
+        );
         for (name, pack) in [("shipped", &shipped), ("branches of the start-entry pattern (not shipped)", &branches)] {
             let found = pattern_candidates(
                 pack,
-                &PatternFacts { since, now, recent_days, known: &known, entries: &entries, launchers: &launchers },
+                &PatternFacts {
+                    since,
+                    now,
+                    recent_days,
+                    known: &known,
+                    entries: &entries,
+                    launchers: &launchers,
+                    first_online: &first_online,
+                    spawns: &spawns,
+                },
             );
             let mut by_kind: BTreeMap<(&str, &str), usize> = BTreeMap::new();
             for candidate in &found {

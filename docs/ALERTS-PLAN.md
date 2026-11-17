@@ -1,6 +1,6 @@
 # Plan: sorting, the remaining network views, and findings (alerts that learn)
 
-Status: APPROVED 2026-11-16 (S1, N1, N2, F1 to F4 as written; toast delivery is enough; D1 as written). N3 (reverse DNS) is DOCUMENTED ONLY, not to be implemented. F5 (known patterns) was APPROVED as written on 2026-11-17: **F5a is built** (`aiChangeLog/phase-F5a.md`, `docs/PATTERNS.md`); F5b and F5c are planned.
+Status: APPROVED 2026-11-16 (S1, N1, N2, F1 to F4 as written; toast delivery is enough; D1 as written). N3 (reverse DNS) is DOCUMENTED ONLY, not to be implemented. F5 (known patterns) was APPROVED as written on 2026-11-17: **F5a and F5b are built** (`aiChangeLog/phase-F5a.md`, `phase-F5b.md`, `docs/PATTERNS.md`); F5c is planned.
 
 Progress: **S1 built** (`aiChangeLog/phase-S1.md`), **N1 and N2 built** (`aiChangeLog/phase-N1-N2.md`). N2 needed no index (measured: 5 ms
 without one on the real data, an index made no difference), so the schema numbers below shift down by one: **F1 is v13, F2's
@@ -75,7 +75,7 @@ Explainable statistics only (docs/PLAN.md decision 7), no machine learning.
 - Digest: new destinations and new owners of the last day (D5), shown on the Findings tab, not toasted.
 - Toast: the app, while it runs, polls `detection_status` and raises one Windows toast per new suspicious finding (and one summary for unusual ones). Tauri notification plugin (new dependency: approval needed, which I will ask for in this slice). Never a toast for the digest.
 
-## Slice F5: known patterns of rogue software (approved 2026-11-17; F5a BUILT, see docs/PATTERNS.md; F5b and F5c planned)
+## Slice F5: known patterns of rogue software (approved 2026-11-17; F5a and F5b BUILT, see docs/PATTERNS.md; F5c planned)
 The user asked whether SYNTRAC can use known patterns of shady or rogue programs to identify them. Yes, as a fixed, reviewable set of rules that SYNTRAC ships with (no download at run time, nothing leaves the machine), each tied to a public technique name, and each limited to what SYNTRAC already records. They raise findings through the F1 machinery (same buttons, same expectations, same "why"), at most at the tier "suspicious": a pattern match is a reason to look, never a verdict.
 
 **Where the patterns come from (checked 2026-11-16):**
@@ -121,4 +121,4 @@ S1 (small) -> N1, N2 (small each) -> F1 (largest: schema, ports, pipe, tab) -> F
 2. Reverse DNS (N3): documented, not implemented.
 3. D4: a toast while the app runs is enough; no tray helper.
 4. D1: approved as written (no silent wait; new things count after switch-on; review screen; the backtest decides).
-5. F5 (known patterns): approved as written 2026-11-17. F5a built (the pattern engine and the name, path, signature and start-entry patterns; off until `patterns_enabled = true`). The user named no tools they use, so nothing is pre-expected. F5b and F5c follow.
+5. F5 (known patterns): approved as written 2026-11-17. F5a built (the pattern engine and the name, path, signature and start-entry patterns; off until `patterns_enabled = true`). The user named no tools they use, so nothing is pre-expected. F5b built 2026-11-17 (started-by and first-network-use patterns; no command lines are stored and the process rows last 14 days, so those plan lines were narrowed). F5c follows.

@@ -5,6 +5,7 @@ use syntrac_core::findings::{Candidate, Tier};
 use syntrac_core::findings_run::clean_candidate;
 use syntrac_core::pattern_run::{osa_distance, pattern_candidates, PatternFacts, MAX_PER_PATTERN, RECENT_DAYS};
 use syntrac_core::patterns::{built_in_pack, parse_pack, PatternPack, BUILT_IN_PACK};
+use syntrac_core::spawns::SpawnPair;
 use syntrac_core::{
     Executable, FileFacts, IdentityEntry, IdentityRecord, KnownProduct, LauncherKind, LauncherSeen, LedgerEntry,
     Signature, SignatureStatus, Timestamp, VersionInfo,
@@ -80,6 +81,8 @@ struct World {
     entries: Vec<IdentityEntry>,
     known: Vec<KnownProduct>,
     launchers: Vec<(Executable, Vec<LauncherSeen>)>,
+    first_online: Vec<Executable>,
+    spawns: Vec<SpawnPair>,
 }
 
 impl World {
@@ -97,6 +100,8 @@ impl World {
                 known: &self.known,
                 entries: &self.entries,
                 launchers: &self.launchers,
+                first_online: &self.first_online,
+                spawns: &self.spawns,
             },
         )
     }
@@ -118,7 +123,7 @@ fn the_shipped_pack_loads_and_every_pattern_says_why_what_it_is_called_and_what_
         parse_pack(BUILT_IN_PACK).expect("the shipped pack must load: an unknown condition is refused at build time");
 
     assert!(!pack.version.is_empty());
-    assert!(pack.patterns.len() >= 9);
+    assert!(pack.patterns.len() >= 12);
     let mut ids: Vec<&str> = pack.patterns.iter().map(|p| p.id.as_str()).collect();
     ids.sort_unstable();
     ids.dedup();
@@ -413,7 +418,7 @@ fn every_match_says_which_pattern_why_and_what_could_be_harmless_and_a_new_pack_
     let evidence = found.evidence.join("\n");
     assert!(evidence.contains("T1567.002"), "{evidence}");
     assert!(evidence.contains("Often harmless"), "{evidence}");
-    assert!(evidence.contains("Pattern pack 2026.11.1"), "{evidence}");
+    assert!(evidence.contains("Pattern pack 2026.11.2"), "{evidence}");
     assert!(!found.dedupe_key.contains("2026"), "the pack version is not part of the key");
 }
 
@@ -459,4 +464,131 @@ fn one_pattern_raises_at_most_a_fixed_number_of_findings_in_a_run() {
         (0..MAX_PER_PATTERN + 30).map(|n| entry(&format!(r"C:\Tools\{n}\rclone.exe"), Some(unsigned()))).collect();
 
     assert_eq!(World::with(many).of("bulk_copy_tool").len(), MAX_PER_PATTERN);
+}
+
+// ---- F5b: a program started by another program, and a helper's first use of the network
+
+fn spawn(parent: &str, child: &str, count: u32, first_day: i64, last_day: i64) -> SpawnPair {
+    SpawnPair {
+        parent: Executable::from_path(parent).unwrap(),
+        child: Executable::from_path(child).unwrap(),
+        count,
+        first: at(first_day),
+        last: at(last_day),
+    }
+}
+
+const WORD: &str = r"C:\Program Files\Microsoft Office\root\Office16\WINWORD.EXE";
+const CMD: &str = r"C:\Windows\System32\cmd.exe";
+const POWERSHELL: &str = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe";
+
+#[test]
+fn an_office_program_starting_a_command_shell_is_suspicious_and_the_evidence_names_both_programs() {
+    let world = World {
+        spawns: vec![spawn(WORD, CMD, 3, NOW - 6, NOW - 2), spawn(WORD, POWERSHELL, 1, NOW - 3, NOW - 3)],
+        ..World::default()
+    };
+
+    let found = world.of("office_starts_shell");
+
+    assert_eq!(found.len(), 2);
+    assert!(found.iter().all(|c| c.tier == Tier::Suspicious));
+    let cmd = found.iter().find(|c| c.subject_label == "cmd.exe").unwrap();
+    assert_eq!(cmd.subject, format!("{}|{}", WORD.to_lowercase(), CMD.to_lowercase()));
+    assert_eq!(cmd.dedupe_key, format!("pattern_office_starts_shell:{}", cmd.subject));
+    let evidence = cmd.evidence.join("\n");
+    assert!(evidence.contains("WINWORD.EXE") && evidence.contains("cmd.exe"), "{evidence}");
+    assert!(evidence.contains("3 time"), "how often: {evidence}");
+    assert!(evidence.contains("T1059"), "{evidence}");
+    assert!(!evidence.to_lowercase().contains("command line"), "command lines are not stored, so none is claimed");
+}
+
+#[test]
+fn ordinary_parents_and_ordinary_children_are_quiet() {
+    let world = World {
+        spawns: vec![
+            spawn(r"C:\Windows\explorer.exe", CMD, 40, NOW - 9, NOW - 1), // a person opening a shell
+            spawn(WORD, r"C:\Windows\System32\splwow64.exe", 5, NOW - 9, NOW - 1), // not a shell
+            spawn(r"C:\Program Files\Node\node.exe", POWERSHELL, 400, NOW - 9, NOW - 1),
+        ],
+        ..World::default()
+    };
+
+    assert!(world.run().is_empty(), "{:?}", world.kinds());
+}
+
+#[test]
+fn a_browser_starting_a_shell_is_unusual_and_has_its_own_pattern() {
+    let world = World {
+        spawns: vec![spawn(r"C:\Program Files\Google\Chrome\Application\chrome.exe", CMD, 2, NOW - 5, NOW - 4)],
+        ..World::default()
+    };
+
+    let found = world.of("browser_starts_shell");
+
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].tier, Tier::Unusual);
+    assert!(world.of("office_starts_shell").is_empty());
+}
+
+#[test]
+fn a_start_older_than_the_recent_days_is_not_judged() {
+    let world = World { spawns: vec![spawn(WORD, CMD, 3, NOW - 90, NOW - RECENT_DAYS - 3)], ..World::default() };
+
+    assert!(world.run().is_empty());
+}
+
+#[test]
+fn the_child_must_still_satisfy_its_own_conditions_the_pack_may_add() {
+    // The pack's pattern names the children it cares about: a program with another name is not matched even from an office parent.
+    let world = World { spawns: vec![spawn(WORD, r"C:\Tools\helper.exe", 1, NOW - 2, NOW - 2)], ..World::default() };
+
+    assert!(world.of("office_starts_shell").is_empty());
+}
+
+#[test]
+fn a_script_helper_using_the_network_for_the_first_time_is_suspicious() {
+    let certutil = r"C:\Windows\System32\certutil.exe";
+    let mut world = World::with(vec![entry(certutil, Some(microsoft()))]);
+    world.first_online = vec![Executable::from_path(certutil).unwrap()];
+
+    let found = world.of("script_helper_first_network_use");
+
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].tier, Tier::Suspicious);
+    assert!(found[0].why.to_lowercase().contains("network"));
+}
+
+#[test]
+fn a_helper_that_was_online_before_and_a_program_that_is_not_a_helper_are_quiet() {
+    let certutil = r"C:\Windows\System32\certutil.exe";
+    let browser = r"C:\Program Files\Google\Chrome\Application\chrome.exe";
+    let mut world = World::with(vec![
+        entry(certutil, Some(microsoft())),
+        entry(browser, Some(facts(SignatureStatus::Valid, Some("Google LLC")))),
+    ]);
+    // Only the browser is first online after the switch-on: it is not a helper. The helper is not in the list: it was online before.
+    world.first_online = vec![Executable::from_path(browser).unwrap()];
+
+    assert!(world.of("script_helper_first_network_use").is_empty());
+}
+
+#[test]
+fn the_new_vocabulary_is_checked_too() {
+    let base = |applies: &str, when: &str| {
+        parse_pack(&format!(
+            "version = \"1\"\n[[pattern]]\nid = \"x\"\ntitle = \"T\"\ntechnique = \"T1059\"\ntier = \"unusual\"\napplies_to = \"{applies}\"\nwhy = \"W\"\nbenign = \"B\"\n[pattern.when]\n{when}"
+        ))
+    };
+
+    assert!(base("process_start", "parent_is = [\"winword.exe\"]\nname_is = [\"cmd.exe\"]\n").is_ok());
+    assert!(base("program", "first_network_use = true\nname_is = [\"certutil.exe\"]\n").is_ok());
+    assert!(
+        base("program", "parent_is = [\"winword.exe\"]\n").is_err(),
+        "a parent only makes sense for a started program"
+    );
+    assert!(base("process_start", "name_is = [\"cmd.exe\"]\n").is_err(), "a started-by pattern names its parents");
+    assert!(base("process_start", "parent_is = [\"a.exe\"]\nalready_here = true\n").is_err());
+    assert!(base("start_entry", "first_network_use = true\nentry_kind_is = [\"task\"]\n").is_err());
+    assert!(base("program", "first_network_use = false\nname_is = [\"a.exe\"]\n").is_err());
 }

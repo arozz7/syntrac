@@ -42,6 +42,7 @@ mod names;
 mod owners;
 mod processes;
 mod rollups;
+mod spawns;
 mod storage;
 #[cfg(test)]
 mod storage_tests;

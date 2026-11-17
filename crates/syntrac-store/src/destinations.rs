@@ -84,6 +84,24 @@ impl DestinationTrendRepository for SqliteStore {
         Ok(found)
     }
 
+    fn first_online_since(&self, since: Timestamp) -> Result<Vec<Executable>, RepoError> {
+        let mut statement = self
+            .conn
+            .prepare(&format!(
+                "SELECT e.path_key, e.path
+                 FROM exe_destinations x JOIN executables e ON e.id = x.exe_id
+                 WHERE e.id <> {UNATTRIBUTED} AND x.{NOT_LOOPBACK}
+                 GROUP BY e.id HAVING MIN(x.first_seen) >= ?1"
+            ))
+            .map_err(backend)?;
+        let mut rows = statement.query(params![since.as_micros()]).map_err(backend)?;
+        let mut found = Vec::new();
+        while let Some(row) = rows.next().map_err(backend)? {
+            found.push(Executable { key: row.get(0).map_err(backend)?, path: row.get(1).map_err(backend)? });
+        }
+        Ok(found)
+    }
+
     fn program_destinations(
         &self,
         path: &str,

@@ -70,6 +70,11 @@ fn in_memory_repository_satisfies_the_known_products_contract() {
 }
 
 #[test]
+fn in_memory_repository_satisfies_the_spawn_contract() {
+    syntrac_testkit::spawn_contract::spawn_contract(InMemoryRepository::default);
+}
+
+#[test]
 fn in_memory_repository_satisfies_the_destination_contract() {
     syntrac_testkit::destination_contract::destination_contract(InMemoryRepository::default);
 }
