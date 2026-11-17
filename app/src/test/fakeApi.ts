@@ -614,6 +614,7 @@ export function makeFakeApi(overrides: Partial<Api> = {}): Api & { [K in keyof A
     findings: vi.fn(async () => ok(findingsView())),
     decideFinding: vi.fn(async (): Promise<WriteOutcome> => ({ ok: true, id: null, message: null })),
     removeExpectation: vi.fn(async (): Promise<WriteOutcome> => ({ ok: true, id: null, message: null })),
+    notify: vi.fn(async (): Promise<void> => undefined),
     review: vi.fn(async () => ok(reviewView())),
     confirmReview: vi.fn(async (): Promise<WriteOutcome> => ({ ok: true, id: null, message: null })),
     programDestinations: vi.fn(async () => ok(programDestinationsView())),

@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 import type {
   ConnectionRowView,
   Data,
@@ -61,6 +62,8 @@ export interface Api {
   review(): Promise<Data<ReviewView>>;
   /** Asks the service to expect new programs below an install folder the user has looked at. Never throws. */
   confirmReview(root: string): Promise<WriteOutcome>;
+  /** Shows a Windows toast. Never throws: if the system refuses, nothing is shown. */
+  notify(title: string, body: string): Promise<void>;
   /** Asks the service to remove something the user said is expected. Never throws. */
   removeExpectation(id: number): Promise<WriteOutcome>;
   /** Where one program connected over the range, biggest first. `path` is the program's image path. */
@@ -150,6 +153,16 @@ export const tauriApi: Api = {
   review: () => data<ReviewView>('get_review', { limit: undefined }),
   confirmReview: (root) => write('confirm_review', { root }),
   removeExpectation: (id) => write('remove_expectation', { id }),
+  notify: async (title, body) => {
+    try {
+      if (!(await isPermissionGranted()) && (await requestPermission()) !== 'granted') {
+        return;
+      }
+      sendNotification({ title, body });
+    } catch {
+      // A toast is a convenience: nothing depends on it.
+    }
+  },
   programDestinations: (rangeSecs, path, limit, allAddresses) =>
     data<ProgramDestinationsView>('get_program_destinations', { rangeSecs, path, limit, allAddresses }),
   newDestinations: (windowSecs, limit, allAddresses) =>

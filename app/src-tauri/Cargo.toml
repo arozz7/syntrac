@@ -19,6 +19,7 @@ serde = { version = "1", features = ["derive"] }
 syntrac-core = { path = "../../crates/syntrac-core" }
 syntrac-store = { path = "../../crates/syntrac-store" }
 syntrac-ipc = { path = "../../crates/syntrac-ipc" }
+tauri-plugin-notification = "2.4.0"
 
 [dev-dependencies]
 syntrac-testkit = { path = "../../crates/syntrac-testkit" }

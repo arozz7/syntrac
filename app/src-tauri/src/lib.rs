@@ -27,6 +27,8 @@ use crate::settings::AppSettings;
 pub fn run() {
     let backend: commands::SharedBackend = Arc::new(Backend::new(AppSettings::from_env(), SystemClock));
     tauri::Builder::default()
+        // Windows toasts for new suspicious findings, only while the app runs (see `src/toasts.ts`). No network.
+        .plugin(tauri_plugin_notification::init())
         .manage(backend)
         .invoke_handler(tauri::generate_handler![
             commands::get_health,
