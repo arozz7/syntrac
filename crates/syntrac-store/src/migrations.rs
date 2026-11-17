@@ -390,6 +390,51 @@ pub const MIGRATIONS: &[&str] = &[
         UNIQUE (hive, key_name)
     );
     ",
+    // 13: findings that learn (docs/ALERTS-PLAN.md, F1). Additive. `findings` holds what the detection rules raised, one row per
+    // thing (dedupe_key is unique: the same thing found again is a hit, not a new row) with the status the user gave it;
+    // `evidence` is one fact per line. `expectations` is what the user said is expected: one row per kind of finding and subject
+    // (exactly that subject, never wider), `ceiling` for usage rules ("raise the limit to this"). `detect_state` is one row: when
+    // detection was first switched on (new-thing rules count only what came after) and how the last run went. Permanent: the purge
+    // of detail never touches them. Written only by the service.
+    "
+    CREATE TABLE findings (
+        id            INTEGER PRIMARY KEY,
+        kind          TEXT NOT NULL,
+        subject       TEXT NOT NULL,
+        subject_label TEXT NOT NULL,
+        tier          TEXT NOT NULL,
+        title         TEXT NOT NULL,
+        why           TEXT NOT NULL,
+        evidence      TEXT NOT NULL,
+        dedupe_key    TEXT NOT NULL UNIQUE,
+        status        TEXT NOT NULL,
+        first_at      INTEGER NOT NULL,
+        last_at       INTEGER NOT NULL,
+        hits          INTEGER NOT NULL,
+        decided_at    INTEGER,
+        snoozed_until INTEGER
+    );
+    CREATE INDEX idx_findings_status ON findings (status, last_at);
+    CREATE INDEX idx_findings_last ON findings (last_at);
+
+    CREATE TABLE expectations (
+        id             INTEGER PRIMARY KEY,
+        kind           TEXT NOT NULL,
+        subject        TEXT NOT NULL,
+        note           TEXT,
+        created_at     INTEGER NOT NULL,
+        source_finding INTEGER,
+        ceiling        REAL,
+        UNIQUE (kind, subject)
+    );
+
+    CREATE TABLE detect_state (
+        id            INTEGER PRIMARY KEY CHECK (id = 1),
+        switched_on_at INTEGER NOT NULL,
+        last_run_at   INTEGER,
+        last_error    TEXT
+    );
+    ",
 ];
 
 /// The migration (1-based number) that rewrites every table. An existing database gets a backup copy before it is applied

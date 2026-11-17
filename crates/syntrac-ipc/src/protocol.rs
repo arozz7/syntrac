@@ -43,6 +43,19 @@ pub enum Request {
     /// Start downloading the owner dataset (docs/OWNER-PLAN.md) and answer at once with the status. The address downloaded
     /// from is compiled into the service: a request cannot name one.
     OwnerDataRefresh,
+    /// The user's decision about a finding (docs/ALERTS-PLAN.md): `expected_this_time`, `always_expected` (stores an
+    /// expectation for the finding's own kind and subject, never for anything the client names), `not_expected`, `snooze`
+    /// (with `days`) or `reopen`. `note` is only used by `always_expected`.
+    FindingDecide {
+        id: i64,
+        decision: String,
+        #[serde(default)]
+        days: Option<u32>,
+        #[serde(default)]
+        note: Option<String>,
+    },
+    /// Remove something the user said is expected.
+    ExpectationRemove { id: i64 },
 }
 
 // A status reply is one small message every few seconds; boxing the report would only add noise at every use.

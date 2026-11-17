@@ -119,7 +119,9 @@ impl<C: Clock + Send + Sync> Handler for StatusBoard<C> {
             Request::KnownProductAdd { .. }
             | Request::KnownProductRemove { .. }
             | Request::OwnerDataStatus
-            | Request::OwnerDataRefresh => {
+            | Request::OwnerDataRefresh
+            | Request::FindingDecide { .. }
+            | Request::ExpectationRemove { .. } => {
                 Response::Error { message: "this endpoint only answers status requests".into() }
             }
         }

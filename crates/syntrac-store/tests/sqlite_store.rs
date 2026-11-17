@@ -253,3 +253,8 @@ fn sqlite_store_satisfies_the_launcher_contract() {
 fn sqlite_store_satisfies_the_install_contract() {
     syntrac_testkit::install_contract::install_contract(in_memory_store);
 }
+
+#[test]
+fn sqlite_store_satisfies_the_findings_contract() {
+    syntrac_testkit::findings_contract::findings_contract(in_memory_store);
+}

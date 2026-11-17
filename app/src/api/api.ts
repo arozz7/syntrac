@@ -9,6 +9,9 @@ import type {
   KnownProgramsView,
   NewDestinationsView,
   OwnersView,
+  FindingDecision,
+  FindingStatus,
+  FindingsView,
   ProgramDestinationsView,
   OverviewView,
   OwnerDataOutcome,
@@ -45,6 +48,16 @@ export interface Api {
   ): Promise<Data<DestinationsView>>;
   /** The same destinations grouped by the network that owns them, biggest owner first. */
   topOwners(rangeSecs: number, limit?: number, allAddresses?: boolean): Promise<Data<OwnersView>>;
+  /** The findings with this status (every status when none), the counts, what the user said is expected, and whether detection is on. */
+  findings(status?: FindingStatus): Promise<Data<FindingsView>>;
+  /** Asks the service to apply the user's decision. `days` is for a snooze, `note` for "always expected". Never throws: a refusal is in the outcome. */
+  decideFinding(
+    id: number,
+    decision: FindingDecision,
+    options?: { days?: number; note?: string },
+  ): Promise<WriteOutcome>;
+  /** Asks the service to remove something the user said is expected. Never throws. */
+  removeExpectation(id: number): Promise<WriteOutcome>;
   /** Where one program connected over the range, biggest first. `path` is the program's image path. */
   programDestinations(
     rangeSecs: number,
@@ -126,6 +139,10 @@ export const tauriApi: Api = {
   topDestinations: (rangeSecs, order, limit, allAddresses) =>
     data<DestinationsView>('get_top_destinations', { rangeSecs, order, limit, allAddresses }),
   topOwners: (rangeSecs, limit, allAddresses) => data<OwnersView>('get_top_owners', { rangeSecs, limit, allAddresses }),
+  findings: (status) => data<FindingsView>('get_findings', { status, limit: undefined }),
+  decideFinding: (id, decision, options) =>
+    write('decide_finding', { id, decision, days: options?.days, note: options?.note }),
+  removeExpectation: (id) => write('remove_expectation', { id }),
   programDestinations: (rangeSecs, path, limit, allAddresses) =>
     data<ProgramDestinationsView>('get_program_destinations', { rangeSecs, path, limit, allAddresses }),
   newDestinations: (windowSecs, limit, allAddresses) =>

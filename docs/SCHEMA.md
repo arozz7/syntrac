@@ -160,6 +160,16 @@ sighting. When the keys were last read completely is the `launcher_sweeps` row o
 longer installed (its history stays). Not stored per program: a program is matched to the record whose folder holds it when shown. Permanent:
 the purge of detail never touches it. Written only by the service's launch worker. Plan: `docs/RUNAS-PLAN.md`.
 
+## Findings (v13)
+
+`findings` (migration v13, additive): what the detection rules raised, one row per thing (`dedupe_key` is UNIQUE: the same thing found again is a hit, not a
+new row). `kind` is the rule, `subject` the stable lower-case key an expectation matches, `tier` is `unusual`, `suspicious` or `confirmed`, `why` one plain
+sentence, `evidence` one fact per line, `status` is `open`, `expected`, `not_expected`, `snoozed` or `resolved`, `first_at` / `last_at` / `hits`, and when the user
+decided (`decided_at`, `snoozed_until`). `expectations`: what the user said is expected, UNIQUE per (`kind`, `subject`): exactly that subject, never wider;
+`source_finding`; `ceiling` for usage rules ("raise the limit to this level"). `detect_state`: one row with `switched_on_at` (the first time detection ran: "new"
+rules count only what came after), `last_run_at` and `last_error`. Permanent: the purge of detail never touches them. Written only by the service (the app asks
+through the pipe). Plan: `docs/ALERTS-PLAN.md`.
+
 ## Retention
 
 `Retention::purge_before(cutoff)` removes events, flows, metrics older than the cutoff, and ended processes that ended
@@ -173,4 +183,4 @@ create the `-shm` file, so the database folder must let the reading user create 
 
 ## Planned (not yet migrated)
 
-Config snapshots and diffs, baselines, application profiles, alerts.
+Config snapshots and diffs, baselines, application profiles.

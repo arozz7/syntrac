@@ -21,6 +21,7 @@ pub struct InMemoryRepository {
     pub(crate) owners: crate::memory_owner::OwnerState,
     pub(crate) launchers: crate::memory_launchers::LauncherState,
     pub(crate) installs: crate::memory_installs::InstallState,
+    pub(crate) findings: crate::memory_findings::FindingsState,
 }
 
 impl ProcessRepository for InMemoryRepository {

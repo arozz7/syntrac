@@ -26,6 +26,7 @@ use syntrac_collector::sysmetrics::SysinfoMetricsSource;
 use syntrac_collector::system::{is_elevated, own_cpu_time, SystemClock};
 use syntrac_collector::trace_sessions::WindowsSessions;
 use syntrac_collector::volumes::system_path_converter;
+use syntrac_core::findings::ReconcileSettings;
 use syntrac_core::retention::GuardLimits;
 use syntrac_core::silence::{SilenceAction, SilencePolicy, SilenceVerdict, SilenceWatchdog};
 use syntrac_core::storage_guard::StorageStats;
@@ -33,7 +34,7 @@ use syntrac_core::{
     Clock, EventRepository, MetricsRepository, MetricsSource, ProcessRepository, Retention, RollupRepository,
     RollupSettings, TelemetrySource,
 };
-use syntrac_core::{ContextSettings, IdentitySettings, LaunchSource, RefreshLimits};
+use syntrac_core::{ContextSettings, Detector, IdentitySettings, LaunchSource, RefreshLimits};
 use syntrac_ipc::pipe::{PipeServer, PipeServerConfig};
 use syntrac_ipc::protocol::{Request, Response};
 use syntrac_ipc::serve::Handler;
@@ -41,9 +42,9 @@ use syntrac_store::SqliteStore;
 use tracing::{error, info, warn};
 
 use crate::{
-    BoardInfo, Collector, CollectorSettings, ContextWorker, ContextWorkerSettings, IdentityWorker,
-    IdentityWorkerSettings, KnownProductsAdmin, LaunchWorker, LaunchWorkerSettings, OwnerControl, OwnerData,
-    ServiceConfig, ServiceHandler, StatusBoard,
+    BoardInfo, Collector, CollectorSettings, ContextWorker, ContextWorkerSettings, DetectWorker, DetectWorkerSettings,
+    FindingsAdmin, IdentityWorker, IdentityWorkerSettings, KnownProductsAdmin, LaunchWorker, LaunchWorkerSettings,
+    OwnerControl, OwnerData, ServiceConfig, ServiceHandler, StatusBoard,
 };
 
 /// Teardown (stopping sources, final drain, summary) must finish within this long, or `on_stall` runs.
@@ -182,6 +183,7 @@ pub fn run_host(
     let identity_thread = start_identity_worker(options, &worker_stop);
     let context_thread = start_context_worker(options, &worker_stop);
     let launch_thread = start_launch_worker(options, &worker_stop);
+    let detect_thread = start_detect_worker(options, &worker_stop);
 
     let started = Instant::now();
     let cpu_at_start = own_cpu_time();
@@ -245,6 +247,9 @@ pub fn run_host(
         let _ = thread.join();
     }
     if let Some(thread) = launch_thread {
+        let _ = thread.join();
+    }
+    if let Some(thread) = detect_thread {
         let _ = thread.join();
     }
     let summary = render_summary(&collector, etw_stats.as_deref(), started.elapsed(), own_cpu_time() - cpu_at_start);
@@ -369,6 +374,47 @@ fn start_launch_worker(options: &HostOptions, stop: &Arc<AtomicBool>) -> Option<
     }
 }
 
+/// The rules that raise findings. None yet in this build step: F2 adds the "new thing" rules, F3 the usage rules.
+fn detectors() -> Vec<Box<dyn Detector + Send>> {
+    Vec::new()
+}
+
+/// Starts the detect worker (findings: what is new, what is unusual) on its own thread with its own database connection. Off by
+/// default (`detect_enabled`); if it cannot start, collection carries on without it.
+fn start_detect_worker(options: &HostOptions, stop: &Arc<AtomicBool>) -> Option<std::thread::JoinHandle<()>> {
+    let config = &options.config;
+    if !config.detect_enabled {
+        info!("Detection is switched off in the configuration (detect_enabled = false)");
+        return None;
+    }
+    let store = match SqliteStore::open(&options.database_path) {
+        Ok(store) => store,
+        Err(error) => {
+            warn!(%error, "The detect worker could not open the database; collecting without it");
+            return None;
+        }
+    };
+    let settings = DetectWorkerSettings {
+        interval: Duration::from_secs(config.detect_interval_minutes * 60),
+        reconcile: ReconcileSettings { max_new: config.detect_max_new_per_run },
+    };
+    let worker = DetectWorker::new(store, detectors(), SystemClock, settings);
+    let stop = Arc::clone(stop);
+    let spawned = std::thread::Builder::new()
+        .name("syntrac-detect".into())
+        .spawn(move || worker.run(&stop, Duration::from_millis(500)));
+    match spawned {
+        Ok(handle) => {
+            info!("Detect worker started");
+            Some(handle)
+        }
+        Err(error) => {
+            warn!(%error, "The detect worker thread could not start; collecting without it");
+            None
+        }
+    }
+}
+
 /// Name of the ETW source, as `EtwSource` reports it.
 const ETW_SOURCE_NAME: &str = "etw";
 
@@ -418,10 +464,20 @@ fn start_pipe(
     config.allowed_sids = options.allowed_sids.clone();
     let status = BoardHandler(board);
     let handler: Arc<dyn Handler> = match SqliteStore::open(database_path) {
-        Ok(store) => Arc::new(
-            ServiceHandler::new(status, KnownProductsAdmin::new(store, SystemClock))
-                .with_owner(Arc::new(owner_control(database_path, owner_data_allowed))),
-        ),
+        Ok(store) => {
+            let handler = ServiceHandler::new(status, KnownProductsAdmin::new(store, SystemClock))
+                .with_owner(Arc::new(owner_control(database_path, owner_data_allowed)));
+            // The findings commands work whether or not the detect worker runs: the user can always manage what they said is expected.
+            match SqliteStore::open(database_path) {
+                Ok(findings_store) => {
+                    Arc::new(handler.with_findings(Arc::new(FindingsAdmin::new(findings_store, SystemClock))))
+                }
+                Err(error) => {
+                    warn!(%error, "The findings commands could not open the database; the pipe answers without them");
+                    Arc::new(handler)
+                }
+            }
+        }
         Err(error) => {
             warn!(%error, "The known-programs list could not open the database; the pipe answers status only");
             Arc::new(status)

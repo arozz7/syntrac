@@ -6,6 +6,7 @@ pub mod commands;
 pub mod db_location;
 pub mod health;
 pub mod history;
+pub mod history_findings;
 pub mod history_network;
 pub mod history_programs;
 pub mod identity_view;
@@ -40,6 +41,9 @@ pub fn run() {
             commands::get_program_history,
             commands::get_top_destinations,
             commands::get_top_owners,
+            commands::get_findings,
+            commands::decide_finding,
+            commands::remove_expectation,
             commands::get_program_destinations,
             commands::get_new_destinations,
             commands::get_destination_history,

@@ -65,6 +65,13 @@ pub struct ServiceConfig {
     pub launch_enabled: bool,
     /// Launch records: minutes between two sweeps of those places (they change rarely).
     pub launch_interval_minutes: u64,
+    /// Findings (docs/ALERTS-PLAN.md): whether the detect worker runs. OFF until the backtest has been read: when it is switched on
+    /// for the first time, that moment is when "new" starts counting.
+    pub detect_enabled: bool,
+    /// Findings: minutes between two detection runs.
+    pub detect_interval_minutes: u64,
+    /// Findings: at most this many NEW findings per run; the rest are counted as overflow, most serious first.
+    pub detect_max_new_per_run: usize,
     /// Whether the service may ever download the owner dataset (docs/OWNER-PLAN.md). The download itself still happens only when
     /// the user asks for it in the app; `false` makes the service refuse even then. The only network use SYNTRAC has.
     pub owner_data_allowed: bool,
@@ -103,6 +110,9 @@ impl Default for ServiceConfig {
             context_refresh_minutes: 10,
             launch_enabled: true,
             launch_interval_minutes: 10,
+            detect_enabled: false,
+            detect_interval_minutes: 5,
+            detect_max_new_per_run: 50,
             owner_data_allowed: true,
             status_interval_secs: 30,
             etw_silent_restart_secs: 180,
@@ -137,6 +147,8 @@ impl ServiceConfig {
             (self.context_interval_secs, "context_interval_secs"),
             (self.context_refresh_minutes, "context_refresh_minutes"),
             (self.launch_interval_minutes, "launch_interval_minutes"),
+            (self.detect_interval_minutes, "detect_interval_minutes"),
+            (self.detect_max_new_per_run as u64, "detect_max_new_per_run"),
             (self.top_processes as u64, "top_processes"),
             (self.status_interval_secs, "status_interval_secs"),
             (self.etw_silent_restart_secs, "etw_silent_restart_secs"),

@@ -240,3 +240,35 @@ fn the_owner_data_report_round_trips() {
     assert_eq!(value["dataset"]["rows"], 500_000);
     assert_eq!(decode_response(line.as_bytes()).unwrap(), response);
 }
+
+#[test]
+fn deciding_about_a_finding_names_it_by_id_with_a_decision_and_optional_days_and_note() {
+    let request = Request::FindingDecide { id: 4, decision: "snooze".into(), days: Some(7), note: None };
+
+    let line = encode_request(&request);
+
+    let value: serde_json::Value = serde_json::from_str(line.trim_end()).unwrap();
+    assert_eq!(value["request"], "finding_decide");
+    assert_eq!(
+        (value["id"].as_i64(), value["decision"].as_str(), value["days"].as_u64()),
+        (Some(4), Some("snooze"), Some(7))
+    );
+    assert_eq!(decode_request(line.as_bytes()).unwrap(), request);
+}
+
+#[test]
+fn days_and_note_may_be_left_out_of_a_decision() {
+    let decoded = decode_request(br#"{"request":"finding_decide","id":4,"decision":"not_expected"}"#).unwrap();
+
+    assert_eq!(decoded, Request::FindingDecide { id: 4, decision: "not_expected".into(), days: None, note: None });
+}
+
+#[test]
+fn removing_an_expectation_names_it_by_id_and_a_decision_without_its_fields_is_malformed() {
+    let request = Request::ExpectationRemove { id: 9 };
+
+    assert_eq!(encode_request(&request), "{\"request\":\"expectation_remove\",\"id\":9}\n");
+    assert_eq!(decode_request(encode_request(&request).as_bytes()).unwrap(), request);
+    assert!(matches!(decode_request(br#"{"request":"finding_decide","id":4}"#), Err(ProtocolError::Malformed(_))));
+    assert!(matches!(decode_request(br#"{"request":"expectation_remove"}"#), Err(ProtocolError::Malformed(_))));
+}

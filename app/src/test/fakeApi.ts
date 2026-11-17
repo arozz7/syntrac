@@ -17,6 +17,9 @@ import type {
   NewDestinationsView,
   OwnerRowView,
   OwnersView,
+  ExpectationView,
+  FindingsView,
+  FindingView,
   ProgramDestinationRowView,
   ProgramDestinationsView,
   OwnerDataOutcome,
@@ -388,6 +391,59 @@ export function programDestinationsView(overrides: Partial<ProgramDestinationsVi
   };
 }
 
+export function findingRow(overrides: Partial<FindingView> = {}): FindingView {
+  return {
+    id: 1,
+    kind: 'new_program',
+    subject: 'c:\\users\\someone\\downloads\\tool.exe',
+    subjectLabel: 'tool.exe',
+    tier: 'suspicious',
+    title: 'New program tool.exe',
+    why: 'It was first seen after detection was switched on, and it is not signed.',
+    evidence: ['Folder: C:\\Users\\someone\\Downloads', 'Signature: not signed'],
+    status: 'open',
+    firstAtMs: NOW - 2 * 86_400_000,
+    lastAtMs: NOW - 3_600_000,
+    hits: 3,
+    decidedAtMs: null,
+    snoozedUntilMs: null,
+    ...overrides,
+  };
+}
+
+export function expectationRow(overrides: Partial<ExpectationView> = {}): ExpectationView {
+  return {
+    id: 5,
+    kind: 'new_program',
+    subject: 'c:\\program files\\acme\\acmeserv.exe',
+    note: 'my backup',
+    createdMs: NOW - 86_400_000,
+    sourceFinding: 2,
+    ceiling: null,
+    ...overrides,
+  };
+}
+
+export function findingsView(overrides: Partial<FindingsView> = {}): FindingsView {
+  return {
+    detection: { switchedOnMs: NOW - 5 * 86_400_000, lastRunMs: NOW - 120_000, lastError: null },
+    counts: { open: 2, notExpected: 1, snoozed: 0, expected: 3, resolved: 0 },
+    findings: [
+      findingRow(),
+      findingRow({
+        id: 2,
+        tier: 'unusual',
+        title: 'New program other.exe',
+        subjectLabel: 'other.exe',
+        subject: 'other',
+        hits: 1,
+      }),
+    ],
+    expectations: [expectationRow()],
+    ...overrides,
+  };
+}
+
 export function ownerRow(overrides: Partial<OwnerRowView> = {}): OwnerRowView {
   return {
     owner: { asn: 15169, org: 'GOOGLE', country: 'US' },
@@ -515,6 +571,9 @@ export function makeFakeApi(overrides: Partial<Api> = {}): Api & { [K in keyof A
     programHistory: vi.fn(async () => ok(programHistoryView())),
     topDestinations: vi.fn(async () => ok(destinationsView())),
     topOwners: vi.fn(async () => ok(ownersView())),
+    findings: vi.fn(async () => ok(findingsView())),
+    decideFinding: vi.fn(async (): Promise<WriteOutcome> => ({ ok: true, id: null, message: null })),
+    removeExpectation: vi.fn(async (): Promise<WriteOutcome> => ({ ok: true, id: null, message: null })),
     programDestinations: vi.fn(async () => ok(programDestinationsView())),
     newDestinations: vi.fn(async () => ok(newDestinationsView())),
     destinationHistory: vi.fn(async () => ok(destinationHistoryView())),

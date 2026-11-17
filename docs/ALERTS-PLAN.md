@@ -4,7 +4,7 @@ Status: APPROVED 2026-11-16 (S1, N1, N2, F1 to F4 as written; toast delivery is 
 
 Progress: **S1 built** (`aiChangeLog/phase-S1.md`), **N1 and N2 built** (`aiChangeLog/phase-N1-N2.md`). N2 needed no index (measured: 5 ms
 without one on the real data, an index made no difference), so the schema numbers below shift down by one: **F1 is v13, F2's
-`identity_history` is v14**. N1 opens an owner in place instead of in the pop-up. F1 to F4 are next.
+`identity_history` is v14**. N1 opens an owner in place instead of in the pop-up. **F1 built** (`aiChangeLog/phase-F1.md`, schema v13): findings, expectations and detection state, the pipe commands, the detect worker (off by default, no detectors yet) and the Findings tab. F2 (the "new thing" rules, v14 for `identity_history`) is next.
 
 ## Goals
 1. Let the user sort the tables (frontend only).

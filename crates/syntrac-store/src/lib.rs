@@ -6,6 +6,7 @@ mod connection;
 mod contexts;
 mod destinations;
 mod events;
+mod findings;
 mod identities;
 mod inspect;
 mod installs;
@@ -18,6 +19,8 @@ mod migration_v10_tests;
 mod migration_v11_tests;
 #[cfg(test)]
 mod migration_v12_tests;
+#[cfg(test)]
+mod migration_v13_tests;
 #[cfg(test)]
 mod migration_v4_tests;
 #[cfg(test)]

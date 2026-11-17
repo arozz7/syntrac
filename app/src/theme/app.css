@@ -550,3 +550,36 @@
 .programs-cell > * {
   margin-right: 0.5rem;
 }
+
+/* Findings: one card per finding, the tier as a chip with a shape (never colour alone), and the decision buttons in a row. */
+.finding {
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-bg);
+}
+
+.finding__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.finding__head h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.finding .chip {
+  min-width: 0;
+  font-size: 0.85rem;
+}
+
+.finding__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}

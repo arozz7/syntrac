@@ -93,3 +93,8 @@ fn in_memory_repository_satisfies_the_launcher_contract() {
 fn in_memory_repository_satisfies_the_install_contract() {
     syntrac_testkit::install_contract::install_contract(InMemoryRepository::default);
 }
+
+#[test]
+fn in_memory_repository_satisfies_the_findings_contract() {
+    syntrac_testkit::findings_contract::findings_contract(InMemoryRepository::default);
+}

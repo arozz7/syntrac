@@ -503,6 +503,69 @@ export interface ProgramDestinationsView {
   destinations: ProgramDestinationRowView[];
 }
 
+export type FindingStatus = 'open' | 'expected' | 'not_expected' | 'snoozed' | 'resolved';
+/** unusual: differs from what was seen before. suspicious: matches a pattern often seen in rogue software. confirmed: matches a list the user imported. */
+export type FindingTier = 'unusual' | 'suspicious' | 'confirmed';
+
+/** Something a detection rule found. Evidence, never a verdict. */
+export interface FindingView {
+  id: number;
+  /** The rule that found it (new_program, ...). */
+  kind: string;
+  /** What it is about, as the stable key an expectation matches. */
+  subject: string;
+  subjectLabel: string;
+  tier: FindingTier;
+  title: string;
+  /** One plain sentence: why it was raised. */
+  why: string;
+  evidence: string[];
+  status: FindingStatus;
+  firstAtMs: number;
+  lastAtMs: number;
+  hits: number;
+  decidedAtMs: number | null;
+  snoozedUntilMs: number | null;
+}
+
+/** Something the user said is expected: one kind of finding about exactly one subject. */
+export interface ExpectationView {
+  id: number;
+  kind: string;
+  subject: string;
+  note: string | null;
+  createdMs: number;
+  sourceFinding: number | null;
+  ceiling: number | null;
+}
+
+export interface FindingCountsView {
+  open: number;
+  notExpected: number;
+  snoozed: number;
+  expected: number;
+  resolved: number;
+}
+
+export interface DetectionView {
+  /** When detection was first switched on: "new" counts only what came after. */
+  switchedOnMs: number;
+  lastRunMs: number | null;
+  /** What went wrong in the last run, in plain words. */
+  lastError: string | null;
+}
+
+export interface FindingsView {
+  /** Null: detection has never run (it is off, or has not had its first run yet). */
+  detection: DetectionView | null;
+  counts: FindingCountsView;
+  findings: FindingView[];
+  expectations: ExpectationView[];
+}
+
+/** What the user can do with a finding. */
+export type FindingDecision = 'expected_this_time' | 'always_expected' | 'not_expected' | 'snooze' | 'reopen';
+
 export interface NewDestinationRowView {
   addr: string;
   name: string | null;

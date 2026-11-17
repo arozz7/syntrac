@@ -17,6 +17,7 @@ use crate::db_location::{DbLocation, FileMemory, NoMemory, PathMemory};
 use crate::health::{assess_health, HealthView};
 use crate::history::range_start;
 use crate::history::{system_history, SystemHistoryView};
+use crate::history_findings::{findings_view, FindingsView, DEFAULT_FINDING_ROWS};
 use crate::history_network::{
     destination_history, destination_range, new_destinations_view, program_destinations_view, rank_destination_range,
     rank_owner_range, DestinationHistoryView, DestinationOrderParam, DestinationRange, DestinationsView,
@@ -236,6 +237,33 @@ impl<C: Clock + Send + Sync> Backend<C> {
             let range = self.cached_destinations(store, now, range_secs)?;
             rank_destination_range(store, &range, order.into(), scope, limit.unwrap_or(DEFAULT_DESTINATION_ROWS))
         })
+    }
+
+    /// The findings with `status` (every status when none), the counts, what the user said is expected, and whether detection is on.
+    pub fn findings(&self, status: Option<String>, limit: Option<usize>) -> Data<FindingsView> {
+        self.with_store(|store, _| findings_view(store, status.as_deref(), limit.unwrap_or(DEFAULT_FINDING_ROWS)))
+    }
+
+    /// Asks the service to apply the user's decision about a finding. The service checks it and builds any expectation itself.
+    pub fn decide_finding(
+        &self,
+        id: i64,
+        decision: String,
+        days: Option<u32>,
+        note: Option<String>,
+    ) -> Result<(), String> {
+        match self.write(&Request::FindingDecide { id, decision, days, note })? {
+            Response::Done => Ok(()),
+            other => Err(unexpected(&other)),
+        }
+    }
+
+    /// Asks the service to remove something the user said is expected.
+    pub fn remove_expectation(&self, id: i64) -> Result<(), String> {
+        match self.write(&Request::ExpectationRemove { id })? {
+            Response::Done => Ok(()),
+            other => Err(unexpected(&other)),
+        }
     }
 
     /// Where one program connected over a range (its own destinations, biggest first).

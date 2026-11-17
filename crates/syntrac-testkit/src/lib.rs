@@ -3,6 +3,7 @@
 pub mod context_contract;
 pub mod contract;
 pub mod destination_contract;
+pub mod findings_contract;
 pub mod fixtures;
 pub mod identity_contract;
 pub mod install_contract;
@@ -11,6 +12,7 @@ pub mod launcher_contract;
 pub mod memory;
 mod memory_context;
 mod memory_destinations;
+mod memory_findings;
 mod memory_identity;
 mod memory_installs;
 mod memory_known;

@@ -12,6 +12,7 @@ use syntrac_ipc::protocol::{Request, Response};
 use syntrac_ipc::serve::Handler;
 use tracing::{info, warn};
 
+use crate::findings_admin::FindingsControl;
 use crate::owner_data::OwnerControl;
 
 /// A path longer than this is not a program path (Windows allows 32,767 characters, but the request cap is 4 KiB anyway).
@@ -84,11 +85,20 @@ pub struct ServiceHandler<H, R, C> {
     status: H,
     admin: KnownProductsAdmin<R, C>,
     owner: Option<Arc<dyn OwnerControl>>,
+    findings: Option<Arc<dyn FindingsControl>>,
 }
 
 impl<H: Handler, R: KnownProductRepository + IdentityRepository, C: Clock> ServiceHandler<H, R, C> {
     pub fn new(status: H, admin: KnownProductsAdmin<R, C>) -> Self {
-        Self { status, admin, owner: None }
+        Self { status, admin, owner: None, findings: None }
+    }
+
+    /// Adds the findings commands (decide about a finding, remove an expectation). Without it they answer that they are not
+    /// available.
+    #[must_use]
+    pub fn with_findings(mut self, findings: Arc<dyn FindingsControl>) -> Self {
+        self.findings = Some(findings);
+        self
     }
 
     /// Adds the owner dataset's commands (status and download). Without it they answer that they are not available.
@@ -120,6 +130,14 @@ where
             Request::OwnerDataRefresh => match &self.owner {
                 Some(owner) => owner.refresh(),
                 None => refuse("Owner data is not available in this service."),
+            },
+            Request::FindingDecide { id, decision, days, note } => match &self.findings {
+                Some(findings) => findings.decide(id, &decision, days, note.as_deref()),
+                None => refuse("Findings are not available in this service."),
+            },
+            Request::ExpectationRemove { id } => match &self.findings {
+                Some(findings) => findings.remove_expectation(id),
+                None => refuse("Findings are not available in this service."),
             },
             other => self.status.handle(other),
         }

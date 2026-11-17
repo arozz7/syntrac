@@ -69,3 +69,11 @@ owner_data_allowed = true
 # Evidence only: "no start-up entry found" means "not found in the places read", never "does not autostart".
 launch_enabled = true
 launch_interval_minutes = 10
+
+# Findings (docs/ALERTS-PLAN.md): the detect worker looks for what is new or unusual and keeps it as findings for the Findings tab.
+# A finding is evidence, never a verdict. OFF until you have read the backtest: the first time it runs is the moment "new" starts
+# counting, and everything that exists then counts as already here. Nothing it does leaves the machine.
+detect_enabled = false
+detect_interval_minutes = 5
+# At most this many NEW findings per run; the rest are counted, most serious first.
+detect_max_new_per_run = 50

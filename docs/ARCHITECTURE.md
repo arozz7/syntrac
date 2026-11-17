@@ -163,6 +163,17 @@ file system, variables, proxies recorded as themselves) and records it (`launch_
 when each kind was last read completely. The identity panel shows "Starts with Windows via", the table a quiet "Starts at boot".
 Plan: `docs/RUNAS-PLAN.md`.
 
+## Findings (what is new, what is unusual, and what you told us is expected)
+
+The detect worker (`syntrac-service/src/detect_worker.rs`, own thread, own connection, off until `detect_enabled = true`) runs the detectors every few minutes
+(`syntrac_core::run_detection`): each `Detector` returns `Candidate`s, the shared cleaner caps their text, and the pure `reconcile` drops what the user said is
+expected (a kind of finding about exactly one subject), touches or reopens what is already stored (by `dedupe_key` and status: expected stays quiet, a snooze
+stays quiet until it ends, not-expected stays visible) and inserts the rest, most serious first, up to a cap per run. The stores (`findings`, `expectations`,
+`detect_state`, schema v13) are behind `FindingRepository`, `ExpectationRepository` and `DetectionStateRepository` with one shared contract suite. The user's
+decisions (`expected_this_time`, `always_expected`, `not_expected`, `snooze`, `reopen`) and removing an expectation reach the service over the pipe
+(`FindingDecide`, `ExpectationRemove`); the service builds any expectation from the finding IT stored, never from what the client names. The app reads the
+tables read-only (`history_findings.rs`) and shows the Findings tab. No detectors ship in this step (F2 adds the "new thing" rules, F3 the usage rules).
+
 ## Install records (where a program came from)
 
 The launch worker also reads the Uninstall registry keys (`syntrac-collector/src/install_registry.rs`, on the read-only `registry.rs`) through

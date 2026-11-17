@@ -10,6 +10,8 @@ pub mod event;
 pub mod exe_context;
 pub mod exe_identity;
 pub mod exe_location;
+pub mod findings;
+pub mod findings_run;
 pub mod flow;
 pub mod identity;
 pub mod identity_run;
@@ -57,6 +59,14 @@ pub use exe_identity::{
     InspectError, InspectErrorKind, Signature, SignatureKind, SignatureStatus, VersionInfo,
 };
 pub use exe_location::{classify_location, install_root, product_key, LocationClass, ProductKey};
+pub use findings::{
+    apply_decision, reconcile, Candidate, Decision, DecisionEffect, DecisionError, Expectation, Finding, FindingStatus,
+    FindingWrite, NewExpectation, ReconcileSettings, Reconciled, Tier,
+};
+pub use findings_run::{
+    clean_candidate, run_detection, DetectError, DetectionState, DetectionStateRepository, Detector,
+    ExpectationRepository, FindingRepository, RunReport,
+};
 pub use flow::{Destination, FlowAggregator, FlowRow};
 pub use identity::ProcessInstanceId;
 pub use identity_run::{inspect_due, retry_after, IdentityPass, IdentitySettings};

@@ -11,6 +11,7 @@ use tauri::State;
 use crate::backend::{Backend, Data};
 use crate::health::HealthView;
 use crate::history::SystemHistoryView;
+use crate::history_findings::FindingsView;
 use crate::history_network::{
     DestinationHistoryView, DestinationOrderParam, DestinationsView, NewDestinationsView, OwnersView,
     ProgramDestinationsView,
@@ -106,6 +107,36 @@ pub async fn get_program_destinations(
     let backend = Arc::clone(&backend);
     let scope = scope_of(all_addresses);
     Ok(blocking(move || backend.program_destinations(range_secs, path, scope, limit)).await.unwrap_or_else(internal))
+}
+
+#[tauri::command]
+pub async fn get_findings(
+    backend: State<'_, SharedBackend>,
+    status: Option<String>,
+    limit: Option<usize>,
+) -> Result<Data<FindingsView>, ()> {
+    let backend = Arc::clone(&backend);
+    Ok(blocking(move || backend.findings(status, limit)).await.unwrap_or_else(internal))
+}
+
+#[tauri::command]
+pub async fn decide_finding(
+    backend: State<'_, SharedBackend>,
+    id: i64,
+    decision: String,
+    days: Option<u32>,
+    note: Option<String>,
+) -> Result<WriteOutcome, ()> {
+    let backend = Arc::clone(&backend);
+    let result = blocking(move || backend.decide_finding(id, decision, days, note).map(|()| None)).await;
+    Ok(WriteOutcome::from_result(result.unwrap_or_else(|| Err("The request could not be run.".to_owned()))))
+}
+
+#[tauri::command]
+pub async fn remove_expectation(backend: State<'_, SharedBackend>, id: i64) -> Result<WriteOutcome, ()> {
+    let backend = Arc::clone(&backend);
+    let result = blocking(move || backend.remove_expectation(id).map(|()| None)).await;
+    Ok(WriteOutcome::from_result(result.unwrap_or_else(|| Err("The request could not be run.".to_owned()))))
 }
 
 #[tauri::command]
