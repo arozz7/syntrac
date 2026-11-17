@@ -76,7 +76,7 @@ fn writable(class: LocationClass) -> bool {
     )
 }
 
-fn location_label(class: LocationClass) -> &'static str {
+pub(crate) fn location_label(class: LocationClass) -> &'static str {
     match class {
         LocationClass::System => "the Windows folder",
         LocationClass::ProgramFiles => "Program Files",
@@ -118,7 +118,7 @@ fn facts_of(entry: &IdentityEntry) -> Option<&FileFacts> {
 }
 
 /// Why the evidence deserves a closer look, as phrases for the sentence; empty when it does not.
-fn concerns(facts: Option<&FileFacts>, class: LocationClass) -> Vec<&'static str> {
+pub(crate) fn concerns(facts: Option<&FileFacts>, class: LocationClass) -> Vec<&'static str> {
     let Some(facts) = facts else { return Vec::new() };
     match facts.signature.status {
         SignatureStatus::Altered => vec!["its file was changed after it was signed"],

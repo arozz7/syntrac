@@ -60,6 +60,9 @@ pub enum Request {
     },
     /// Remove something the user said is expected.
     ExpectationRemove { id: i64 },
+    /// "Review what is here today" (docs/ALERTS-PLAN.md, F4): expect new programs below this install folder. The service checks that
+    /// a program it knows is installed there; the folder is never taken on trust.
+    ReviewConfirm { root: String },
 }
 
 // A status reply is one small message every few seconds; boxing the report would only add noise at every use.

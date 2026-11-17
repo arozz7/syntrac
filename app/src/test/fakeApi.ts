@@ -19,6 +19,8 @@ import type {
   OwnersView,
   ExpectationView,
   FindingsView,
+  ReviewGroupView,
+  ReviewView,
   FindingView,
   ProgramDestinationRowView,
   ProgramDestinationsView,
@@ -425,8 +427,45 @@ export function expectationRow(overrides: Partial<ExpectationView> = {}): Expect
   };
 }
 
+export function reviewGroup(overrides: Partial<ReviewGroupView> = {}): ReviewGroupView {
+  return {
+    root: 'c:\\program files\\acme',
+    label: 'Acme Suite',
+    publisher: 'acme inc',
+    count: 3,
+    programs: [
+      { path: 'C:\\Program Files\\Acme\\a.exe', name: 'a.exe' },
+      { path: 'C:\\Program Files\\Acme\\b.exe', name: 'b.exe' },
+    ],
+    concerns: [],
+    location: 'Program Files',
+    ...overrides,
+  };
+}
+
+export function reviewView(overrides: Partial<ReviewView> = {}): ReviewView {
+  return {
+    switchedOnMs: NOW - 5 * 86_400_000,
+    totalGroups: 2,
+    groups: [
+      reviewGroup({
+        root: 'c:\\users\\someone\\downloads',
+        label: 'downloads',
+        publisher: null,
+        count: 1,
+        programs: [{ path: 'C:\\Users\\someone\\Downloads\\tool.exe', name: 'tool.exe' }],
+        concerns: ['it is not signed', 'it runs from a user folder'],
+        location: 'a user folder',
+      }),
+      reviewGroup(),
+    ],
+    ...overrides,
+  };
+}
+
 export function findingsView(overrides: Partial<FindingsView> = {}): FindingsView {
   return {
+    digest: { windowHours: 24, newDestinations: 0, newOwners: 0, ownerData: true },
     detection: { switchedOnMs: NOW - 5 * 86_400_000, lastRunMs: NOW - 120_000, lastError: null },
     counts: { open: 2, notExpected: 1, snoozed: 0, expected: 3, resolved: 0 },
     findings: [
@@ -575,6 +614,8 @@ export function makeFakeApi(overrides: Partial<Api> = {}): Api & { [K in keyof A
     findings: vi.fn(async () => ok(findingsView())),
     decideFinding: vi.fn(async (): Promise<WriteOutcome> => ({ ok: true, id: null, message: null })),
     removeExpectation: vi.fn(async (): Promise<WriteOutcome> => ({ ok: true, id: null, message: null })),
+    review: vi.fn(async () => ok(reviewView())),
+    confirmReview: vi.fn(async (): Promise<WriteOutcome> => ({ ok: true, id: null, message: null })),
     programDestinations: vi.fn(async () => ok(programDestinationsView())),
     newDestinations: vi.fn(async () => ok(newDestinationsView())),
     destinationHistory: vi.fn(async () => ok(destinationHistoryView())),

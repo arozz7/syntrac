@@ -3,13 +3,32 @@
 use std::collections::{BTreeMap, HashSet};
 use std::net::IpAddr;
 
-use syntrac_core::destination_trend::{DestinationProgram, DestinationTotals, NewDestination, ProgramDestination};
+use syntrac_core::destination_trend::{
+    DestinationProgram, DestinationTotals, NewDestination, NewPair, ProgramDestination,
+};
 use syntrac_core::rollup::executable_key;
 use syntrac_core::{DestinationTrendRepository, Executable, RepoError, Timestamp};
 
 use crate::memory::InMemoryRepository;
 
 impl DestinationTrendRepository for InMemoryRepository {
+    fn new_pairs(&self, since: Timestamp) -> Result<Vec<NewPair>, RepoError> {
+        let state = &self.rollups;
+        Ok(state
+            .pairs
+            .iter()
+            .filter(|((_, addr), ledger)| ledger.first_seen >= since && !addr.is_loopback())
+            .map(|((key, addr), ledger)| NewPair {
+                exe: Executable {
+                    key: key.clone(),
+                    path: state.paths.get(key).cloned().unwrap_or_else(|| key.clone()),
+                },
+                addr: *addr,
+                first_seen: ledger.first_seen,
+            })
+            .collect())
+    }
+
     fn program_destinations(
         &self,
         path: &str,

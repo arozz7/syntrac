@@ -7,16 +7,21 @@
 
 use std::sync::{Mutex, PoisonError};
 
-use syntrac_core::findings::{apply_decision, Decision, ExpectationScope};
-use syntrac_core::{Clock, ExpectationRepository, FindingRepository};
+use syntrac_core::findings::{apply_decision, Decision, ExpectationScope, NewExpectation, FOLDER_SCOPE_PREFIX};
+use syntrac_core::{install_root, Clock, ExpectationRepository, FindingRepository, IdentityRepository};
 use syntrac_ipc::protocol::Response;
 use tracing::{info, warn};
+
+/// A path longer than this is not an install folder.
+const MAX_ROOT_CHARS: usize = 600;
 
 /// What the pipe handler needs from the findings.
 pub trait FindingsControl: Send + Sync {
     /// Applies the user's decision to a finding. `decision` is one of the names in `Request::FindingDecide`.
     fn decide(&self, id: i64, decision: &str, days: Option<u32>, note: Option<&str>, scope: Option<&str>) -> Response;
     fn remove_expectation(&self, id: i64) -> Response;
+    /// Expect new programs below an install folder the user has looked at in the review of what is here today.
+    fn confirm_review(&self, root: &str) -> Response;
 }
 
 pub struct FindingsAdmin<R, C> {
@@ -47,7 +52,7 @@ fn parse(decision: &str, days: Option<u32>, note: Option<&str>, scope: Option<&s
     }
 }
 
-impl<R: FindingRepository + ExpectationRepository, C: Clock> FindingsAdmin<R, C> {
+impl<R: FindingRepository + ExpectationRepository + IdentityRepository, C: Clock> FindingsAdmin<R, C> {
     pub fn new(repo: R, clock: C) -> Self {
         Self { repo: Mutex::new(repo), clock }
     }
@@ -60,7 +65,7 @@ impl<R: FindingRepository + ExpectationRepository, C: Clock> FindingsAdmin<R, C>
 
 impl<R, C> FindingsControl for FindingsAdmin<R, C>
 where
-    R: FindingRepository + ExpectationRepository + Send,
+    R: FindingRepository + ExpectationRepository + IdentityRepository + Send,
     C: Clock + Send + Sync,
 {
     fn decide(&self, id: i64, decision: &str, days: Option<u32>, note: Option<&str>, scope: Option<&str>) -> Response {
@@ -94,6 +99,40 @@ where
             Ok(false) => refuse("There is no such finding."),
             Err(error) => {
                 warn!(%error, "Could not save a decision about a finding");
+                refuse(format!("Could not save it: {error}"))
+            }
+        }
+    }
+
+    fn confirm_review(&self, root: &str) -> Response {
+        let root = root.trim();
+        if root.is_empty() || root.chars().count() > MAX_ROOT_CHARS || root.ends_with('\\') || !root.contains('\\') {
+            return refuse("That folder is too general to be expected as a whole.");
+        }
+        let mut repo = self.repo.lock().unwrap_or_else(PoisonError::into_inner);
+        let known = match repo.identity_entries() {
+            Ok(entries) => entries
+                .iter()
+                .any(|entry| install_root(&entry.exe.path).is_some_and(|found| found.eq_ignore_ascii_case(root))),
+            Err(error) => return refuse(format!("Could not read the programs: {error}")),
+        };
+        if !known {
+            return refuse("No program known to SYNTRAC is installed in that folder.");
+        }
+        let expectation = NewExpectation {
+            kind: "new_program".into(),
+            subject: format!("{FOLDER_SCOPE_PREFIX}{}", root.to_lowercase()),
+            note: Some("Looked at in the review of what was here at switch-on".into()),
+            source_finding: None,
+            ceiling: None,
+        };
+        match repo.add_expectation(&expectation, self.clock.now()) {
+            Ok(id) => {
+                info!(id, root, "A group of the review was marked as expected");
+                Response::Done
+            }
+            Err(error) => {
+                warn!(%error, "Could not save an expectation");
                 refuse(format!("Could not save it: {error}"))
             }
         }

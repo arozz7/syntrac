@@ -557,12 +557,48 @@ export interface DetectionView {
   lastError: string | null;
 }
 
+/** What appeared in the last day, counted and not raised. */
+export interface DigestView {
+  windowHours: number;
+  newDestinations: number;
+  newOwners: number;
+  /** The owner data is on this machine; without it networks cannot be counted. */
+  ownerData: boolean;
+}
+
 export interface FindingsView {
+  digest: DigestView;
   /** Null: detection has never run (it is off, or has not had its first run yet). */
   detection: DetectionView | null;
   counts: FindingCountsView;
   findings: FindingView[];
   expectations: ExpectationView[];
+}
+
+export interface ReviewProgramView {
+  path: string;
+  name: string;
+}
+
+/** Programs of one product that were already here when detection was switched on. */
+export interface ReviewGroupView {
+  /** The install folder, lower case: what "mark as expected" covers. */
+  root: string;
+  label: string;
+  publisher: string | null;
+  count: number;
+  /** The first few, by name. */
+  programs: ReviewProgramView[];
+  /** Why it deserves a closer look, as phrases; empty when it does not. */
+  concerns: string[];
+  location: string;
+}
+
+export interface ReviewView {
+  /** When detection was first switched on; null before that. */
+  switchedOnMs: number | null;
+  totalGroups: number;
+  groups: ReviewGroupView[];
 }
 
 /** What the user can do with a finding. */

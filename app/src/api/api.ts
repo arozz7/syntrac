@@ -12,6 +12,7 @@ import type {
   FindingDecision,
   FindingStatus,
   FindingsView,
+  ReviewView,
   ProgramDestinationsView,
   OverviewView,
   OwnerDataOutcome,
@@ -56,6 +57,10 @@ export interface Api {
     decision: FindingDecision,
     options?: { days?: number; note?: string; scope?: 'this_item' | 'this_folder' },
   ): Promise<WriteOutcome>;
+  /** The groups of programs that were already here when detection was switched on and that nothing covers yet. */
+  review(): Promise<Data<ReviewView>>;
+  /** Asks the service to expect new programs below an install folder the user has looked at. Never throws. */
+  confirmReview(root: string): Promise<WriteOutcome>;
   /** Asks the service to remove something the user said is expected. Never throws. */
   removeExpectation(id: number): Promise<WriteOutcome>;
   /** Where one program connected over the range, biggest first. `path` is the program's image path. */
@@ -142,6 +147,8 @@ export const tauriApi: Api = {
   findings: (status) => data<FindingsView>('get_findings', { status, limit: undefined }),
   decideFinding: (id, decision, options) =>
     write('decide_finding', { id, decision, days: options?.days, note: options?.note, scope: options?.scope }),
+  review: () => data<ReviewView>('get_review', { limit: undefined }),
+  confirmReview: (root) => write('confirm_review', { root }),
   removeExpectation: (id) => write('remove_expectation', { id }),
   programDestinations: (rangeSecs, path, limit, allAddresses) =>
     data<ProgramDestinationsView>('get_program_destinations', { rangeSecs, path, limit, allAddresses }),

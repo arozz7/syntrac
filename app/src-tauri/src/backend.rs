@@ -17,7 +17,9 @@ use crate::db_location::{DbLocation, FileMemory, NoMemory, PathMemory};
 use crate::health::{assess_health, HealthView};
 use crate::history::range_start;
 use crate::history::{system_history, SystemHistoryView};
-use crate::history_findings::{findings_view, FindingsView, DEFAULT_FINDING_ROWS};
+use crate::history_findings::{
+    findings_view, review_view, FindingsView, ReviewView, DEFAULT_FINDING_ROWS, DEFAULT_REVIEW_GROUPS,
+};
 use crate::history_network::{
     destination_history, destination_range, new_destinations_view, program_destinations_view, rank_destination_range,
     rank_owner_range, DestinationHistoryView, DestinationOrderParam, DestinationRange, DestinationsView,
@@ -241,7 +243,22 @@ impl<C: Clock + Send + Sync> Backend<C> {
 
     /// The findings with `status` (every status when none), the counts, what the user said is expected, and whether detection is on.
     pub fn findings(&self, status: Option<String>, limit: Option<usize>) -> Data<FindingsView> {
-        self.with_store(|store, _| findings_view(store, status.as_deref(), limit.unwrap_or(DEFAULT_FINDING_ROWS)))
+        self.with_store(|store, now| {
+            findings_view(store, status.as_deref(), limit.unwrap_or(DEFAULT_FINDING_ROWS), now)
+        })
+    }
+
+    /// "Review what is here today": the groups of programs that were already here when detection was switched on.
+    pub fn review(&self, limit: Option<usize>) -> Data<ReviewView> {
+        self.with_store(|store, _| review_view(store, limit.unwrap_or(DEFAULT_REVIEW_GROUPS)))
+    }
+
+    /// Asks the service to expect new programs below an install folder the user has looked at. The service checks the folder.
+    pub fn confirm_review(&self, root: String) -> Result<(), String> {
+        match self.write(&Request::ReviewConfirm { root })? {
+            Response::Done => Ok(()),
+            other => Err(unexpected(&other)),
+        }
     }
 
     /// Asks the service to apply the user's decision about a finding. The service checks it and builds any expectation itself.

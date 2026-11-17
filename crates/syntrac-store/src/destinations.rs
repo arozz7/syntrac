@@ -4,7 +4,9 @@
 use std::net::IpAddr;
 
 use rusqlite::{params, Row};
-use syntrac_core::destination_trend::{DestinationProgram, DestinationTotals, NewDestination, ProgramDestination};
+use syntrac_core::destination_trend::{
+    DestinationProgram, DestinationTotals, NewDestination, NewPair, ProgramDestination,
+};
 use syntrac_core::rollup::executable_key;
 use syntrac_core::{DestinationTrendRepository, Executable, RepoError, Timestamp};
 
@@ -60,6 +62,28 @@ fn new_destinations_sql() -> String {
 }
 
 impl DestinationTrendRepository for SqliteStore {
+    fn new_pairs(&self, since: Timestamp) -> Result<Vec<NewPair>, RepoError> {
+        let mut statement = self
+            .conn
+            .prepare(&format!(
+                "SELECT e.path_key, e.path, x.addr, x.first_seen
+                 FROM exe_destinations x JOIN executables e ON e.id = x.exe_id
+                 WHERE e.id <> {UNATTRIBUTED} AND x.first_seen >= ?1 AND x.{NOT_LOOPBACK}"
+            ))
+            .map_err(backend)?;
+        let mut rows = statement.query(params![since.as_micros()]).map_err(backend)?;
+        let mut found = Vec::new();
+        while let Some(row) = rows.next().map_err(backend)? {
+            let addr: String = row.get(2).map_err(backend)?;
+            found.push(NewPair {
+                exe: Executable { key: row.get(0).map_err(backend)?, path: row.get(1).map_err(backend)? },
+                addr: parse_addr(&addr)?,
+                first_seen: ts(row, 3)?,
+            });
+        }
+        Ok(found)
+    }
+
     fn program_destinations(
         &self,
         path: &str,

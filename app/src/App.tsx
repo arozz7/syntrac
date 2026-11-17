@@ -20,6 +20,7 @@ const VIEWS: Array<{ id: ViewId; nav: string; title: string }> = [
 ];
 
 const HEALTH_REFRESH_MS = 5000;
+const FINDINGS_REFRESH_MS = 30_000;
 
 function CurrentView({ view }: { view: ViewId }) {
   switch (view) {
@@ -45,6 +46,9 @@ export function App() {
     'health',
   );
   const health = polled?.health;
+  // How many findings are open, for the badge beside Findings; nothing is shown while it cannot be read.
+  const findings = usePolled(() => api.findings('open'), FINDINGS_REFRESH_MS, 'open-findings');
+  const openFindings = findings?.state === 'ok' ? findings.data.counts.open : 0;
   const current = VIEWS.find((v) => v.id === view) ?? VIEWS[0];
 
   return (
@@ -64,6 +68,11 @@ export function App() {
               onClick={() => setView(v.id)}
             >
               {v.nav}
+              {v.id === 'findings' && openFindings > 0 && (
+                <span className="nav__badge" role="img" aria-label={`${openFindings} open`}>
+                  {openFindings}
+                </span>
+              )}
             </button>
           ))}
         </nav>

@@ -62,6 +62,57 @@ describe('Findings: what was found', () => {
   });
 });
 
+describe('Findings: the last day and what is new since you looked', () => {
+  it('counts the new addresses and networks of the last day, as a digest and not an alert', async () => {
+    show(
+      makeFakeApi({
+        findings: vi.fn(async () =>
+          ok(findingsView({ digest: { windowHours: 24, newDestinations: 14, newOwners: 3, ownerData: true } })),
+        ),
+      }),
+    );
+    expect(await screen.findByText(/14 new internet addresses/i)).toBeTruthy();
+    expect(screen.getByText(/3 networks never reached before/i)).toBeTruthy();
+  });
+
+  it('says networks cannot be counted without the owner data', async () => {
+    show(
+      makeFakeApi({
+        findings: vi.fn(async () =>
+          ok(findingsView({ digest: { windowHours: 24, newDestinations: 2, newOwners: 0, ownerData: false } })),
+        ),
+      }),
+    );
+    expect(await screen.findByText(/download the owner data/i)).toBeTruthy();
+  });
+
+  it('says how many open findings are new since the tab was last looked at', async () => {
+    window.localStorage.setItem('syntrac.findings.lastLookedMs', String(Date.now() - 3 * 86_400_000));
+    const fresh = findingRow({ id: 10, title: 'Fresh finding', firstAtMs: Date.now() - 3_600_000 });
+    const old = findingRow({ id: 11, title: 'Old finding', firstAtMs: Date.now() - 10 * 86_400_000 });
+    show(makeFakeApi({ findings: vi.fn(async () => ok(findingsView({ findings: [fresh, old] }))) }));
+
+    expect(await screen.findByText(/1 new since you last looked/i)).toBeTruthy();
+    window.localStorage.removeItem('syntrac.findings.lastLookedMs');
+  });
+
+  it('says nothing the first time, and remembers when the tab was left', async () => {
+    window.localStorage.removeItem('syntrac.findings.lastLookedMs');
+    const { unmount } = render(
+      <ApiProvider api={makeFakeApi()}>
+        <Findings />
+      </ApiProvider>,
+    );
+    await screen.findByText('New program tool.exe');
+    expect(screen.queryByText(/since you last looked/i)).toBeNull();
+
+    unmount();
+
+    expect(Number(window.localStorage.getItem('syntrac.findings.lastLookedMs'))).toBeGreaterThan(Date.now() - 60_000);
+    window.localStorage.removeItem('syntrac.findings.lastLookedMs');
+  });
+});
+
 describe('Findings: is detection on', () => {
   it('says detection has not run yet and how "new" will be counted when it first does', async () => {
     show(makeFakeApi({ findings: vi.fn(async () => ok(findingsView({ detection: null, findings: [] }))) }));

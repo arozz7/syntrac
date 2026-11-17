@@ -229,3 +229,51 @@ fn the_limit_of_a_finding_that_measured_nothing_cannot_be_raised() {
     assert!(error_text(decide(&admin, 1, "raise_limit", None, None)).contains("usage"));
     assert!(admin.with_repository(|repo| repo.expectations().unwrap()).is_empty());
 }
+
+// ---- confirming a group of the review
+
+const ACME: &str = r"C:\Program Files\Acme\a.exe";
+
+fn review_admin() -> FindingsAdmin<InMemoryRepository, ManualClock> {
+    let mut repo = InMemoryRepository::default();
+    syntrac_testkit::identity_contract::seed_executables(&mut repo, &[ACME]);
+    FindingsAdmin::new(repo, ManualClock::new(Timestamp::from_micros(NOW)))
+}
+
+#[test]
+fn confirming_a_group_stores_a_folder_expectation_for_new_programs_below_it() {
+    let admin = review_admin();
+
+    assert_eq!(admin.confirm_review(r"c:\program files\acme"), Response::Done);
+
+    let expectations = admin.with_repository(|repo| repo.expectations().unwrap());
+    assert_eq!(
+        (expectations[0].kind.as_str(), expectations[0].subject.as_str()),
+        ("new_program", r"folder:c:\program files\acme")
+    );
+    assert!(expectations[0].note.as_deref().unwrap_or_default().contains("review"));
+    assert_eq!(expectations[0].created_at, Timestamp::from_micros(NOW));
+}
+
+#[test]
+fn a_folder_no_known_program_is_installed_in_or_one_that_is_too_general_is_refused() {
+    let admin = review_admin();
+
+    assert!(error_text(admin.confirm_review(r"c:\program files\nobody")).contains("No program"));
+    assert!(error_text(admin.confirm_review(r"c:\")).contains("too general"));
+    assert!(error_text(admin.confirm_review("")).contains("too general"));
+    assert!(
+        error_text(admin.confirm_review(r"c:\program files")).contains("No program"),
+        "a parent of the install folder is not the install folder"
+    );
+    assert!(admin.with_repository(|repo| repo.expectations().unwrap()).is_empty());
+}
+
+#[test]
+fn the_pipe_carries_a_review_confirmation_to_the_admin() {
+    let handler = service(Some(Arc::new(review_admin())));
+
+    let response = handler.handle(Request::ReviewConfirm { root: r"c:\program files\acme".into() });
+
+    assert_eq!(response, Response::Done);
+}

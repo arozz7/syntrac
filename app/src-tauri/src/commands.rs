@@ -11,7 +11,7 @@ use tauri::State;
 use crate::backend::{Backend, Data};
 use crate::health::HealthView;
 use crate::history::SystemHistoryView;
-use crate::history_findings::FindingsView;
+use crate::history_findings::{FindingsView, ReviewView};
 use crate::history_network::{
     DestinationHistoryView, DestinationOrderParam, DestinationsView, NewDestinationsView, OwnersView,
     ProgramDestinationsView,
@@ -130,6 +130,19 @@ pub async fn decide_finding(
 ) -> Result<WriteOutcome, ()> {
     let backend = Arc::clone(&backend);
     let result = blocking(move || backend.decide_finding(id, decision, days, note, scope).map(|()| None)).await;
+    Ok(WriteOutcome::from_result(result.unwrap_or_else(|| Err("The request could not be run.".to_owned()))))
+}
+
+#[tauri::command]
+pub async fn get_review(backend: State<'_, SharedBackend>, limit: Option<usize>) -> Result<Data<ReviewView>, ()> {
+    let backend = Arc::clone(&backend);
+    Ok(blocking(move || backend.review(limit)).await.unwrap_or_else(internal))
+}
+
+#[tauri::command]
+pub async fn confirm_review(backend: State<'_, SharedBackend>, root: String) -> Result<WriteOutcome, ()> {
+    let backend = Arc::clone(&backend);
+    let result = blocking(move || backend.confirm_review(root).map(|()| None)).await;
     Ok(WriteOutcome::from_result(result.unwrap_or_else(|| Err("The request could not be run.".to_owned()))))
 }
 

@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApi } from '../api/ApiContext';
 import type {
   DetectionView,
+  DigestView,
   ExpectationView,
   FindingCountsView,
   FindingDecision,
@@ -13,6 +14,7 @@ import type {
 import { DataGate } from '../components/DataGate';
 import { formatBytes, formatDateTime } from '../format';
 import { usePolled } from '../hooks/usePolled';
+import { ReviewToday } from './ReviewToday';
 
 const REFRESH_MS = 30_000;
 
@@ -359,13 +361,49 @@ function Expectations({ expectations, onChanged }: { expectations: ExpectationVi
   );
 }
 
+const LAST_LOOKED_KEY = 'syntrac.findings.lastLookedMs';
+
+/** When the tab was last left, as a per-viewer convenience: the browser may refuse storage, and nothing depends on it. */
+function readLastLooked(): number | null {
+  try {
+    const stored = window.localStorage.getItem(LAST_LOOKED_KEY);
+    return stored === null ? null : Number(stored);
+  } catch {
+    return null;
+  }
+}
+
+function writeLastLooked(ms: number) {
+  try {
+    window.localStorage.setItem(LAST_LOOKED_KEY, String(ms));
+  } catch {
+    // Nothing depends on it.
+  }
+}
+
+function Digest({ digest }: { digest: DigestView }) {
+  return (
+    <p className="muted">
+      In the last {digest.windowHours} hours: {digest.newDestinations} new internet{' '}
+      {digest.newDestinations === 1 ? 'address' : 'addresses'}
+      {digest.ownerData
+        ? ` and ${digest.newOwners} ${digest.newOwners === 1 ? 'network' : 'networks'} never reached before`
+        : '. Download the owner data (History, Network) to count the networks too'}
+      . Counted, not raised: new destinations appear every day; see them under History, Network.
+    </p>
+  );
+}
+
 function FindingsBody({
   view,
   status,
+  newSince,
   onStatus,
   onChanged,
 }: {
   view: FindingsView;
+  /** How many open findings appeared since the tab was last looked at; null the first time. */
+  newSince: number | null;
   status: FindingStatus | undefined;
   onStatus: (status: FindingStatus | undefined) => void;
   onChanged: () => void;
@@ -374,6 +412,8 @@ function FindingsBody({
     <>
       <section className="card card--wide">
         <DetectionNote detection={view.detection} />
+        <Digest digest={view.digest} />
+        {newSince !== null && newSince > 0 && <p role="status">{newSince} new since you last looked.</p>}
         <p className="muted">
           A finding is evidence to look at, not a verdict: the tiers are unusual (differs from what was seen before),
           suspicious (matches a pattern often seen in rogue software) and confirmed (matches a list you imported). Tell
@@ -386,6 +426,7 @@ function FindingsBody({
           view.findings.map((finding) => <FindingCard key={finding.id} finding={finding} onChanged={onChanged} />)
         )}
       </section>
+      <ReviewToday onChanged={onChanged} />
       <Expectations expectations={view.expectations} onChanged={onChanged} />
     </>
   );
@@ -397,11 +438,24 @@ export function Findings() {
   const [status, setStatus] = useState<FindingStatus | undefined>('open');
   // Bumped after a decision, so the list is read again at once instead of at the next refresh.
   const [version, setVersion] = useState(0);
+  // When the tab was last left is read once, when it opens, and written when it closes.
+  const [lastLooked] = useState(readLastLooked);
+  useEffect(() => () => writeLastLooked(Date.now()), []);
   const result = usePolled(() => api.findings(status), REFRESH_MS, `findings:${status ?? 'all'}:${version}`);
   return (
     <DataGate result={result}>
       {(view) => (
-        <FindingsBody view={view} status={status} onStatus={setStatus} onChanged={() => setVersion((v) => v + 1)} />
+        <FindingsBody
+          view={view}
+          status={status}
+          newSince={
+            lastLooked === null
+              ? null
+              : view.findings.filter((f) => f.status === 'open' && f.firstAtMs > lastLooked).length
+          }
+          onStatus={setStatus}
+          onChanged={() => setVersion((v) => v + 1)}
+        />
       )}
     </DataGate>
   );

@@ -57,6 +57,15 @@ pub struct DestinationProgram {
     pub last_seen: Timestamp,
 }
 
+/// A program reaching an address for the first time (the permanent ledger of pairs).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewPair {
+    pub exe: Executable,
+    pub addr: IpAddr,
+    /// The first time this program was seen talking to this address.
+    pub first_seen: Timestamp,
+}
+
 /// One address a program talked to, summed over a range.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProgramDestination {
@@ -77,6 +86,10 @@ impl ProgramDestination {
 
 /// The read side of destination trends. Implementations only group, sum and list.
 pub trait DestinationTrendRepository {
+    /// Every (program, address) pair whose permanent first sighting is at or after `since`, loopback left out, in any order. Only
+    /// attributed programs have pairs.
+    fn new_pairs(&self, since: Timestamp) -> Result<Vec<NewPair>, RepoError>;
+
     /// Every address the program at `path` (matched without regard to case) talked to over the hours in `[from, to]`, loopback
     /// left out, one row per address, in any order. A path that was never recorded has none.
     fn program_destinations(

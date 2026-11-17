@@ -233,18 +233,28 @@ pub fn reconcile(
 /// Whether an expectation covers a candidate: the same kind and exactly the same subject, or (a folder expectation the user chose)
 /// the same kind and a subject below that folder.
 fn covers(expectation: &Expectation, candidate: &Candidate) -> bool {
-    if expectation.kind != candidate.kind {
+    covers_parts(expectation, &candidate.kind, &candidate.subject, candidate.level)
+}
+
+/// Whether any expectation covers a finding of this kind and subject (the level, for a usage rule, is not known here: a ceiling is
+/// ignored).
+pub fn expectation_covers(expectations: &[Expectation], kind: &str, subject: &str) -> bool {
+    expectations.iter().any(|e| covers_parts(e, kind, subject, None))
+}
+
+fn covers_parts(expectation: &Expectation, kind: &str, subject: &str, level: Option<f64>) -> bool {
+    if expectation.kind != kind {
         return false;
     }
     // A ceiling is the level the user accepted: only more than that is raised again.
-    if let (Some(ceiling), Some(level)) = (expectation.ceiling, candidate.level) {
+    if let (Some(ceiling), Some(level)) = (expectation.ceiling, level) {
         if level > ceiling {
             return false;
         }
     }
     match expectation.subject.strip_prefix(FOLDER_SCOPE_PREFIX) {
-        Some(root) => candidate.subject.strip_prefix(root).is_some_and(|rest| rest.starts_with('\\')),
-        None => expectation.subject == candidate.subject,
+        Some(root) => subject.strip_prefix(root).is_some_and(|rest| rest.starts_with('\\')),
+        None => expectation.subject == subject,
     }
 }
 

@@ -135,6 +135,10 @@ where
                 Some(findings) => findings.decide(id, &decision, days, note.as_deref(), scope.as_deref()),
                 None => refuse("Findings are not available in this service."),
             },
+            Request::ReviewConfirm { root } => match &self.findings {
+                Some(findings) => findings.confirm_review(&root),
+                None => refuse("Findings are not available in this service."),
+            },
             Request::ExpectationRemove { id } => match &self.findings {
                 Some(findings) => findings.remove_expectation(id),
                 None => refuse("Findings are not available in this service."),

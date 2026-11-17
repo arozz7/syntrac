@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 import { ApiProvider } from './api/ApiContext';
-import { health, makeFakeApi } from './test/fakeApi';
+import { findingsView, health, makeFakeApi } from './test/fakeApi';
 
 vi.mock('./components/Chart', () => ({ Chart: () => <div data-testid="chart" /> }));
 
@@ -37,6 +37,30 @@ describe('App', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Connections' }));
     expect(await screen.findByText('browser.exe')).toBeTruthy();
+  });
+
+  it('shows how many findings are open next to Findings in the sidebar, and nothing when there are none', async () => {
+    const api = makeFakeApi();
+    render(
+      <ApiProvider api={api}>
+        <App />
+      </ApiProvider>,
+    );
+    expect(await screen.findByRole('button', { name: /Findings.*2 open/i })).toBeTruthy();
+    cleanup();
+
+    const none = makeFakeApi({
+      findings: vi.fn(async () => ({
+        state: 'ok' as const,
+        data: findingsView({ counts: { open: 0, notExpected: 0, snoozed: 0, expected: 0, resolved: 0 } }),
+      })),
+    });
+    render(
+      <ApiProvider api={none}>
+        <App />
+      </ApiProvider>,
+    );
+    expect(await screen.findByRole('button', { name: 'Findings' })).toBeTruthy();
   });
 
   it('opens the history view from the sidebar', async () => {

@@ -1,6 +1,6 @@
 //! The Findings tab's read model: what was found, what the user decided, what they said is expected, and whether detection is on.
 
-use syntrac_app_lib::history_findings::{findings_view, FindingsView};
+use syntrac_app_lib::history_findings::{findings_view, review_view, FindingsView};
 use syntrac_core::findings::{Candidate, FindingStatus, FindingWrite, NewExpectation, Tier};
 use syntrac_core::{DetectionStateRepository, ExpectationRepository, FindingRepository, Timestamp};
 use syntrac_testkit::InMemoryRepository;
@@ -40,7 +40,7 @@ fn repo() -> InMemoryRepository {
 }
 
 fn view(repo: &InMemoryRepository, status: Option<&str>) -> FindingsView {
-    findings_view(repo, status, 100).unwrap()
+    findings_view(repo, status, 100, t(9, 0)).unwrap()
 }
 
 #[test]
@@ -69,13 +69,13 @@ fn no_status_lists_everything_newest_first_and_a_limit_applies() {
     let all = view(&repo(), None);
     assert_eq!(all.findings.iter().map(|f| f.subject.as_str()).collect::<Vec<_>>(), vec!["c.exe", "b.exe", "a.exe"]);
 
-    let one = findings_view(&repo(), None, 1).unwrap();
+    let one = findings_view(&repo(), None, 1, t(9, 0)).unwrap();
     assert_eq!(one.findings.len(), 1);
 }
 
 #[test]
 fn an_unknown_status_is_refused_in_plain_words() {
-    let error = findings_view(&repo(), Some("malicious"), 10).unwrap_err();
+    let error = findings_view(&repo(), Some("malicious"), 10, t(9, 0)).unwrap_err();
 
     assert!(error.to_string().contains("status"), "{error}");
 }
@@ -142,4 +142,85 @@ fn a_program_finding_offers_the_install_folder_as_a_scope_and_other_findings_do_
     let by_kind = |kind: &str| view.findings.iter().find(|f| f.kind == kind).unwrap();
     assert_eq!(by_kind("new_program").folder_scope.as_deref(), Some(r"c:\users\someone\.cargo"));
     assert_eq!(by_kind("new_start_entry").folder_scope, None);
+}
+
+// ---- review what is here today (F4)
+
+use syntrac_core::{Executable, FileFacts, IdentityRecord, IdentityRepository, Signature, SignatureStatus};
+use syntrac_testkit::identity_contract::seed_executables;
+use syntrac_testkit::rollup_contract::t;
+
+const ACME: &str = r"C:\Program Files\Acme\a.exe";
+const TOOL: &str = r"C:\Users\someone\Downloads\tool.exe";
+
+fn reviewed_world() -> InMemoryRepository {
+    let mut repo = InMemoryRepository::default();
+    seed_executables(&mut repo, &[ACME, TOOL]);
+    for (path, status, signer) in
+        [(ACME, SignatureStatus::Valid, Some("ACME INC")), (TOOL, SignatureStatus::Unsigned, None)]
+    {
+        repo.save_identity(&IdentityRecord {
+            exe: Executable::from_path(path).unwrap(),
+            facts: Some(FileFacts {
+                signature: Signature { status, signer: signer.map(str::to_owned), ..Signature::default() },
+                ..FileFacts::default()
+            }),
+            inspected_at: Some(t(3, 0)),
+            last_attempt: t(3, 0),
+            failure: None,
+        })
+        .unwrap();
+    }
+    repo
+}
+
+#[test]
+fn the_review_lists_what_was_here_before_the_switch_on_with_what_deserves_a_look_first() {
+    let mut repo = reviewed_world();
+    repo.switch_on(t(5, 0)).unwrap();
+
+    let review = review_view(&repo, 60).unwrap();
+
+    assert_eq!(review.groups.len(), 2);
+    assert_eq!(review.groups[0].programs[0].name, "tool.exe", "unsigned in a user folder comes first");
+    assert!(review.groups[0].concerns.iter().any(|c| c.contains("not signed")));
+    assert_eq!(review.groups[1].root, r"c:\program files\acme");
+    assert!(review.groups[1].concerns.is_empty());
+    assert_eq!(review.switched_on_ms, Some(t(5, 0).as_micros() / 1000));
+    assert_eq!(review.total_groups, 2);
+}
+
+#[test]
+fn a_program_after_the_switch_on_is_not_in_the_review_and_an_expectation_takes_a_group_out() {
+    let mut repo = reviewed_world();
+    // Switched on between the two programs: only the first was already here.
+    repo.switch_on(t(1, 0)).unwrap();
+    assert_eq!(review_view(&repo, 60).unwrap().groups.len(), 1);
+
+    let mut repo = reviewed_world();
+    repo.switch_on(t(5, 0)).unwrap();
+    repo.add_expectation(
+        &NewExpectation {
+            kind: "new_program".into(),
+            subject: r"folder:c:\program files\acme".into(),
+            note: None,
+            source_finding: None,
+            ceiling: None,
+        },
+        t(6, 0),
+    )
+    .unwrap();
+    let review = review_view(&repo, 60).unwrap();
+    assert_eq!(review.groups.len(), 1);
+    assert_eq!(review.groups[0].programs[0].name, "tool.exe");
+}
+
+#[test]
+fn the_list_is_limited_and_says_how_many_groups_there_are() {
+    let mut repo = reviewed_world();
+    repo.switch_on(t(5, 0)).unwrap();
+
+    let review = review_view(&repo, 1).unwrap();
+
+    assert_eq!((review.groups.len(), review.total_groups), (1, 2));
 }

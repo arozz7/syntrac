@@ -44,6 +44,8 @@ pub fn run() {
             commands::get_findings,
             commands::decide_finding,
             commands::remove_expectation,
+            commands::get_review,
+            commands::confirm_review,
             commands::get_program_destinations,
             commands::get_new_destinations,
             commands::get_destination_history,

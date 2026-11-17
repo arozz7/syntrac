@@ -581,3 +581,69 @@ fn the_list_is_limited_and_says_how_many_destinations_there_are() {
     assert_eq!(view.destinations.len(), 2);
     assert_eq!(view.total_destinations, 3, "the router counts when every address is asked for");
 }
+
+// ---- the digest of the last day (docs/ALERTS-PLAN.md, F4)
+
+use syntrac_app_lib::history_findings::digest_view;
+
+fn with_two_owners(mut repo: InMemoryRepository) -> InMemoryRepository {
+    let ranges = parse_ip2asn(
+        "198.51.100.0\t198.51.100.255\t64501\tus\tLATER-NET Later Networks\n203.0.113.0\t203.0.113.255\t64500\tus\tEXAMPLE-NET Example Networks\n",
+    )
+    .ranges;
+    let info = DatasetInfo {
+        source: "iptoasn.com".into(),
+        downloaded_at: at_secs(secs(50, 0)),
+        rows: 2,
+        bad_lines: 0,
+        sha256: "00".into(),
+    };
+    repo.replace_dataset(&ranges, &info).unwrap();
+    repo
+}
+
+#[test]
+fn the_digest_counts_the_internet_addresses_first_seen_in_the_last_day_and_the_networks_never_seen_before() {
+    // Hour 33: LATER_SITE (198.51.100.7, first seen in hour 30) is within the last day and after the first day of history.
+    let now = at_secs(secs(33, 0));
+
+    let digest = digest_view(&with_two_owners(scenario()), now).unwrap();
+
+    assert_eq!(digest.window_hours, 24);
+    assert_eq!(digest.new_destinations, 1, "SITE is from the first day; the router is not on the internet");
+    assert_eq!(digest.new_owners, 1, "LATER-NET had never been reached before");
+    assert!(digest.owner_data);
+}
+
+#[test]
+fn without_owner_data_the_digest_still_counts_destinations_and_says_it_cannot_count_networks() {
+    let digest = digest_view(&scenario(), at_secs(secs(33, 0))).unwrap();
+
+    assert_eq!((digest.new_destinations, digest.new_owners, digest.owner_data), (1, 0, false));
+}
+
+#[test]
+fn an_address_in_a_network_already_reached_is_a_new_destination_but_not_a_new_network() {
+    // A dataset that puts both addresses in ONE network: the later address adds no new owner.
+    let mut repo = scenario();
+    let ranges = parse_ip2asn("198.51.100.0\t203.0.113.255\t64500\tus\tONE-NET One Network\n").ranges;
+    let info = DatasetInfo {
+        source: "x".into(),
+        downloaded_at: at_secs(secs(50, 0)),
+        rows: 1,
+        bad_lines: 0,
+        sha256: "00".into(),
+    };
+    repo.replace_dataset(&ranges, &info).unwrap();
+
+    let digest = digest_view(&repo, at_secs(secs(33, 0))).unwrap();
+
+    assert_eq!((digest.new_destinations, digest.new_owners), (1, 0));
+}
+
+#[test]
+fn an_empty_history_has_nothing_new() {
+    let digest = digest_view(&InMemoryRepository::default(), at_secs(secs(33, 0))).unwrap();
+
+    assert_eq!((digest.new_destinations, digest.new_owners), (0, 0));
+}

@@ -22,6 +22,7 @@ pub mod launch_target;
 pub mod launchers;
 pub mod metrics;
 pub mod mini_xml;
+pub mod new_owner;
 pub mod new_things;
 pub mod owner_dataset;
 pub mod owner_refresh;
@@ -30,6 +31,7 @@ pub mod pipeline;
 pub mod ports;
 pub mod program_group;
 pub mod retention;
+pub mod review;
 pub mod rollup;
 pub mod rollup_ledger;
 pub mod rollup_run;
@@ -47,7 +49,7 @@ pub use correlator::correlate;
 pub use destination_trend::{
     new_destination_cutoff, rank_destination_programs, rank_destinations, select_new, top_destination_programs,
     AddressScope, DestinationOrder, DestinationProgram, DestinationTotals, DestinationTrendRepository, NewDestination,
-    ProgramDestination,
+    NewPair, ProgramDestination,
 };
 pub use dns_names::{backfill_names, AddressName, DnsAnswerRow, NamesBackfill};
 pub use event::{EventCategory, EventEnvelope, EventPayload, NetAction, NetProtocol, Severity};
@@ -62,9 +64,9 @@ pub use exe_identity::{
 };
 pub use exe_location::{classify_location, install_root, product_key, LocationClass, ProductKey};
 pub use findings::{
-    apply_decision, folder_scope_of, reconcile, Candidate, Decision, DecisionEffect, DecisionError, Expectation,
-    ExpectationScope, Finding, FindingStatus, FindingWrite, NewExpectation, ReconcileSettings, Reconciled, Tier,
-    FOLDER_SCOPE_PREFIX,
+    apply_decision, expectation_covers, folder_scope_of, reconcile, Candidate, Decision, DecisionEffect, DecisionError,
+    Expectation, ExpectationScope, Finding, FindingStatus, FindingWrite, NewExpectation, ReconcileSettings, Reconciled,
+    Tier, FOLDER_SCOPE_PREFIX,
 };
 pub use findings_run::{
     clean_candidate, run_detection, DetectError, DetectionState, DetectionStateRepository, Detector,
@@ -90,6 +92,9 @@ pub use metrics::{
     CpuBreakdown, CpuContribution, MetricsSample, OtherProcesses, ProcessMetric, PurgeCounts, SystemMetrics,
     SystemPoint,
 };
+pub use new_owner::{
+    new_owner_candidates, NewOwnerDetector, NewOwnerFacts, ProgramOwners, ReachedOwner, MAX_NEW_OWNERS_PER_RUN,
+};
 pub use new_things::{
     new_thing_candidates, ChangeFacts, IdentityChange, IdentityChangeRepository, NewThingsDetector, NewThingsFacts,
     MAX_NEW_PER_RULE,
@@ -106,6 +111,7 @@ pub use ports::{
     ProcessRecord, ProcessRepository, RepoError, Retention, SourceError, TelemetrySource,
 };
 pub use program_group::{group_programs, rank_groups, GroupKey, ProgramGroup};
+pub use review::{review_groups, ReviewGroup, ReviewProgram, PROGRAMS_LISTED};
 pub use rollup::{Executable, HourInput, HourRollup, LedgerEntry, ProcessHour, SystemHour, TrafficHour};
 pub use rollup_ledger::LedgerObservations;
 pub use rollup_run::{roll_up_due, RollupPass, RollupRepository, RollupSettings};

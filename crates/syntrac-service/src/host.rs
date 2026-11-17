@@ -31,8 +31,8 @@ use syntrac_core::retention::GuardLimits;
 use syntrac_core::silence::{SilenceAction, SilencePolicy, SilenceVerdict, SilenceWatchdog};
 use syntrac_core::storage_guard::StorageStats;
 use syntrac_core::{
-    cpu_floor_for_cores, ContextSettings, Detector, IdentitySettings, LaunchSource, NewThingsDetector, RefreshLimits,
-    UsageDetector, UsageSettings,
+    cpu_floor_for_cores, ContextSettings, Detector, IdentitySettings, LaunchSource, NewOwnerDetector,
+    NewThingsDetector, RefreshLimits, UsageDetector, UsageSettings,
 };
 use syntrac_core::{
     Clock, EventRepository, MetricsRepository, MetricsSource, ProcessRepository, Retention, RollupRepository,
@@ -383,6 +383,10 @@ fn detectors(database_path: &Path, config: &ServiceConfig) -> Vec<Box<dyn Detect
     match SqliteStore::open(database_path) {
         Ok(store) => rules.push(Box::new(NewThingsDetector::new(store))),
         Err(error) => warn!(%error, "The new-thing rules could not open the database; detection runs without them"),
+    }
+    match SqliteStore::open(database_path) {
+        Ok(store) => rules.push(Box::new(NewOwnerDetector::new(store))),
+        Err(error) => warn!(%error, "The new-network rule could not open the database; detection runs without it"),
     }
     let usage = UsageSettings {
         window_hours: i64::try_from(config.usage_window_days.saturating_mul(24)).unwrap_or(i64::MAX),

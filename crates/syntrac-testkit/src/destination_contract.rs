@@ -3,7 +3,9 @@
 
 use std::net::{IpAddr, Ipv4Addr};
 
-use syntrac_core::destination_trend::{DestinationProgram, DestinationTotals, NewDestination, ProgramDestination};
+use syntrac_core::destination_trend::{
+    DestinationProgram, DestinationTotals, NewDestination, NewPair, ProgramDestination,
+};
 use syntrac_core::{
     roll_up_due, DestinationTrendRepository, EventRepository, MetricsRepository, ProcessRepository, Retention,
     RollupRepository,
@@ -38,6 +40,7 @@ pub fn destination_contract<R: DestinationSubject>(make: impl Fn() -> R) {
     the_programs_of_one_destination_are_summed_within_the_range(make());
     the_programs_of_many_destinations_come_back_in_one_read(make());
     the_destinations_of_one_program_are_summed_per_address_within_the_range(make());
+    the_pairs_first_seen_after_a_time_come_from_the_permanent_ledger(make());
 }
 
 fn ip(addr: Ipv4Addr) -> IpAddr {
@@ -249,6 +252,26 @@ fn the_destinations_of_one_program_are_summed_per_address_within_the_range<R: De
     assert_eq!(b.iter().map(|row| row.0).collect::<Vec<_>>().len(), 2, "B talked to two addresses");
     assert!(repo.program_destinations(r"C:\nowhere\none.exe", t(0, 0), t(5, 0)).unwrap().is_empty());
     assert!(repo.program_destinations("", t(0, 0), t(5, 0)).unwrap().is_empty());
+}
+
+fn the_pairs_first_seen_after_a_time_come_from_the_permanent_ledger<R: DestinationSubject>(mut repo: R) {
+    scenario(&mut repo);
+    let plain = |mut pairs: Vec<NewPair>| {
+        pairs.sort_by(|a, b| a.exe.path.cmp(&b.exe.path).then(a.addr.cmp(&b.addr)));
+        pairs.into_iter().map(|p| (p.exe.path, p.addr, p.first_seen.as_micros())).collect::<Vec<_>>()
+    };
+
+    let from_hour_one = plain(repo.new_pairs(t(1, 0)).unwrap());
+    assert_eq!(
+        from_hour_one,
+        vec![(A_EXE.to_owned(), ip(TIED), micros(1, 10)), (B_EXE.to_owned(), ip(TIED), micros(1, 10)),],
+        "the pairs whose FIRST sighting is at or after the time, with that first sighting"
+    );
+
+    let all = plain(repo.new_pairs(t(0, 0)).unwrap());
+    assert_eq!(all.len(), 5, "A to three addresses, B to two; nothing for loopback or the unidentified program");
+    assert!(all.iter().all(|(_, addr, _)| *addr != ip(Ipv4Addr::LOCALHOST)));
+    assert!(repo.new_pairs(t(5, 0)).unwrap().is_empty());
 }
 
 fn the_programs_of_many_destinations_come_back_in_one_read<R: DestinationSubject>(mut repo: R) {

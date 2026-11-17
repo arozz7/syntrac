@@ -592,3 +592,14 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
 }
+
+/* The count of open findings beside the Findings tab. */
+.nav__badge {
+  margin-left: 0.5rem;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  background: var(--severity-unusual-bg);
+  color: var(--severity-unusual-fg);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
