@@ -22,6 +22,7 @@ fn candidate(kind: &str, subject: &str, tier: Tier) -> Candidate {
         why: "Because.".into(),
         evidence: vec!["one".into()],
         dedupe_key: format!("{kind}:{subject}"),
+        level: None,
         at: at(10),
     }
 }
@@ -37,6 +38,7 @@ fn finding(id: i64, key: &str, status: FindingStatus) -> Finding {
         why: "w".into(),
         evidence: vec![],
         dedupe_key: key.into(),
+        level: None,
         status,
         first_at: at(1),
         last_at: at(2),
@@ -369,4 +371,52 @@ fn the_folder_a_finding_could_be_expected_for_is_offered_only_where_it_makes_sen
     );
     assert_eq!(folder_scope_of("new_program", r"c:\tool.exe"), None);
     assert_eq!(folder_scope_of("changed_file", r"c:\a\b\c.exe"), None);
+}
+
+// ---- a ceiling ("raise the limit to what I just saw")
+
+fn usage_candidate(subject: &str, level: f64) -> Candidate {
+    Candidate { level: Some(level), ..candidate("usage", subject, Tier::Unusual) }
+}
+
+fn ceiling_expectation(subject: &str, ceiling: Option<f64>) -> Expectation {
+    Expectation { ceiling, ..expectation("usage", subject) }
+}
+
+#[test]
+fn an_expectation_with_a_ceiling_covers_levels_up_to_it_and_raises_the_finding_again_above_it() {
+    let expected = [ceiling_expectation("p.exe|cpu", Some(40.0))];
+
+    let at_the_ceiling = run(vec![usage_candidate("p.exe|cpu", 40.0)], &[], &expected);
+    let above = run(vec![usage_candidate("p.exe|cpu", 40.1)], &[], &expected);
+
+    assert!(at_the_ceiling.writes.is_empty());
+    assert_eq!(at_the_ceiling.suppressed, 1);
+    assert_eq!(above.writes.len(), 1, "more than the level the user accepted is raised again");
+    assert_eq!(above.suppressed, 0);
+}
+
+#[test]
+fn an_expectation_without_a_ceiling_covers_every_level() {
+    let result = run(vec![usage_candidate("p.exe|cpu", 99.0)], &[], &[ceiling_expectation("p.exe|cpu", None)]);
+
+    assert!(result.writes.is_empty());
+}
+
+#[test]
+fn raising_the_limit_stores_the_level_the_finding_measured_as_the_ceiling() {
+    let finding = Finding { level: Some(55.5), ..program_finding("usage", "p.exe|cpu") };
+
+    let effect = apply_decision(&finding, &Decision::RaiseLimit, at(10)).unwrap();
+
+    assert_eq!(effect.status, FindingStatus::Expected);
+    let expectation = effect.new_expectation.expect("an expectation");
+    assert_eq!((expectation.kind.as_str(), expectation.subject.as_str()), ("usage", "p.exe|cpu"));
+    assert_eq!(expectation.ceiling, Some(55.5));
+}
+
+#[test]
+fn only_a_usage_finding_that_measured_a_level_can_have_its_limit_raised() {
+    assert!(apply_decision(&program_finding("new_program", "a.exe"), &Decision::RaiseLimit, at(10)).is_err());
+    assert!(apply_decision(&program_finding("usage", "p.exe|cpu"), &Decision::RaiseLimit, at(10)).is_err(), "no level");
 }

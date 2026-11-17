@@ -452,6 +452,11 @@ pub const MIGRATIONS: &[&str] = &[
     );
     CREATE INDEX idx_identity_changes_at ON identity_changes (changed_at);
     ",
+    // 15: what a usage rule measured (docs/ALERTS-PLAN.md, F3). Additive: a nullable column on findings. "Raise the limit to this
+    // level" stores it as the expectation's ceiling. NULL for every other kind of finding.
+    "
+    ALTER TABLE findings ADD COLUMN level REAL;
+    ",
 ];
 
 /// The migration (1-based number) that rewrites every table. An existing database gets a backup copy before it is applied

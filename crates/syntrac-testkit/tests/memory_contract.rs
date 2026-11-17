@@ -103,3 +103,8 @@ fn in_memory_repository_satisfies_the_findings_contract() {
 fn in_memory_repository_satisfies_the_identity_change_contract() {
     syntrac_testkit::identity_contract::identity_change_contract(InMemoryRepository::default);
 }
+
+#[test]
+fn in_memory_repository_satisfies_the_usage_contract() {
+    syntrac_testkit::usage_contract::usage_contract(InMemoryRepository::default);
+}

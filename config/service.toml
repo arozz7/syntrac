@@ -74,7 +74,17 @@ launch_interval_minutes = 10
 # A finding is evidence, never a verdict. OFF until you have read the backtest: the first time it runs is the moment "new" starts
 # counting, and everything that exists then counts as already here. Nothing it does leaves the machine. Run the backtest first:
 #   cargo run --release -p syntrac-store --example rehearse_detect -- <database> <work folder> 1 2 3 5
-detect_enabled = false
+detect_enabled = true
 detect_interval_minutes = 5
 # At most this many NEW findings per run; the rest are counted, most serious first.
 detect_max_new_per_run = 50
+
+# Usage rules (docs/ALERTS-PLAN.md, F3): a program using clearly more than it usually does, judged against its own last days. A finding
+# needs more than 3 times its usual (95th percentile) AND 1.5 times its busiest hour, over these floors, for two hours in a row (or one hour
+# of uploading ten times its busiest). CPU, memory, bytes sent and bytes received per program; not disk per program (not stored).
+usage_window_days = 14
+usage_min_active_hours = 48
+# CPU is a share of the WHOLE machine, so the floor depends on the core count: 0 means half of one core (50 / logical cores, at least 1.5).
+usage_cpu_floor_percent = 0.0
+usage_memory_floor_mb = 500
+usage_net_floor_mb = 100

@@ -12,7 +12,7 @@ use crate::connection::{backend, SqliteStore};
 
 const FINDING_COLUMNS: &str =
     "id, kind, subject, subject_label, tier, title, why, evidence, dedupe_key, status, first_at, last_at, \
-                               hits, decided_at, snoozed_until";
+                               hits, decided_at, snoozed_until, level";
 
 fn stored(what: &str, text: &str) -> RepoError {
     RepoError::Backend(format!("a stored finding has an unknown {what}: {text}"))
@@ -40,6 +40,7 @@ fn finding_from(row: &Row<'_>) -> Result<Finding, RepoError> {
         why: row.get(6).map_err(backend)?,
         evidence: evidence.lines().map(str::to_owned).collect(),
         dedupe_key: row.get(8).map_err(backend)?,
+        level: row.get(15).map_err(backend)?,
         status: FindingStatus::parse(&status).ok_or_else(|| stored("status", &status))?,
         first_at: ts(row, 10)?,
         last_at: ts(row, 11)?,
@@ -110,8 +111,8 @@ impl FindingRepository for SqliteStore {
                 FindingWrite::Insert(candidate) => {
                     tx.execute(
                         "INSERT INTO findings (kind, subject, subject_label, tier, title, why, evidence, dedupe_key, status,
-                                               first_at, last_at, hits)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'open', ?9, ?9, 1)",
+                                               first_at, last_at, hits, level)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'open', ?9, ?9, 1, ?10)",
                         params![
                             candidate.kind,
                             candidate.subject,
@@ -121,7 +122,8 @@ impl FindingRepository for SqliteStore {
                             candidate.why,
                             candidate.evidence.join("\n"),
                             candidate.dedupe_key,
-                            candidate.at.as_micros()
+                            candidate.at.as_micros(),
+                            candidate.level
                         ],
                     )
                     .map_err(backend)?;

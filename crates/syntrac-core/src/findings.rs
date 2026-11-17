@@ -81,7 +81,7 @@ impl FindingStatus {
 }
 
 /// What a detector found, before it is stored.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Candidate {
     /// The rule that found it (`new_program`, ...). An expectation covers one kind.
     pub kind: String,
@@ -97,10 +97,12 @@ pub struct Candidate {
     pub evidence: Vec<String>,
     /// The same thing found again has the same key (kind, subject and, for things that recur, a time window).
     pub dedupe_key: String,
+    /// For usage rules: how much was measured (a percentage of the machine, bytes). "Raise the limit" stores it as the ceiling.
+    pub level: Option<f64>,
     pub at: Timestamp,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Finding {
     pub id: i64,
     pub kind: String,
@@ -111,6 +113,8 @@ pub struct Finding {
     pub why: String,
     pub evidence: Vec<String>,
     pub dedupe_key: String,
+    /// What the rule measured, when it measures a level (see `Candidate::level`).
+    pub level: Option<f64>,
     pub status: FindingStatus,
     pub first_at: Timestamp,
     pub last_at: Timestamp,
@@ -145,7 +149,7 @@ pub struct NewExpectation {
 }
 
 /// What reconciling changes in the store.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum FindingWrite {
     Insert(Candidate),
     /// Found again while open: one more hit.
@@ -166,7 +170,7 @@ pub struct ReconcileSettings {
     pub max_new: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Reconciled {
     pub writes: Vec<FindingWrite>,
     /// Candidates the user had said are expected.
@@ -232,6 +236,12 @@ fn covers(expectation: &Expectation, candidate: &Candidate) -> bool {
     if expectation.kind != candidate.kind {
         return false;
     }
+    // A ceiling is the level the user accepted: only more than that is raised again.
+    if let (Some(ceiling), Some(level)) = (expectation.ceiling, candidate.level) {
+        if level > ceiling {
+            return false;
+        }
+    }
     match expectation.subject.strip_prefix(FOLDER_SCOPE_PREFIX) {
         Some(root) => candidate.subject.strip_prefix(root).is_some_and(|rest| rest.starts_with('\\')),
         None => expectation.subject == candidate.subject,
@@ -269,6 +279,8 @@ pub enum Decision {
     Snooze {
         days: u32,
     },
+    /// A usage finding: the level it measured is now expected (stored as the ceiling); more than that is raised again.
+    RaiseLimit,
     /// Undo any earlier decision.
     Reopen,
 }
@@ -291,6 +303,22 @@ pub fn apply_decision(finding: &Finding, decision: &Decision, now: Timestamp) ->
         Decision::ExpectedThisTime => Ok(plain(FindingStatus::Expected)),
         Decision::NotExpected => Ok(plain(FindingStatus::NotExpected)),
         Decision::Reopen => Ok(plain(FindingStatus::Open)),
+        Decision::RaiseLimit => {
+            let Some(level) = finding.level.filter(|_| finding.kind == "usage") else {
+                return Err(DecisionError("Only a finding about usage can have its limit raised.".into()));
+            };
+            Ok(DecisionEffect {
+                status: FindingStatus::Expected,
+                snoozed_until: None,
+                new_expectation: Some(NewExpectation {
+                    kind: finding.kind.clone(),
+                    subject: finding.subject.clone(),
+                    note: None,
+                    source_finding: Some(finding.id),
+                    ceiling: Some(level),
+                }),
+            })
+        }
         Decision::Snooze { days } => {
             if *days == 0 || *days > MAX_SNOOZE_DAYS {
                 return Err(DecisionError(format!("A snooze must be between 1 and {MAX_SNOOZE_DAYS} days.")));

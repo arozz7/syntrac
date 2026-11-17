@@ -72,6 +72,17 @@ pub struct ServiceConfig {
     pub detect_interval_minutes: u64,
     /// Findings: at most this many NEW findings per run; the rest are counted as overflow, most serious first.
     pub detect_max_new_per_run: usize,
+    /// Usage rules (F3): days of a program's own history that make its baseline.
+    pub usage_window_days: u64,
+    /// Usage rules: active hours a program needs before it is judged.
+    pub usage_min_active_hours: usize,
+    /// Usage rules: CPU must be at least this share of the whole machine. 0 (the default) means half of one core of this machine
+    /// (50 divided by the number of logical cores, at least 1.5).
+    pub usage_cpu_floor_percent: f64,
+    /// Usage rules: memory must be at least this many MB above the program's highest peak.
+    pub usage_memory_floor_mb: u64,
+    /// Usage rules: bytes sent or received in an hour must be at least this many MB.
+    pub usage_net_floor_mb: u64,
     /// Whether the service may ever download the owner dataset (docs/OWNER-PLAN.md). The download itself still happens only when
     /// the user asks for it in the app; `false` makes the service refuse even then. The only network use SYNTRAC has.
     pub owner_data_allowed: bool,
@@ -113,6 +124,11 @@ impl Default for ServiceConfig {
             detect_enabled: false,
             detect_interval_minutes: 5,
             detect_max_new_per_run: 50,
+            usage_window_days: 14,
+            usage_min_active_hours: 48,
+            usage_cpu_floor_percent: 0.0,
+            usage_memory_floor_mb: 500,
+            usage_net_floor_mb: 100,
             owner_data_allowed: true,
             status_interval_secs: 30,
             etw_silent_restart_secs: 180,
@@ -149,6 +165,10 @@ impl ServiceConfig {
             (self.launch_interval_minutes, "launch_interval_minutes"),
             (self.detect_interval_minutes, "detect_interval_minutes"),
             (self.detect_max_new_per_run as u64, "detect_max_new_per_run"),
+            (self.usage_window_days, "usage_window_days"),
+            (self.usage_min_active_hours as u64, "usage_min_active_hours"),
+            (self.usage_memory_floor_mb, "usage_memory_floor_mb"),
+            (self.usage_net_floor_mb, "usage_net_floor_mb"),
             (self.top_processes as u64, "top_processes"),
             (self.status_interval_secs, "status_interval_secs"),
             (self.etw_silent_restart_secs, "etw_silent_restart_secs"),

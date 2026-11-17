@@ -52,6 +52,7 @@ impl FindingRepository for InMemoryRepository {
                         why: candidate.why.clone(),
                         evidence: candidate.evidence.clone(),
                         dedupe_key: candidate.dedupe_key.clone(),
+                        level: candidate.level,
                         status: FindingStatus::Open,
                         first_at: candidate.at,
                         last_at: candidate.at,

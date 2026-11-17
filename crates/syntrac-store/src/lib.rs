@@ -24,6 +24,8 @@ mod migration_v13_tests;
 #[cfg(test)]
 mod migration_v14_tests;
 #[cfg(test)]
+mod migration_v15_tests;
+#[cfg(test)]
 mod migration_v4_tests;
 #[cfg(test)]
 mod migration_v5_tests;
@@ -44,6 +46,7 @@ mod storage;
 #[cfg(test)]
 mod storage_tests;
 mod trends;
+mod usage;
 
 pub use connection::SqliteStore;
 pub use inspect::{inspect_database, DatabaseReport};

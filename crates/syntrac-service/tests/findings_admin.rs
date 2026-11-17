@@ -21,6 +21,7 @@ fn candidate(subject: &str) -> Candidate {
         why: "Because.".into(),
         evidence: vec![],
         dedupe_key: format!("new_program:{subject}"),
+        level: None,
         at: Timestamp::from_micros(10),
     }
 }
@@ -197,4 +198,34 @@ fn the_scope_defaults_to_this_item_and_an_unknown_or_unsuitable_scope_is_refused
     assert!(
         error_text(drive.decide(1, "always_expected", None, None, Some("this_folder"))).contains("no install folder")
     );
+}
+
+fn usage_admin(level: Option<f64>) -> FindingsAdmin<InMemoryRepository, ManualClock> {
+    let mut repo = InMemoryRepository::default();
+    let mut usage = candidate("p.exe|cpu");
+    usage.kind = "usage".into();
+    usage.dedupe_key = "usage:p.exe|cpu:1".into();
+    usage.level = level;
+    repo.apply_writes(&[FindingWrite::Insert(usage)]).unwrap();
+    FindingsAdmin::new(repo, ManualClock::new(Timestamp::from_micros(NOW)))
+}
+
+#[test]
+fn raising_the_limit_stores_what_the_finding_measured_as_the_ceiling_and_marks_it_expected() {
+    let admin = usage_admin(Some(61.5));
+
+    assert_eq!(decide(&admin, 1, "raise_limit", None, None), Response::Done);
+
+    assert_eq!(the_finding(&admin).status, FindingStatus::Expected);
+    let expectations = admin.with_repository(|repo| repo.expectations().unwrap());
+    assert_eq!((expectations[0].kind.as_str(), expectations[0].subject.as_str()), ("usage", "p.exe|cpu"));
+    assert_eq!(expectations[0].ceiling, Some(61.5));
+}
+
+#[test]
+fn the_limit_of_a_finding_that_measured_nothing_cannot_be_raised() {
+    let admin = usage_admin(None);
+
+    assert!(error_text(decide(&admin, 1, "raise_limit", None, None)).contains("usage"));
+    assert!(admin.with_repository(|repo| repo.expectations().unwrap()).is_empty());
 }

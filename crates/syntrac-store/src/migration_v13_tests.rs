@@ -35,6 +35,7 @@ fn candidate() -> Candidate {
         why: "Because.".into(),
         evidence: vec!["one".into()],
         dedupe_key: r"new_program:c:\apps\a.exe".into(),
+        level: None,
         at: Timestamp::from_micros(50),
     }
 }

@@ -224,6 +224,7 @@ fn new_programs(facts: &NewThingsFacts<'_>) -> Vec<Candidate> {
             ),
             evidence,
             dedupe_key: format!("new_program:{}", entry.exe.key),
+            level: None,
             at: facts.now,
         });
     }
@@ -277,6 +278,7 @@ fn new_start_entries(facts: &NewThingsFacts<'_>) -> Vec<Candidate> {
                 why: sentence(&lead, &reasons),
                 evidence,
                 dedupe_key: format!("new_start_entry:{subject}"),
+                level: None,
                 at: facts.now,
             });
         }
@@ -340,6 +342,7 @@ fn changed_files(facts: &NewThingsFacts<'_>) -> Vec<Candidate> {
                 side_line("Now", &change.new),
             ],
             dedupe_key: format!("changed_file:{}:{new_content}", change.exe.key),
+            level: None,
             at: facts.now,
         });
     }
@@ -397,6 +400,7 @@ fn new_accounts(facts: &NewThingsFacts<'_>) -> Vec<Candidate> {
                     signature_line(file),
                 ],
                 dedupe_key: format!("new_account:{subject}"),
+                level: None,
                 at: facts.now,
             });
         }

@@ -263,3 +263,8 @@ fn sqlite_store_satisfies_the_findings_contract() {
 fn sqlite_store_satisfies_the_identity_change_contract() {
     syntrac_testkit::identity_contract::identity_change_contract(in_memory_store);
 }
+
+#[test]
+fn sqlite_store_satisfies_the_usage_contract() {
+    syntrac_testkit::usage_contract::usage_contract(in_memory_store);
+}

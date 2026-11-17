@@ -30,6 +30,7 @@ impl Detector for Finds {
             why: "Because.".into(),
             evidence: vec![],
             dedupe_key: format!("new_program:{}", self.0),
+            level: None,
             at: now,
         }])
     }

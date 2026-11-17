@@ -43,7 +43,7 @@ pub enum Request {
     /// Start downloading the owner dataset (docs/OWNER-PLAN.md) and answer at once with the status. The address downloaded
     /// from is compiled into the service: a request cannot name one.
     OwnerDataRefresh,
-    /// The user's decision about a finding (docs/ALERTS-PLAN.md): `expected_this_time`, `always_expected` (stores an
+    /// The user's decision about a finding (docs/ALERTS-PLAN.md): `expected_this_time`, `raise_limit` (a usage finding: its measured level becomes the expected ceiling), `always_expected` (stores an
     /// expectation for the finding's own kind and subject, never for anything the client names), `not_expected`, `snooze`
     /// (with `days`) or `reopen`. `note` is only used by `always_expected`.
     FindingDecide {

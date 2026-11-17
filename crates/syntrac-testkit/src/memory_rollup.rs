@@ -18,7 +18,7 @@ use crate::memory::InMemoryRepository;
 pub struct RollupState {
     rolled_up_before: Option<Timestamp>,
     system: BTreeMap<Timestamp, SystemHour>,
-    processes: BTreeMap<(Timestamp, Option<String>), ProcessHour>,
+    pub(crate) processes: BTreeMap<(Timestamp, Option<String>), ProcessHour>,
     pub(crate) traffic: BTreeMap<(Timestamp, Option<String>, IpAddr), TrafficHour>,
     /// The spelling of each executable's path as first seen.
     pub(crate) paths: HashMap<String, String>,

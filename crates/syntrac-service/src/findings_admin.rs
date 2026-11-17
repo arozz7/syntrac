@@ -39,6 +39,7 @@ fn parse(decision: &str, days: Option<u32>, note: Option<&str>, scope: Option<&s
         "always_expected" => Ok(Decision::AlwaysExpected { note: note.map(str::to_owned), scope }),
         "not_expected" => Ok(Decision::NotExpected),
         "reopen" => Ok(Decision::Reopen),
+        "raise_limit" => Ok(Decision::RaiseLimit),
         "snooze" => {
             days.map(|days| Decision::Snooze { days }).ok_or_else(|| "Say how many days to snooze it for.".to_owned())
         }

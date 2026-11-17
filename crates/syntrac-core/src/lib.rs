@@ -38,6 +38,7 @@ pub mod storage_guard;
 pub mod task_xml;
 pub mod time;
 pub mod trend;
+pub mod usage;
 
 pub use addr_class::{classify_addr, AddrClass};
 pub use clean_text::clean_text;
@@ -112,4 +113,8 @@ pub use time::{Clock, SystemClock, Timestamp};
 pub use trend::{
     all_programs, collect_totals, rank_totals, top_programs, ProcessTotals, ProgramMetric, ProgramSummary,
     ProgramTotals, TrafficTotals, TrendRepository,
+};
+pub use usage::{
+    cpu_floor_for_cores, usage_candidates, FlaggedSpan, ProcessHourRow, TrafficHourRow, UsageDetector, UsageFacts,
+    UsageRepository, UsageSettings, MAX_USAGE_PER_RUN,
 };

@@ -16,6 +16,7 @@ impl<T> FindingsSubject for T where T: FindingRepository + ExpectationRepository
 pub fn findings_contract<R: FindingsSubject>(make: impl Fn() -> R) {
     an_empty_database_has_nothing(make());
     an_inserted_finding_reads_back_whole(make());
+    a_measured_level_is_kept_and_a_missing_one_stays_missing(make());
     touching_and_reopening_count_hits_and_keep_the_rest(make());
     findings_are_found_by_their_keys(make());
     a_decision_is_stored_with_its_time_and_unknown_findings_are_reported(make());
@@ -41,6 +42,7 @@ pub fn candidate(subject: &str, tier: Tier, when: i64) -> Candidate {
         why: "It was first seen after detection was switched on.".into(),
         evidence: vec!["first line".into(), "second line".into()],
         dedupe_key: format!("new_program:{subject}"),
+        level: None,
         at: at(when),
     }
 }
@@ -73,6 +75,21 @@ fn an_inserted_finding_reads_back_whole<R: FindingsSubject>(mut repo: R) {
     assert_eq!(found.status, FindingStatus::Open);
     assert_eq!((found.first_at, found.last_at, found.hits), (at(100), at(100), 1));
     assert_eq!((found.decided_at, found.snoozed_until), (None, None));
+}
+
+fn a_measured_level_is_kept_and_a_missing_one_stays_missing<R: FindingsSubject>(mut repo: R) {
+    let mut usage = candidate("p.exe|cpu", Tier::Unusual, 100);
+    usage.kind = "usage".into();
+    usage.dedupe_key = "usage:p.exe|cpu:1".into();
+    usage.level = Some(37.25);
+    repo.apply_writes(&[FindingWrite::Insert(usage), FindingWrite::Insert(candidate("a.exe", Tier::Unusual, 100))])
+        .unwrap();
+
+    let measured = repo.findings_for_keys(&["usage:p.exe|cpu:1".into()]).unwrap().remove(0);
+    let plain = repo.findings_for_keys(&["new_program:a.exe".into()]).unwrap().remove(0);
+
+    assert_eq!(measured.level, Some(37.25));
+    assert_eq!(plain.level, None);
 }
 
 fn touching_and_reopening_count_hits_and_keep_the_rest<R: FindingsSubject>(mut repo: R) {

@@ -149,6 +149,23 @@ describe('Findings: teaching SYNTRAC what is expected', () => {
     expect(within(first).queryByRole('textbox')).toBeNull();
   });
 
+  it('a usage finding offers to raise the limit to what it measured instead of silencing it for ever', async () => {
+    const usage = findingRow({
+      id: 4,
+      kind: 'usage',
+      title: 'tool.exe used more CPU than usual',
+      subject: 'c:\\apps\\tool.exe|cpu',
+    });
+    const api = show(makeFakeApi({ findings: vi.fn(async () => ok(findingsView({ findings: [usage] }))) }));
+    await screen.findByText('tool.exe used more CPU than usual');
+    const first = card('tool.exe used more CPU than usual');
+
+    expect(within(first).queryByRole('button', { name: 'Always expected' })).toBeNull();
+    await userEvent.click(within(first).getByRole('button', { name: 'Raise the limit to this level' }));
+
+    expect(api.decideFinding).toHaveBeenCalledWith(4, 'raise_limit', undefined);
+  });
+
   it('"Not expected" keeps it visible as a concern', async () => {
     const api = show();
     await screen.findByText('New program tool.exe');
@@ -219,6 +236,32 @@ describe('Findings: what you told SYNTRAC is expected', () => {
     const row = (await screen.findByText(/acmeserv\.exe/)).closest('tr')!;
     expect(within(row).getByText('New program')).toBeTruthy();
     expect(within(row).getByText('my backup')).toBeTruthy();
+  });
+
+  it('says what level a raised limit allows, in the unit of what it measures', async () => {
+    show(
+      makeFakeApi({
+        findings: vi.fn(async () =>
+          ok(
+            findingsView({
+              expectations: [
+                expectationRow({ id: 7, kind: 'usage', subject: 'c:\\apps\\a.exe|cpu', note: null, ceiling: 40 }),
+                expectationRow({
+                  id: 8,
+                  kind: 'usage',
+                  subject: 'c:\\apps\\b.exe|sent',
+                  note: null,
+                  ceiling: 3 * 1024 ** 2,
+                }),
+              ],
+            }),
+          ),
+        ),
+      }),
+    );
+
+    expect(await screen.findByText('Up to 40.0%')).toBeTruthy();
+    expect(screen.getByText('Up to 3.0 MB')).toBeTruthy();
   });
 
   it('removes one only after asking, and reads the lists again', async () => {

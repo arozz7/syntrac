@@ -11,7 +11,7 @@ import type {
   FindingsView,
 } from '../api/types';
 import { DataGate } from '../components/DataGate';
-import { formatDateTime } from '../format';
+import { formatBytes, formatDateTime } from '../format';
 import { usePolled } from '../hooks/usePolled';
 
 const REFRESH_MS = 30_000;
@@ -41,6 +41,12 @@ const KINDS: Record<string, string> = {
 
 function kindLabel(kind: string): string {
   return KINDS[kind] ?? kind.replace(/_/g, ' ');
+}
+
+/** What a raised limit allows, in the unit of what the rule measures (the end of the subject says which). */
+function ceilingText(expectation: ExpectationView): string {
+  const ceiling = expectation.ceiling ?? 0;
+  return expectation.subject.endsWith('|cpu') ? `Up to ${ceiling.toFixed(1)}%` : `Up to ${formatBytes(ceiling)}`;
 }
 
 function DetectionNote({ detection }: { detection: DetectionView | null }) {
@@ -230,9 +236,15 @@ function FindingCard({ finding, onChanged }: { finding: FindingView; onChanged: 
           >
             Expected this time
           </button>
-          <button type="button" className="range__button" disabled={busy} onClick={() => setAsking(true)}>
-            Always expected
-          </button>
+          {finding.kind === 'usage' ? (
+            <button type="button" className="range__button" disabled={busy} onClick={() => void decide('raise_limit')}>
+              Raise the limit to this level
+            </button>
+          ) : (
+            <button type="button" className="range__button" disabled={busy} onClick={() => setAsking(true)}>
+              Always expected
+            </button>
+          )}
           <button type="button" className="range__button" disabled={busy} onClick={() => void decide('not_expected')}>
             Not expected
           </button>
@@ -330,7 +342,10 @@ function Expectations({ expectations, onChanged }: { expectations: ExpectationVi
               <tr key={expectation.id}>
                 <td>{kindLabel(expectation.kind)}</td>
                 <td className="path">{expectation.subject}</td>
-                <td>{expectation.note ?? '—'}</td>
+                <td>
+                  {expectation.note ?? (expectation.ceiling === null ? '—' : null)}
+                  {expectation.ceiling !== null && <div>{ceilingText(expectation)}</div>}
+                </td>
                 <td>{formatDateTime(expectation.createdMs)}</td>
                 <td>
                   <RemoveButton expectation={expectation} onChanged={onChanged} />

@@ -21,6 +21,7 @@ fn candidate(subject: &str, tier: Tier, when: i64) -> Candidate {
         why: "It was first seen after detection was switched on.".into(),
         evidence: vec!["first line".into(), "second line".into()],
         dedupe_key: format!("new_program:{subject}"),
+        level: None,
         at: at(when),
     }
 }

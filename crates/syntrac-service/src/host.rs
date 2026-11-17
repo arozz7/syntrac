@@ -31,10 +31,13 @@ use syntrac_core::retention::GuardLimits;
 use syntrac_core::silence::{SilenceAction, SilencePolicy, SilenceVerdict, SilenceWatchdog};
 use syntrac_core::storage_guard::StorageStats;
 use syntrac_core::{
+    cpu_floor_for_cores, ContextSettings, Detector, IdentitySettings, LaunchSource, NewThingsDetector, RefreshLimits,
+    UsageDetector, UsageSettings,
+};
+use syntrac_core::{
     Clock, EventRepository, MetricsRepository, MetricsSource, ProcessRepository, Retention, RollupRepository,
     RollupSettings, TelemetrySource,
 };
-use syntrac_core::{ContextSettings, Detector, IdentitySettings, LaunchSource, NewThingsDetector, RefreshLimits};
 use syntrac_ipc::pipe::{PipeServer, PipeServerConfig};
 use syntrac_ipc::protocol::{Request, Response};
 use syntrac_ipc::serve::Handler;
@@ -374,15 +377,30 @@ fn start_launch_worker(options: &HostOptions, stop: &Arc<AtomicBool>) -> Option<
     }
 }
 
-/// The rules that raise findings: the "new thing" rules (F2), each reading through its own database connection. F3 adds the usage rules.
-fn detectors(database_path: &Path) -> Vec<Box<dyn Detector + Send>> {
+/// The rules that raise findings: the "new thing" rules (F2) and the usage rules (F3), each reading through its own database connection.
+fn detectors(database_path: &Path, config: &ServiceConfig) -> Vec<Box<dyn Detector + Send>> {
+    let mut rules: Vec<Box<dyn Detector + Send>> = Vec::new();
     match SqliteStore::open(database_path) {
-        Ok(store) => vec![Box::new(NewThingsDetector::new(store))],
-        Err(error) => {
-            warn!(%error, "The detection rules could not open the database; detection runs without rules");
-            Vec::new()
-        }
+        Ok(store) => rules.push(Box::new(NewThingsDetector::new(store))),
+        Err(error) => warn!(%error, "The new-thing rules could not open the database; detection runs without them"),
     }
+    let usage = UsageSettings {
+        window_hours: i64::try_from(config.usage_window_days.saturating_mul(24)).unwrap_or(i64::MAX),
+        min_active_hours: config.usage_min_active_hours,
+        cpu_floor_percent: if config.usage_cpu_floor_percent > 0.0 {
+            config.usage_cpu_floor_percent
+        } else {
+            cpu_floor_for_cores(std::thread::available_parallelism().map_or(1, usize::from))
+        },
+        memory_floor_bytes: config.usage_memory_floor_mb.saturating_mul(1024 * 1024),
+        net_floor_bytes: config.usage_net_floor_mb.saturating_mul(1024 * 1024),
+        ..UsageSettings::default()
+    };
+    match SqliteStore::open(database_path) {
+        Ok(store) => rules.push(Box::new(UsageDetector::new(store, usage))),
+        Err(error) => warn!(%error, "The usage rules could not open the database; detection runs without them"),
+    }
+    rules
 }
 
 /// Starts the detect worker (findings: what is new, what is unusual) on its own thread with its own database connection. Off by
@@ -404,7 +422,7 @@ fn start_detect_worker(options: &HostOptions, stop: &Arc<AtomicBool>) -> Option<
         interval: Duration::from_secs(config.detect_interval_minutes * 60),
         reconcile: ReconcileSettings { max_new: config.detect_max_new_per_run },
     };
-    let worker = DetectWorker::new(store, detectors(&options.database_path), SystemClock, settings);
+    let worker = DetectWorker::new(store, detectors(&options.database_path, config), SystemClock, settings);
     let stop = Arc::clone(stop);
     let spawned = std::thread::Builder::new()
         .name("syntrac-detect".into())

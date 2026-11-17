@@ -178,6 +178,12 @@ by the same maker" can be told from "the signer changed". A look that failed, or
 
 A folder expectation (F2) is an `expectations` row whose `subject` is `folder:<install folder>`: it covers findings of that `kind` whose subject is below that folder.
 
+## What a usage rule measured (v15)
+
+`findings.level` (migration v15, additive, nullable): for the usage rules (F3), how much was measured: a share of the whole machine for CPU, bytes for memory and for
+bytes sent or received. NULL for every other kind of finding. "Raise the limit to this level" stores it as the `ceiling` of an expectation; a later finding of the same
+subject is raised again only when it measured MORE than the ceiling. The usage rules read the hourly rollups (`rollup_process_hour`, `rollup_traffic_hour`) and write nothing of their own.
+
 ## Retention
 
 `Retention::purge_before(cutoff)` removes events, flows, metrics older than the cutoff, and ended processes that ended

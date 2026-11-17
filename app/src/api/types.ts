@@ -566,7 +566,8 @@ export interface FindingsView {
 }
 
 /** What the user can do with a finding. */
-export type FindingDecision = 'expected_this_time' | 'always_expected' | 'not_expected' | 'snooze' | 'reopen';
+export type FindingDecision =
+  'expected_this_time' | 'always_expected' | 'raise_limit' | 'not_expected' | 'snooze' | 'reopen';
 
 export interface NewDestinationRowView {
   addr: string;

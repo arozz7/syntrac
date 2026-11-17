@@ -6,6 +6,8 @@
 //! detection had been switched on that many days ago, what would the rules raise NOW? It prints how many findings each rule would
 //! have raised, by tier, and a sample of the sentences, so the rules are read by a person before detection is switched on
 //! (`detect_enabled = false` until then). Nothing here deletes anything; the work directory is left for you to inspect and remove.
+//! The usage rules are replayed too: the detector is run at every sixth hour of the last days and what it would have raised is added
+//! up (the same thing on one day counts once), so the noise of the thresholds can be judged.
 //! File changes need a history that only exists from schema v14 on, so on a database that has just been upgraded that rule is quiet.
 
 use std::collections::BTreeMap;
@@ -14,7 +16,9 @@ use std::time::Instant;
 
 use rusqlite::{Connection, OpenFlags};
 use syntrac_core::findings::Tier;
-use syntrac_core::{Clock, Detector, NewThingsDetector, SystemClock, Timestamp};
+use syntrac_core::{
+    cpu_floor_for_cores, Clock, Detector, NewThingsDetector, SystemClock, Timestamp, UsageDetector, UsageSettings,
+};
 use syntrac_store::SqliteStore;
 
 const DAY_MICROS: i64 = 86_400 * 1_000_000;
@@ -43,6 +47,7 @@ fn main() {
     let detector = NewThingsDetector::new(store);
     let now = SystemClock.now();
 
+    let replay_days = days.iter().copied().max().unwrap_or(5);
     for ago in days {
         let since = Timestamp::from_micros(now.as_micros() - ago * DAY_MICROS);
         let started = Instant::now();
@@ -68,5 +73,55 @@ fn main() {
             println!("  [{}] {} -- {}", candidate.tier.as_str(), candidate.title, candidate.why);
         }
     }
+    let cores = std::thread::available_parallelism().map_or(1, usize::from);
+    let shipped = UsageSettings { cpu_floor_percent: cpu_floor_for_cores(cores), ..UsageSettings::default() };
+    usage_replay("as shipped", &copy, now, replay_days, shipped);
+    // For comparison only: how close the data comes to the limits. Not a suggestion to run it so.
+    let sensitive = UsageSettings {
+        cpu_floor_percent: 1.0,
+        memory_floor_bytes: 50 * 1024 * 1024,
+        net_floor_bytes: 10 * 1024 * 1024,
+        p95_multiplier: 1.5,
+        max_multiplier: 1.1,
+        ..shipped
+    };
+    usage_replay("much more sensitive (comparison only)", &copy, now, replay_days, sensitive);
     println!("\ncopy left at {}", copy.display());
+}
+
+/// Runs the usage rules at every sixth hour of the last `days` days and reports what they would have raised.
+fn usage_replay(label: &str, copy: &std::path::Path, now: Timestamp, days: i64, settings: UsageSettings) {
+    let detector = UsageDetector::new(SqliteStore::open(copy).expect("open the copy"), settings);
+    let mut raised: BTreeMap<String, (String, String, String)> = BTreeMap::new();
+    let started = Instant::now();
+    let mut runs = 0;
+    let mut at = now.as_micros();
+    while at > now.as_micros() - days * DAY_MICROS {
+        let found =
+            detector.detect(Timestamp::from_micros(0), Timestamp::from_micros(at)).expect("the usage rules ran");
+        runs += 1;
+        for candidate in found {
+            raised.entry(candidate.dedupe_key.clone()).or_insert((
+                candidate.subject.clone(),
+                candidate.title.clone(),
+                candidate.why.clone(),
+            ));
+        }
+        at -= 6 * 3_600_000_000;
+    }
+    println!(
+        "\nusage rules ({label}) replayed {runs} times over {days} day(s) in {:.1} s: {} finding(s) (one per program, metric and day)",
+        started.elapsed().as_secs_f64(),
+        raised.len()
+    );
+    let mut by_metric: BTreeMap<&str, usize> = BTreeMap::new();
+    for (subject, _, _) in raised.values() {
+        *by_metric.entry(subject.rsplit('|').next().unwrap_or("?")).or_default() += 1;
+    }
+    for (metric, count) in &by_metric {
+        println!("  {count:4}  {metric}");
+    }
+    for (_, title, why) in raised.values().take(8) {
+        println!("  {title} -- {why}");
+    }
 }
