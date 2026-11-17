@@ -358,4 +358,21 @@ describe('Findings: what you told SYNTRAC is expected', () => {
     );
     expect(await screen.findByText('odd kind name')).toBeTruthy();
   });
+
+  it('names a known-pattern expectation by its pattern', async () => {
+    show(
+      makeFakeApi({
+        findings: vi.fn(async () =>
+          ok(
+            findingsView({
+              expectations: [
+                expectationRow({ id: 8, kind: 'pattern_remote_access_tool', subject: 'c:\\tools\\anydesk.exe' }),
+              ],
+            }),
+          ),
+        ),
+      }),
+    );
+    expect(await screen.findByText('Known pattern: remote access tool')).toBeTruthy();
+  });
 });

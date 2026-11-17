@@ -100,7 +100,7 @@ fn kind_label(kind: LauncherKind) -> &'static str {
     }
 }
 
-fn signature_line(facts: Option<&FileFacts>) -> String {
+pub(crate) fn signature_line(facts: Option<&FileFacts>) -> String {
     let Some(facts) = facts else { return "Signature: the file has not been read yet".to_owned() };
     let signer = facts.signature.signer.as_deref();
     match (facts.signature.status, signer) {

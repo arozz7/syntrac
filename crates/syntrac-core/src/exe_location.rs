@@ -40,6 +40,21 @@ impl LocationClass {
             Self::Unknown => "unknown",
         }
     }
+
+    /// The class named by `as_str`; `Unknown` is not one a rule can name (it says nothing about location).
+    pub fn parse(text: &str) -> Option<Self> {
+        [
+            Self::System,
+            Self::ProgramFiles,
+            Self::ProgramData,
+            Self::UserProfile,
+            Self::Temporary,
+            Self::Network,
+            Self::Other,
+        ]
+        .into_iter()
+        .find(|class| class.as_str() == text)
+    }
 }
 
 /// The lower-cased folders of an absolute path, split into a root text and the folders between the root and the file name.

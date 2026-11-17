@@ -8,6 +8,8 @@
 //! (`detect_enabled = false` until then). Nothing here deletes anything; the work directory is left for you to inspect and remove.
 //! The usage rules are replayed too: the detector is run at every sixth hour of the last days and what it would have raised is added
 //! up (the same thing on one day counts once), so the noise of the thresholds can be judged.
+//! The known patterns (F5a) are matched against everything seen: counts per pattern (recent days and all time), the two branches of
+//! the start-entry pattern counted separately, and the first matches by name. The output names programs on this machine: keep it local.
 //! File changes need a history that only exists from schema v14 on, so on a database that has just been upgraded that rule is quiet.
 
 use std::collections::BTreeMap;
@@ -17,7 +19,9 @@ use std::time::Instant;
 use rusqlite::{Connection, OpenFlags};
 use syntrac_core::findings::Tier;
 use syntrac_core::{
-    cpu_floor_for_cores, Clock, Detector, NewThingsDetector, SystemClock, Timestamp, UsageDetector, UsageSettings,
+    built_in_pack, cpu_floor_for_cores, parse_pack, pattern_candidates, Clock, Detector, IdentityRepository,
+    KnownProductRepository, LauncherRepository, NewThingsDetector, PatternFacts, SystemClock, Timestamp, UsageDetector,
+    UsageSettings, RECENT_DAYS,
 };
 use syntrac_store::SqliteStore;
 
@@ -86,7 +90,77 @@ fn main() {
         ..shipped
     };
     usage_replay("much more sensitive (comparison only)", &copy, now, replay_days, sensitive);
+    pattern_report(&copy, now);
     println!("\ncopy left at {}", copy.display());
+}
+
+/// Two extra patterns that are NOT shipped: the two branches of "a start entry whose target is unsigned or lives in a user-writable
+/// folder", counted separately so the noise of each can be judged before deciding what to ship.
+const START_ENTRY_BRANCHES: &str = r#"
+version = "rehearsal"
+[[pattern]]
+id = "start_unsigned_anywhere"
+title = "Start entry, unsigned target anywhere"
+technique = "T1547.001"
+tier = "unusual"
+applies_to = "start_entry"
+why = "Rehearsal only."
+benign = "Rehearsal only."
+[pattern.when]
+entry_kind_is = ["service_auto", "task", "run_key", "run_once", "startup_folder"]
+signature_is = ["unsigned", "untrusted", "altered"]
+[[pattern]]
+id = "start_signed_in_writable"
+title = "Start entry, signed target in a user-writable folder"
+technique = "T1547.001"
+tier = "unusual"
+applies_to = "start_entry"
+why = "Rehearsal only."
+benign = "Rehearsal only."
+[pattern.when]
+entry_kind_is = ["service_auto", "task", "run_key", "run_once", "startup_folder"]
+signature_is = ["valid"]
+location_is = ["user_profile", "temporary", "program_data", "network"]
+"#;
+
+/// What each known pattern matches TODAY on the copy, for the recent days the service uses and for all time, with the programs, so a
+/// person can read the list before `patterns_enabled` is switched on. The output names programs on this machine: keep it local.
+fn pattern_report(copy: &std::path::Path, now: Timestamp) {
+    let store = SqliteStore::open(copy).expect("open the copy");
+    let entries = store.identity_entries().expect("programs");
+    let known = store.known_products().expect("known programs");
+    let launchers = store.all_launchers().expect("start entries");
+    let since = Timestamp::from_micros(now.as_micros() - DAY_MICROS); // as if switched on yesterday: older things are "already here"
+    let shipped = built_in_pack();
+    let branches = parse_pack(START_ENTRY_BRANCHES).expect("rehearsal pack");
+    println!("\nknown patterns (pack {}), {} program(s) in the copy", shipped.version, entries.len());
+    for (label, recent_days) in
+        [("seen in the last 30 days (as the service judges)", RECENT_DAYS), ("all time (comparison only)", 36_500)]
+    {
+        println!("\n  {label}:");
+        for (name, pack) in [("shipped", &shipped), ("branches of the start-entry pattern (not shipped)", &branches)] {
+            let found = pattern_candidates(
+                pack,
+                &PatternFacts { since, now, recent_days, known: &known, entries: &entries, launchers: &launchers },
+            );
+            let mut by_kind: BTreeMap<(&str, &str), usize> = BTreeMap::new();
+            for candidate in &found {
+                *by_kind.entry((candidate.kind.as_str(), candidate.tier.as_str())).or_default() += 1;
+            }
+            println!("   {name}: {} match(es)", found.len());
+            for pattern in &pack.patterns {
+                let kind = format!("pattern_{}", pattern.id);
+                let counts: Vec<usize> =
+                    by_kind.iter().filter(|((k, _), _)| *k == kind).map(|(_, count)| *count).collect();
+                println!("    {:4}  {}", counts.iter().sum::<usize>(), pattern.id);
+            }
+            if recent_days == RECENT_DAYS && name == "shipped" {
+                for candidate in found.iter().take(40) {
+                    println!("      [{}] {} -- {}", candidate.tier.as_str(), candidate.kind, candidate.subject);
+                }
+            }
+        }
+    }
 }
 
 /// Runs the usage rules at every sixth hour of the last `days` days and reports what they would have raised.

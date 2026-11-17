@@ -1,0 +1,280 @@
+//! Matching the pattern pack against what SYNTRAC knows (docs/ALERTS-PLAN.md, F5a). Pure: facts in, candidates out; the detector at
+//! the bottom only loads the facts through read ports.
+//!
+//! Which programs are judged: only programs seen running in the last `RECENT_DAYS` (a program that ran once last year and was
+//! uninstalled is not a finding today), never a program a known product covers, and never one whose file has not been read when the
+//! pattern needs the file. Each pattern is one kind of finding (`pattern_<id>`), the subject is the program (or, for a start entry,
+//! the program and the entry), and the pack version is NOT part of the key, so updating the pack does not raise everything again.
+
+use std::collections::HashMap;
+
+use crate::exe_identity::{FileFacts, IdentityEntry, IdentityRepository};
+use crate::exe_location::{classify_location, LocationClass};
+use crate::findings::{Candidate, Tier};
+use crate::findings_run::{DetectError, Detector};
+use crate::known::{KnownIndex, KnownProduct, KnownProductRepository, Standing};
+use crate::launchers::{LauncherRepository, LauncherSeen};
+use crate::new_things::{concerns, location_label, signature_line};
+use crate::patterns::{Pattern, PatternPack, Subject, When};
+use crate::ports::RepoError;
+use crate::rollup::Executable;
+use crate::time::Timestamp;
+
+/// Only programs seen running within this many days are judged.
+pub const RECENT_DAYS: i64 = 30;
+
+/// At most this many findings of one pattern per run; the most serious stay.
+pub const MAX_PER_PATTERN: usize = 50;
+
+const DAY_MICROS: i64 = 86_400 * 1_000_000;
+const MIN_NEAR_LEN: usize = 5;
+const PROGRAM_EXTENSIONS: [&str; 10] = ["exe", "scr", "com", "bat", "cmd", "pif", "js", "vbs", "msi", "jar"];
+const DOCUMENT_EXTENSIONS: [&str; 20] = [
+    "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "rtf", "csv", "jpg", "jpeg", "png", "gif", "bmp", "mp3",
+    "mp4", "avi", "zip", "rar",
+];
+/// Text-direction controls: U+202A to U+202E and U+2066 to U+2069.
+const DIRECTION_CONTROLS: [char; 9] =
+    ['\u{202A}', '\u{202B}', '\u{202C}', '\u{202D}', '\u{202E}', '\u{2066}', '\u{2067}', '\u{2068}', '\u{2069}'];
+
+/// Everything the patterns look at.
+pub struct PatternFacts<'a> {
+    /// When detection was first switched on.
+    pub since: Timestamp,
+    pub now: Timestamp,
+    pub recent_days: i64,
+    pub known: &'a [KnownProduct],
+    pub entries: &'a [IdentityEntry],
+    pub launchers: &'a [(Executable, Vec<LauncherSeen>)],
+}
+
+/// The number of single-character edits (change, add, remove, or swap two neighbours) between two names: optimal string
+/// alignment. A swap counts as ONE edit, so `scvhost` is one edit from `svchost`.
+pub fn osa_distance(a: &str, b: &str) -> usize {
+    let (a, b): (Vec<char>, Vec<char>) = (a.chars().collect(), b.chars().collect());
+    let mut rows = vec![vec![0usize; b.len() + 1]; a.len() + 1];
+    for (i, row) in rows.iter_mut().enumerate() {
+        row[0] = i;
+    }
+    rows[0] = (0..=b.len()).collect();
+    for i in 1..=a.len() {
+        for j in 1..=b.len() {
+            let cost = usize::from(a[i - 1] != b[j - 1]);
+            let mut best = (rows[i - 1][j] + 1).min(rows[i][j - 1] + 1).min(rows[i - 1][j - 1] + cost);
+            if i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1] {
+                best = best.min(rows[i - 2][j - 2] + 1);
+            }
+            rows[i][j] = best;
+        }
+    }
+    rows[a.len()][b.len()]
+}
+
+/// What a pattern is judged on: a program, and for a start entry the entry too.
+struct Target<'a> {
+    exe: &'a Executable,
+    /// The file name as written.
+    name: &'a str,
+    facts: Option<&'a FileFacts>,
+    class: LocationClass,
+    already_here: bool,
+    entry: Option<&'a LauncherSeen>,
+}
+
+fn facts_of(entry: &IdentityEntry) -> Option<&FileFacts> {
+    entry.record.as_ref().and_then(|record| record.facts.as_ref())
+}
+
+fn file_name(path: &str) -> &str {
+    path.trim().rsplit(['\\', '/']).next().unwrap_or_default()
+}
+
+fn stem_of(name: &str) -> &str {
+    match name.rsplit_once('.') {
+        Some((stem, "exe" | "scr" | "com")) => stem,
+        _ => name,
+    }
+}
+
+/// One edit away from a listed program name, and equal to none of them. Names shorter than five letters are not judged (on either
+/// side): too many ordinary words are one edit from each other.
+fn near_a_name(name: &str, listed: &[String]) -> bool {
+    let stem = stem_of(name);
+    let stems: Vec<&str> = listed.iter().map(|listed| stem_of(listed)).collect();
+    if stems.contains(&stem) {
+        return false;
+    }
+    stem.chars().count() >= MIN_NEAR_LEN
+        && stems.iter().any(|other| other.chars().count() >= MIN_NEAR_LEN && osa_distance(stem, other) == 1)
+}
+
+fn has_double_extension(name: &str) -> bool {
+    let parts: Vec<&str> = name.split('.').collect();
+    let [.., inner, outer] = parts.as_slice() else { return false };
+    parts.len() >= 3 && PROGRAM_EXTENSIONS.contains(outer) && DOCUMENT_EXTENSIONS.contains(inner)
+}
+
+fn direction_control(name: &str) -> Option<char> {
+    name.chars().find(|c| DIRECTION_CONTROLS.contains(c))
+}
+
+fn holds(when: &When, target: &Target<'_>) -> bool {
+    let lower = target.name.to_lowercase();
+    let located = target.class != LocationClass::Unknown;
+    let signer = target.facts.and_then(|f| f.signature.signer.as_deref()).map(str::to_lowercase);
+    (when.name_is.is_empty() || when.name_is.contains(&lower))
+        && (when.name_near.is_empty() || near_a_name(&lower, &when.name_near))
+        && (when.location_is.is_empty() || (located && when.location_is.contains(&target.class)))
+        && (when.location_not.is_empty() || (located && !when.location_not.contains(&target.class)))
+        && (when.signature_is.is_empty()
+            || target.facts.is_some_and(|f| when.signature_is.contains(&f.signature.status)))
+        && (when.signer_has.is_empty()
+            || signer.as_deref().is_some_and(|s| when.signer_has.iter().any(|word| s.contains(word.as_str()))))
+        && (when.signer_lacks.is_empty()
+            || (target.facts.is_some()
+                && !signer.as_deref().is_some_and(|s| when.signer_lacks.iter().any(|word| s.contains(word.as_str())))))
+        && (!when.downloaded || target.facts.is_some_and(FileFacts::downloaded))
+        && (!when.already_here || target.already_here)
+        && (!when.double_extension || has_double_extension(&lower))
+        && (!when.direction_override || direction_control(target.name).is_some())
+        && (when.entry_kinds.is_empty() || target.entry.is_some_and(|entry| when.entry_kinds.contains(&entry.kind)))
+}
+
+fn candidate(pattern: &Pattern, pack: &PatternPack, target: &Target<'_>, now: Timestamp) -> Candidate {
+    let name = target.name.to_owned();
+    let (subject, mut evidence) = match target.entry {
+        None => (target.exe.key.clone(), vec![format!("Path: {}", target.exe.path)]),
+        Some(entry) => (
+            format!("{}|{}|{}", target.exe.key, entry.kind.as_str(), entry.location.to_lowercase()),
+            vec![
+                format!("Program: {}", target.exe.path),
+                format!("Entry: {} ({})", entry.kind.as_str().replace('_', " "), entry.location),
+            ],
+        ),
+    };
+    evidence.push(format!("Location: {}", location_label(target.class)));
+    evidence.push(signature_line(target.facts));
+    if let Some(control) = direction_control(target.name) {
+        evidence.push(format!("Its name contains the text-direction control character U+{:04X}", u32::from(control)));
+    }
+    evidence
+        .push(format!("Pattern: {} ({}), a public technique name used as a label", pattern.title, pattern.technique));
+    evidence.push(format!("Often harmless: {}", pattern.benign));
+    evidence.push(format!("Pattern pack {}", pack.version));
+    let raised = pattern.raise_if_concerning && !concerns(target.facts, target.class).is_empty();
+    Candidate {
+        kind: format!("pattern_{}", pattern.id),
+        dedupe_key: format!("pattern_{}:{subject}", pattern.id),
+        subject,
+        subject_label: name.clone(),
+        tier: if raised { Tier::Suspicious } else { pattern.tier },
+        title: format!("{}: {name}", pattern.title),
+        why: pattern.why.clone(),
+        evidence,
+        level: None,
+        at: now,
+    }
+}
+
+/// Every candidate of every pattern in the pack.
+pub fn pattern_candidates(pack: &PatternPack, facts: &PatternFacts<'_>) -> Vec<Candidate> {
+    let recent_since = Timestamp::from_micros(facts.now.as_micros() - facts.recent_days * DAY_MICROS);
+    let index =
+        KnownIndex::build(facts.known.to_vec(), facts.entries.iter().map(|e| (e.exe.path.as_str(), facts_of(e))));
+    let is_known = |path: &str, file: Option<&FileFacts>| matches!(index.standing(path, file), Standing::Known { .. });
+    let by_key: HashMap<&str, &IdentityEntry> = facts.entries.iter().map(|e| (e.exe.key.as_str(), e)).collect();
+
+    let mut targets: Vec<(Subject, Target<'_>)> = Vec::new();
+    for entry in facts.entries {
+        let Some(seen) = entry.seen.filter(|seen| seen.last_seen >= recent_since) else { continue };
+        let file = facts_of(entry);
+        if is_known(&entry.exe.path, file) {
+            continue;
+        }
+        targets.push((
+            Subject::Program,
+            Target {
+                exe: &entry.exe,
+                name: file_name(&entry.exe.path),
+                facts: file,
+                class: classify_location(&entry.exe.path),
+                already_here: seen.first_seen < facts.since,
+                entry: None,
+            },
+        ));
+    }
+    for (exe, entries) in facts.launchers {
+        let file = by_key.get(exe.key.as_str()).copied().and_then(facts_of);
+        if is_known(&exe.path, file) {
+            continue;
+        }
+        for launcher in entries.iter().filter(|e| e.current && e.last_seen >= recent_since) {
+            targets.push((
+                Subject::StartEntry,
+                Target {
+                    exe,
+                    name: file_name(&exe.path),
+                    facts: file,
+                    class: classify_location(&exe.path),
+                    already_here: launcher.first_seen < facts.since,
+                    entry: Some(launcher),
+                },
+            ));
+        }
+    }
+
+    let mut all = Vec::new();
+    for pattern in &pack.patterns {
+        let mut found: Vec<Candidate> = targets
+            .iter()
+            .filter(|(subject, target)| *subject == pattern.subject && holds(&pattern.when, target))
+            .map(|(_, target)| candidate(pattern, pack, target, facts.now))
+            .collect();
+        found.sort_by_key(|c| std::cmp::Reverse(c.tier));
+        found.truncate(MAX_PER_PATTERN);
+        all.extend(found);
+    }
+    all
+}
+
+fn failed(what: &'static str) -> impl FnOnce(RepoError) -> DetectError {
+    move |error| DetectError(format!("could not read {what}: {error}"))
+}
+
+/// The patterns as a detector: loads the facts through read ports and applies `pattern_candidates`.
+pub struct PatternDetector<R> {
+    repo: R,
+    pack: PatternPack,
+}
+
+impl<R> PatternDetector<R> {
+    pub fn new(repo: R, pack: PatternPack) -> Self {
+        Self { repo, pack }
+    }
+}
+
+impl<R> Detector for PatternDetector<R>
+where
+    R: IdentityRepository + LauncherRepository + KnownProductRepository,
+{
+    fn name(&self) -> &'static str {
+        "known patterns"
+    }
+
+    fn detect(&self, since: Timestamp, now: Timestamp) -> Result<Vec<Candidate>, DetectError> {
+        let entries = self.repo.identity_entries().map_err(failed("the programs"))?;
+        let known = self.repo.known_products().map_err(failed("the known programs"))?;
+        let launchers = self.repo.all_launchers().map_err(failed("the start entries"))?;
+        Ok(pattern_candidates(
+            &self.pack,
+            &PatternFacts {
+                since,
+                now,
+                recent_days: RECENT_DAYS,
+                known: &known,
+                entries: &entries,
+                launchers: &launchers,
+            },
+        ))
+    }
+}

@@ -76,6 +76,10 @@ launch_interval_minutes = 10
 #   cargo run --release -p syntrac-store --example rehearse_detect -- <database> <work folder> 1 2 3 5
 detect_enabled = true
 detect_interval_minutes = 5
+# Known patterns of rogue software (docs/PATTERNS.md, F5a): a fixed set of rules shipped inside the program (config/patterns), each tied
+# to a public technique name, each saying what could be harmless. A match is at most "suspicious", never a verdict. Nothing is downloaded.
+# OFF until you have read the backtest (the rehearse_detect example prints what each pattern matches today); needs detect_enabled too.
+patterns_enabled = false
 # At most this many NEW findings per run; the rest are counted, most serious first.
 detect_max_new_per_run = 50
 

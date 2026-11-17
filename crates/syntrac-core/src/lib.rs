@@ -27,6 +27,8 @@ pub mod new_things;
 pub mod owner_dataset;
 pub mod owner_refresh;
 pub mod owner_totals;
+pub mod pattern_run;
+pub mod patterns;
 pub mod pipeline;
 pub mod ports;
 pub mod program_group;
@@ -105,6 +107,8 @@ pub use owner_refresh::{
     RefreshLimits, RefreshOutcome,
 };
 pub use owner_totals::{group_by_owner, OwnerGroup, DESTINATIONS_PER_OWNER};
+pub use pattern_run::{pattern_candidates, PatternDetector, PatternFacts, MAX_PER_PATTERN, RECENT_DAYS};
+pub use patterns::{built_in_pack, parse_pack, PackError, Pattern, PatternPack, BUILT_IN_PACK};
 pub use pipeline::{ingest_metrics, IngestError, Pipeline};
 pub use ports::{
     EventQuery, EventRepository, FlowQueries, MetricsRepository, MetricsSource, ProcessFilter, ProcessQueries,

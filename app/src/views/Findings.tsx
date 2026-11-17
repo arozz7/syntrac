@@ -41,7 +41,12 @@ const KINDS: Record<string, string> = {
   usage: 'Usage above what is expected',
 };
 
+const PATTERN_PREFIX = 'pattern_';
+
 function kindLabel(kind: string): string {
+  if (kind.startsWith(PATTERN_PREFIX)) {
+    return `Known pattern: ${kind.slice(PATTERN_PREFIX.length).replace(/_/g, ' ')}`;
+  }
   return KINDS[kind] ?? kind.replace(/_/g, ' ');
 }
 

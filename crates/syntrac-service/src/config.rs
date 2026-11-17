@@ -68,6 +68,9 @@ pub struct ServiceConfig {
     /// Findings (docs/ALERTS-PLAN.md): whether the detect worker runs. OFF until the backtest has been read: when it is switched on
     /// for the first time, that moment is when "new" starts counting.
     pub detect_enabled: bool,
+    /// Findings (F5): whether the known patterns of rogue software (config/patterns, shipped inside the program) are matched. OFF until
+    /// the backtest has been read; needs `detect_enabled` too.
+    pub patterns_enabled: bool,
     /// Findings: minutes between two detection runs.
     pub detect_interval_minutes: u64,
     /// Findings: at most this many NEW findings per run; the rest are counted as overflow, most serious first.
@@ -122,6 +125,7 @@ impl Default for ServiceConfig {
             launch_enabled: true,
             launch_interval_minutes: 10,
             detect_enabled: false,
+            patterns_enabled: false,
             detect_interval_minutes: 5,
             detect_max_new_per_run: 50,
             usage_window_days: 14,

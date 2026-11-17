@@ -1,0 +1,132 @@
+# SYNTRAC pattern pack (docs/PATTERNS.md, docs/ALERTS-PLAN.md F5). Shipped inside the program: nothing is downloaded, nothing is
+# fetched at run time. Every pattern is a small, reviewable rule written for SYNTRAC's own data. A match is a reason to look, never a
+# verdict: the tier is "unusual" or "suspicious" and every pattern says what a harmless explanation could be.
+#
+# Technique ids label each rule with the public name MITRE ATT&CK gives the behaviour (docs/PATTERNS.md has the notice). They are
+# labels only: no rule text or data of MITRE, Sigma or LOLBAS is copied here.
+#
+# Conditions (all of a pattern's conditions must hold; the list of words below is closed, an unknown word stops the pack loading):
+#   name_is, name_near      file name equals / is ONE edit away from (not equal to) one of the names
+#   location_is/_not        where the program lives: system, program_files, program_data, user_profile, temporary, network, other
+#   signature_is            valid, untrusted, altered, unsigned (needs the file to have been read)
+#   signer_has / signer_lacks   the signer text contains / contains none of these words (signer_lacks needs the file to have been read)
+#   downloaded              the file carries the Windows "downloaded from the Internet" mark
+#   already_here            first seen BEFORE detection was switched on (the rules for new things already cover what came after)
+#   double_extension        a document or picture name that really ends in a program extension (invoice.pdf.exe)
+#   direction_override      the name contains a text-direction control character, used to disguise an extension
+#   entry_kind_is           (start entries only) service_auto, task, run_key, run_once, startup_folder
+# raise_if_concerning = true lifts the tier to "suspicious" when the program is unsigned or untrusted in a place users can write.
+
+version = "2026.11.1"
+
+[[pattern]]
+id = "system_name_outside_windows"
+title = "A Windows program name running from the wrong folder"
+technique = "T1036.005"
+tier = "suspicious"
+applies_to = "program"
+why = "It has the name of a core Windows program, runs from outside the Windows folder and is not signed by Microsoft."
+benign = "A tool or an app that ships its own copy of a system program, or a portable build. Check the signer and the folder."
+[pattern.when]
+name_is = ["svchost.exe", "lsass.exe", "csrss.exe", "services.exe", "winlogon.exe", "smss.exe", "wininit.exe", "taskhostw.exe", "dllhost.exe", "spoolsv.exe", "explorer.exe", "audiodg.exe", "conhost.exe", "runtimebroker.exe", "sihost.exe", "ctfmon.exe", "searchindexer.exe", "fontdrvhost.exe"]
+location_not = ["system"]
+signer_lacks = ["microsoft"]
+
+[[pattern]]
+id = "system_name_lookalike"
+title = "A name one letter away from a Windows program"
+technique = "T1036.005"
+tier = "suspicious"
+applies_to = "program"
+why = "Its name differs by one letter from a core Windows program (like svch0st or scvhost) and it is not signed by Microsoft."
+benign = "A real program whose name happens to be close. Check the signer and what the program is."
+[pattern.when]
+name_near = ["svchost.exe", "lsass.exe", "csrss.exe", "winlogon.exe", "wininit.exe", "taskhostw.exe", "dllhost.exe", "spoolsv.exe", "explorer.exe", "audiodg.exe", "conhost.exe", "runtimebroker.exe", "sihost.exe", "ctfmon.exe", "searchindexer.exe", "fontdrvhost.exe"]
+location_not = ["system"]
+signer_lacks = ["microsoft"]
+
+[[pattern]]
+id = "unsigned_download_in_user_folder"
+title = "An unsigned download running from a user folder"
+technique = "T1204.002"
+tier = "suspicious"
+applies_to = "program"
+why = "It is not signed, it came from the Internet and it runs from a folder any user can write. It was here before detection was switched on."
+benign = "Most freeware and small tools are not signed. If you installed it yourself, mark it expected."
+[pattern.when]
+signature_is = ["unsigned"]
+location_is = ["user_profile", "temporary", "network"]
+downloaded = true
+already_here = true
+
+[[pattern]]
+id = "start_entry_unsigned_in_writable_folder"
+title = "Starts with Windows from a user-writable folder, unsigned"
+technique = "T1547.001"
+tier = "suspicious"
+applies_to = "start_entry"
+why = "Something starts this program with Windows, the program is not validly signed and it lives in a folder any user can write. The entry was here before detection was switched on."
+benign = "Small tools and some updaters start themselves from your profile. If you set it up, mark it expected."
+[pattern.when]
+entry_kind_is = ["service_auto", "task", "run_key", "run_once", "startup_folder"]
+signature_is = ["unsigned", "untrusted", "altered"]
+location_is = ["user_profile", "temporary", "program_data", "network"]
+already_here = true
+
+[[pattern]]
+id = "double_extension"
+title = "A document name that is really a program"
+technique = "T1036.007"
+tier = "suspicious"
+applies_to = "program"
+why = "Its name looks like a document or picture (like invoice.pdf.exe) but the file is a program."
+benign = "Rare. A badly named build output is the usual harmless reason."
+[pattern.when]
+double_extension = true
+
+[[pattern]]
+id = "direction_override_name"
+title = "A program name that disguises its extension"
+technique = "T1036.002"
+tier = "suspicious"
+applies_to = "program"
+why = "Its name contains a text-direction control character, which can make the real extension look like something harmless."
+benign = "Almost never legitimate. Some file names in right-to-left languages contain such characters."
+[pattern.when]
+direction_override = true
+
+[[pattern]]
+id = "remote_access_tool"
+title = "A remote-access tool is running"
+technique = "T1219"
+tier = "unusual"
+raise_if_concerning = true
+applies_to = "program"
+why = "Remote-access tools let someone else control this machine. Administrators use them, and so do attackers."
+benign = "You or your IT support installed it on purpose. Mark it expected once and it stays quiet."
+[pattern.when]
+name_is = ["anydesk.exe", "teamviewer.exe", "teamviewer_service.exe", "rustdesk.exe", "screenconnect.clientservice.exe", "screenconnect.windowsclient.exe", "meshagent.exe", "winvnc.exe", "tvnserver.exe", "radmin.exe", "supremo.exe", "ateraagent.exe"]
+
+[[pattern]]
+id = "tunnel_tool"
+title = "A tunnelling tool is running"
+technique = "T1572"
+tier = "unusual"
+raise_if_concerning = true
+applies_to = "program"
+why = "Tunnelling tools carry traffic through a hidden path to or from this machine. Developers use them, and so do attackers."
+benign = "A developer sharing a local site, or a tool you set up. Mark it expected once and it stays quiet."
+[pattern.when]
+name_is = ["ngrok.exe", "cloudflared.exe", "frpc.exe", "frps.exe", "chisel.exe", "plink.exe"]
+
+[[pattern]]
+id = "bulk_copy_tool"
+title = "A bulk cloud-copy tool is running"
+technique = "T1567.002"
+tier = "unusual"
+raise_if_concerning = true
+applies_to = "program"
+why = "Rclone copies large amounts of data to cloud storage. Backup setups use it, and so do attackers stealing data."
+benign = "A backup or sync you set up. Mark it expected once and it stays quiet."
+[pattern.when]
+name_is = ["rclone.exe"]

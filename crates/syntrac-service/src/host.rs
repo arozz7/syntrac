@@ -31,8 +31,8 @@ use syntrac_core::retention::GuardLimits;
 use syntrac_core::silence::{SilenceAction, SilencePolicy, SilenceVerdict, SilenceWatchdog};
 use syntrac_core::storage_guard::StorageStats;
 use syntrac_core::{
-    cpu_floor_for_cores, ContextSettings, Detector, IdentitySettings, LaunchSource, NewOwnerDetector,
-    NewThingsDetector, RefreshLimits, UsageDetector, UsageSettings,
+    cpu_floor_for_cores, parse_pack, ContextSettings, Detector, IdentitySettings, LaunchSource, NewOwnerDetector,
+    NewThingsDetector, PatternDetector, RefreshLimits, UsageDetector, UsageSettings, BUILT_IN_PACK,
 };
 use syntrac_core::{
     Clock, EventRepository, MetricsRepository, MetricsSource, ProcessRepository, Retention, RollupRepository,
@@ -377,7 +377,8 @@ fn start_launch_worker(options: &HostOptions, stop: &Arc<AtomicBool>) -> Option<
     }
 }
 
-/// The rules that raise findings: the "new thing" rules (F2) and the usage rules (F3), each reading through its own database connection.
+/// The rules that raise findings: the "new thing" rules (F2), the usage rules (F3) and, when switched on, the known patterns (F5), each
+/// reading through its own database connection.
 fn detectors(database_path: &Path, config: &ServiceConfig) -> Vec<Box<dyn Detector + Send>> {
     let mut rules: Vec<Box<dyn Detector + Send>> = Vec::new();
     match SqliteStore::open(database_path) {
@@ -403,6 +404,17 @@ fn detectors(database_path: &Path, config: &ServiceConfig) -> Vec<Box<dyn Detect
     match SqliteStore::open(database_path) {
         Ok(store) => rules.push(Box::new(UsageDetector::new(store, usage))),
         Err(error) => warn!(%error, "The usage rules could not open the database; detection runs without them"),
+    }
+    if config.patterns_enabled {
+        match (parse_pack(BUILT_IN_PACK), SqliteStore::open(database_path)) {
+            (Ok(pack), Ok(store)) => rules.push(Box::new(PatternDetector::new(store, pack))),
+            (Err(error), _) => {
+                warn!(%error, "The pattern pack could not be read; detection runs without the known patterns")
+            }
+            (_, Err(error)) => {
+                warn!(%error, "The known patterns could not open the database; detection runs without them")
+            }
+        }
     }
     rules
 }
