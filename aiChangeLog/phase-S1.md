@@ -26,3 +26,15 @@ the third click restores the given order). One existing test now finds the ranki
 ## Limits (as designed)
 Sorting works on the rows the server returned (a top-N list), not on the whole history; asking the server for a different top-N by
 column is a possible later change. The choice is not kept after leaving the view.
+
+## Follow-up: card widths on a wide window (2026-11-16)
+The user's full-screen screenshot showed the Overview's two lower cards at about a fifth of the window, with the destination column
+broken one character per line. Two causes, both in `app/src/theme/app.css`:
+- `.grid` used `repeat(auto-fit, minmax(22rem, 1fr))`. A full-width card (`grid-column: 1 / -1`) keeps every track alive, so a wide
+  window made many 22rem tracks and each narrow card took one. Tracks are now at least `max(22rem, 45%)`, so cards share a row in
+  two equal columns at most, and one column when the window is narrow.
+- The card's `overflow-wrap: anywhere` (the clipping fix) lets a table column shrink to one character. Table cells now use
+  `break-word` (an address or a number keeps its full width; the card scrolls if the table is still too wide) and only the muted
+  lines inside a cell (names, owners) wrap anywhere.
+Checked by rendering the stylesheet and the Overview structure in headless Chrome at 2000 x 1100. The CSS is not covered by a unit test
+(jsdom does no layout).

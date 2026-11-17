@@ -125,9 +125,12 @@
   margin-bottom: 1rem;
 }
 
+/* Cards share a row in two equal columns at most, however wide the window is. A track is never narrower than 22rem, and never
+   narrower than 45% of the row, so a wide window gives two big columns instead of many narrow ones that a full-width card
+   would otherwise keep alive (auto-fit does not drop a track a spanning card sits in). */
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(max(22rem, 45%), 1fr));
   gap: 1.25rem;
 }
 
@@ -236,6 +239,18 @@
   text-align: left;
   padding: 0.4rem 0.6rem;
   border-bottom: 1px solid var(--color-border);
+}
+
+/* A cell is only broken inside a word when it has to be: an address or a number keeps its full width (the card scrolls if the
+   table is still too wide), while the muted lines under it (names, owners) may wrap anywhere. The card's own "anywhere" rule
+   would let a table column shrink to one character. */
+.table th,
+.table td {
+  overflow-wrap: break-word;
+}
+
+.table td .muted {
+  overflow-wrap: anywhere;
 }
 
 .table th {
