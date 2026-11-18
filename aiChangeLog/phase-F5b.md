@@ -26,3 +26,7 @@ F5c: the user-imported hash list (the only route to "confirmed") and beaconing (
 
 ## Limits (as designed)
 Parent and child names are weak evidence (a renamed program, or a parent that was not resolved at the start, is missed), and only 14 days are visible. Reinstall the service to get this build; `patterns_enabled` is still the switch.
+
+## F5c decision (2026-11-17)
+
+The user skipped F5c (hash-list import and beaconing): they know of no hash list to import. Nothing was built. The tier "confirmed" therefore stays unused by patterns. It can be reopened with a chosen source.

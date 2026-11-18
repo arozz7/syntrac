@@ -72,7 +72,7 @@ F5b, as built, differs from the plan in three ways, all because of what SYNTRAC 
 - **14 days, not 30.** The raw process rows are kept for the detail retention (14 days by default), so the started-by patterns see 14 days.
 - **"From a new parent" is not built.** With 14 days of history there is no baseline of which parents are normal for a helper. "First network use" reads the permanent record of which program talked to which address, so it covers the whole history.
 
-Not built (planned): a user-imported hash list, the only route to `confirmed` (F5c); clock-like beaconing (F5c, only after a backtest shows it is usable); the pack version on the Findings tab header (it is in each finding's evidence).
+Not built (F5c, skipped by the user on 2026-11-17 for lack of a hash source; can be reopened): a user-imported hash list, the only route to `confirmed`; clock-like beaconing (only after a backtest shows it is usable). Also not built: the pack version on the Findings tab header (it is in each finding's evidence).
 
 ## Switching it on
 
