@@ -169,14 +169,62 @@ fn program_admin(path: &str) -> FindingsAdmin<InMemoryRepository, ManualClock> {
 
 #[test]
 fn always_expected_for_the_folder_stores_the_install_folder_the_service_works_out_itself() {
-    let admin = program_admin(r"c:\users\someone\.cargo\bin\cargo.exe");
+    let admin = program_admin(r"c:\program files\acme\bin\acme.exe");
 
-    let response = admin.decide(1, "always_expected", None, Some("build tools"), Some("this_folder"));
+    let response = admin.decide(1, "always_expected", None, Some("vendor tools"), Some("this_folder"));
 
     assert_eq!(response, Response::Done);
     let expectations = admin.with_repository(|repo| repo.expectations().unwrap());
-    assert_eq!(expectations[0].subject, r"folder:c:\users\someone\.cargo");
+    assert_eq!(expectations[0].subject, r"folder:c:\program files\acme");
     assert_eq!(expectations[0].kind, "new_program");
+}
+
+#[test]
+fn a_whole_folder_the_user_can_write_to_is_refused_and_nothing_is_stored_or_marked() {
+    for path in [
+        r"c:\users\someone\.cargo\bin\cargo.exe",
+        r"c:\users\someone\downloads\x\setup.exe",
+        r"c:\windows\temp\x.exe",
+        r"d:\program files\acme\a.exe",
+    ] {
+        let admin = program_admin(path);
+        let message = error_text(admin.decide(1, "always_expected", None, None, Some("this_folder")));
+        assert!(message.contains("written"), "{path}: {message}");
+        assert!(admin.with_repository(|repo| repo.expectations().unwrap()).is_empty(), "{path}");
+        assert_eq!(the_finding(&admin).status, FindingStatus::Open, "{path}: the finding is left as it was");
+    }
+}
+
+#[test]
+fn the_windows_drive_comes_from_the_service_so_a_client_cannot_claim_one() {
+    let admin = program_admin(r"d:\program files\acme\a.exe").with_system_drive("D:");
+    assert_eq!(admin.decide(1, "always_expected", None, None, Some("this_folder")), Response::Done);
+    assert_eq!(admin.with_repository(|repo| repo.expectations().unwrap())[0].subject, r"folder:d:\program files\acme");
+}
+
+#[test]
+fn a_build_folder_is_stored_for_new_programs_of_a_writable_tool_folder_and_refused_elsewhere() {
+    let admin = program_admin(r"c:\users\someone\.cargo\bin\cargo.exe");
+    assert_eq!(admin.decide(1, "always_expected", None, Some("tools"), Some("build_folder")), Response::Done);
+    let expectations = admin.with_repository(|repo| repo.expectations().unwrap());
+    assert_eq!(
+        (expectations[0].kind.as_str(), expectations[0].subject.as_str()),
+        ("new_program", r"build:c:\users\someone\.cargo")
+    );
+
+    for path in [
+        r"c:\users\someone\appdata\local\temp\toolx\x.exe",
+        r"c:\users\someone\downloads\x.exe",
+        r"c:\program files\acme\a.exe",
+        r"c:\windows\tasks\x.exe",
+    ] {
+        let refused = program_admin(path);
+        assert!(
+            !matches!(refused.decide(1, "always_expected", None, None, Some("build_folder")), Response::Done),
+            "{path}"
+        );
+        assert!(refused.with_repository(|repo| repo.expectations().unwrap()).is_empty(), "{path}");
+    }
 }
 
 #[test]
@@ -267,6 +315,96 @@ fn a_folder_no_known_program_is_installed_in_or_one_that_is_too_general_is_refus
         "a parent of the install folder is not the install folder"
     );
     assert!(admin.with_repository(|repo| repo.expectations().unwrap()).is_empty());
+}
+
+#[test]
+fn a_group_in_a_folder_the_user_can_write_to_cannot_be_expected_as_a_whole() {
+    let mut repo = InMemoryRepository::default();
+    syntrac_testkit::identity_contract::seed_executables(&mut repo, &[r"D:\Src\app\a.exe"]);
+    let admin = FindingsAdmin::new(repo, ManualClock::new(Timestamp::from_micros(NOW)));
+
+    assert!(error_text(admin.confirm_review(r"d:\src")).contains("written"));
+    assert!(admin.with_repository(|repo| repo.expectations().unwrap()).is_empty());
+}
+
+// ---- expecting the programs of a group one by one (the folder itself may not be expected)
+
+const TOOLS: [&str; 3] = [r"D:\Src\app\a.exe", r"D:\Src\app\b.exe", r"D:\Src\app\c.exe"];
+
+fn tools_admin() -> FindingsAdmin<InMemoryRepository, ManualClock> {
+    let mut repo = InMemoryRepository::default();
+    syntrac_testkit::identity_contract::seed_executables(&mut repo, &TOOLS);
+    FindingsAdmin::new(repo, ManualClock::new(Timestamp::from_micros(NOW)))
+}
+
+#[test]
+fn a_group_is_expected_program_by_program_never_as_a_folder() {
+    let admin = tools_admin();
+
+    assert_eq!(admin.confirm_review_programs(r"d:\src", None), Response::Done);
+
+    let mut subjects: Vec<String> = admin
+        .with_repository(|repo| repo.expectations().unwrap())
+        .into_iter()
+        .inspect(|expectation| {
+            assert_eq!(expectation.kind, "new_program");
+            assert!(expectation.note.as_deref().unwrap_or_default().contains("review"));
+        })
+        .map(|expectation| expectation.subject)
+        .collect();
+    subjects.sort();
+    assert_eq!(
+        subjects,
+        vec![r"d:\src\app\a.exe".to_owned(), r"d:\src\app\b.exe".to_owned(), r"d:\src\app\c.exe".to_owned()],
+        "one per program, none starting with folder:"
+    );
+}
+
+#[test]
+fn a_program_that_appears_later_in_that_folder_is_still_new() {
+    let admin = tools_admin();
+    assert_eq!(admin.confirm_review_programs(r"d:\src", None), Response::Done);
+
+    let expectations = admin.with_repository(|repo| repo.expectations().unwrap());
+    assert!(!syntrac_core::expectation_covers(&expectations, "new_program", r"d:\src\app\later.exe"));
+}
+
+#[test]
+fn a_group_with_more_programs_than_the_limit_is_refused_whole() {
+    let admin = tools_admin().with_review_limit(2);
+
+    assert!(error_text(admin.confirm_review_programs(r"d:\src", None)).contains("too many"));
+    assert!(admin.with_repository(|repo| repo.expectations().unwrap()).is_empty(), "nothing is stored, not even part");
+}
+
+#[test]
+fn a_group_the_review_does_not_show_is_refused() {
+    let admin = tools_admin();
+    assert!(error_text(admin.confirm_review_programs(r"d:\nowhere", None)).contains("No program"));
+    assert!(error_text(admin.confirm_review_programs(r"d:\src", Some("someone else"))).contains("No program"));
+    assert!(error_text(admin.confirm_review_programs("", None)).contains("too general"));
+    assert!(error_text(admin.confirm_review_programs(r"d:\", None)).contains("too general"));
+    assert!(admin.with_repository(|repo| repo.expectations().unwrap()).is_empty());
+}
+
+#[test]
+fn programs_already_expected_are_not_stored_again_and_the_rest_are() {
+    let admin = tools_admin();
+    assert_eq!(admin.confirm_review_programs(r"d:\src", None), Response::Done);
+    assert!(
+        error_text(admin.confirm_review_programs(r"d:\src", None)).contains("No program"),
+        "once they are expected, the review has none left to show"
+    );
+    assert_eq!(admin.with_repository(|repo| repo.expectations().unwrap()).len(), 3);
+}
+
+#[test]
+fn the_pipe_carries_a_review_batch_to_the_admin() {
+    let handler = service(Some(Arc::new(tools_admin())));
+
+    let response = handler.handle(Request::ReviewConfirmPrograms { root: r"d:\src".into(), publisher: None });
+
+    assert_eq!(response, Response::Done);
 }
 
 #[test]

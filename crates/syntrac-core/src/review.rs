@@ -66,8 +66,49 @@ pub fn review_groups(
     expectations: &[Expectation],
     switched_on_at: Option<Timestamp>,
 ) -> Vec<ReviewGroup> {
+    let by_key = unreviewed(entries, known, expectations, switched_on_at);
+    let mut groups = groups_of(by_key);
+    groups.sort_by(|a, b| {
+        a.concerns
+            .is_empty()
+            .cmp(&b.concerns.is_empty())
+            .then_with(|| b.count.cmp(&a.count))
+            .then_with(|| a.root.cmp(&b.root))
+    });
+    groups
+}
+
+/// The program keys (what an expectation names) of EVERY program of one group of the review, not only the first few the screen
+/// lists. The group is named by what the screen shows: its install folder and its publisher (`None` for unsigned programs). Used to
+/// expect exactly those programs one by one, where the whole folder may not be expected (docs/ALERTS-PLAN.md, F6).
+pub fn review_group_keys(
+    entries: &[IdentityEntry],
+    known: &[KnownProduct],
+    expectations: &[Expectation],
+    switched_on_at: Option<Timestamp>,
+    root: &str,
+    publisher: Option<&str>,
+) -> Vec<String> {
+    let mut keys: Vec<String> = unreviewed(entries, known, expectations, switched_on_at)
+        .into_iter()
+        .filter(|((group_publisher, group_root), _)| group_root == root && group_publisher.as_deref() == publisher)
+        .flat_map(|(_, members)| members.into_iter().map(|member| member.exe.key.clone()))
+        .collect();
+    keys.sort();
+    keys
+}
+
+type Unreviewed<'a> = BTreeMap<(Option<String>, String), Vec<&'a IdentityEntry>>;
+
+/// The programs seen before the switch-on that no known product and no expectation covers, by (publisher, install folder).
+fn unreviewed<'a>(
+    entries: &'a [IdentityEntry],
+    known: &[KnownProduct],
+    expectations: &[Expectation],
+    switched_on_at: Option<Timestamp>,
+) -> Unreviewed<'a> {
     let index = KnownIndex::build(known.to_vec(), entries.iter().map(|e| (e.exe.path.as_str(), facts_of(e))));
-    let mut by_key: BTreeMap<(Option<String>, String), Vec<&IdentityEntry>> = BTreeMap::new();
+    let mut by_key: Unreviewed<'a> = BTreeMap::new();
     for entry in entries {
         let Some(seen) = entry.seen else { continue };
         if switched_on_at.is_some_and(|on| seen.first_seen >= on) {
@@ -82,8 +123,11 @@ pub fn review_groups(
         let Some(key) = product_key(&entry.exe.path, file) else { continue };
         by_key.entry((key.publisher, key.root)).or_default().push(entry);
     }
+    by_key
+}
 
-    let mut groups: Vec<ReviewGroup> = by_key
+fn groups_of(by_key: Unreviewed<'_>) -> Vec<ReviewGroup> {
+    by_key
         .into_iter()
         .map(|((publisher, root), members)| {
             let facts: Vec<Option<&FileFacts>> = members.iter().map(|m| facts_of(m)).collect();
@@ -120,13 +164,5 @@ pub fn review_groups(
                 root,
             }
         })
-        .collect();
-    groups.sort_by(|a, b| {
-        a.concerns
-            .is_empty()
-            .cmp(&b.concerns.is_empty())
-            .then_with(|| b.count.cmp(&a.count))
-            .then_with(|| a.root.cmp(&b.root))
-    });
-    groups
+        .collect()
 }

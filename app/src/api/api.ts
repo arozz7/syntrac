@@ -56,12 +56,14 @@ export interface Api {
   decideFinding(
     id: number,
     decision: FindingDecision,
-    options?: { days?: number; note?: string; scope?: 'this_item' | 'this_folder' },
+    options?: { days?: number; note?: string; scope?: 'this_item' | 'this_folder' | 'build_folder' },
   ): Promise<WriteOutcome>;
   /** The groups of programs that were already here when detection was switched on and that nothing covers yet. */
   review(): Promise<Data<ReviewView>>;
-  /** Asks the service to expect new programs below an install folder the user has looked at. Never throws. */
+  /** Asks the service to expect new programs below an install folder the user has looked at (a protected folder only). Never throws. */
   confirmReview(root: string): Promise<WriteOutcome>;
+  /** Asks the service to expect the programs of one review group, one by one (never the folder). Never throws. */
+  confirmReviewPrograms(root: string, publisher: string | null): Promise<WriteOutcome>;
   /** Shows a Windows toast. Never throws: if the system refuses, nothing is shown. */
   notify(title: string, body: string): Promise<void>;
   /** Asks the service to remove something the user said is expected. Never throws. */
@@ -152,6 +154,7 @@ export const tauriApi: Api = {
     write('decide_finding', { id, decision, days: options?.days, note: options?.note, scope: options?.scope }),
   review: () => data<ReviewView>('get_review', { limit: undefined }),
   confirmReview: (root) => write('confirm_review', { root }),
+  confirmReviewPrograms: (root, publisher) => write('confirm_review_programs', { root, publisher }),
   removeExpectation: (id) => write('remove_expectation', { id }),
   notify: async (title, body) => {
     try {

@@ -147,6 +147,17 @@ pub async fn confirm_review(backend: State<'_, SharedBackend>, root: String) -> 
 }
 
 #[tauri::command]
+pub async fn confirm_review_programs(
+    backend: State<'_, SharedBackend>,
+    root: String,
+    publisher: Option<String>,
+) -> Result<WriteOutcome, ()> {
+    let backend = Arc::clone(&backend);
+    let result = blocking(move || backend.confirm_review_programs(root, publisher).map(|()| None)).await;
+    Ok(WriteOutcome::from_result(result.unwrap_or_else(|| Err("The request could not be run.".to_owned()))))
+}
+
+#[tauri::command]
 pub async fn remove_expectation(backend: State<'_, SharedBackend>, id: i64) -> Result<WriteOutcome, ()> {
     let backend = Arc::clone(&backend);
     let result = blocking(move || backend.remove_expectation(id).map(|()| None)).await;

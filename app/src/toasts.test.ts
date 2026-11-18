@@ -19,6 +19,7 @@ function finding(id: number, tier: FindingView['tier'], overrides: Partial<Findi
     decidedAtMs: null,
     snoozedUntilMs: null,
     folderScope: null,
+    buildScope: null,
     ...overrides,
   };
 }

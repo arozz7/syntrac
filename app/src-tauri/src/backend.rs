@@ -243,19 +243,30 @@ impl<C: Clock + Send + Sync> Backend<C> {
 
     /// The findings with `status` (every status when none), the counts, what the user said is expected, and whether detection is on.
     pub fn findings(&self, status: Option<String>, limit: Option<usize>) -> Data<FindingsView> {
+        let drive = syntrac_core::system_drive();
         self.with_store(|store, now| {
-            findings_view(store, status.as_deref(), limit.unwrap_or(DEFAULT_FINDING_ROWS), now)
+            findings_view(store, status.as_deref(), limit.unwrap_or(DEFAULT_FINDING_ROWS), now, &drive)
         })
     }
 
     /// "Review what is here today": the groups of programs that were already here when detection was switched on.
     pub fn review(&self, limit: Option<usize>) -> Data<ReviewView> {
-        self.with_store(|store, _| review_view(store, limit.unwrap_or(DEFAULT_REVIEW_GROUPS)))
+        let drive = syntrac_core::system_drive();
+        self.with_store(|store, _| review_view(store, limit.unwrap_or(DEFAULT_REVIEW_GROUPS), &drive))
     }
 
-    /// Asks the service to expect new programs below an install folder the user has looked at. The service checks the folder.
+    /// Asks the service to expect new programs below an install folder the user has looked at. The service checks the folder, and
+    /// refuses one ordinary programs can write to.
     pub fn confirm_review(&self, root: String) -> Result<(), String> {
         match self.write(&Request::ReviewConfirm { root })? {
+            Response::Done => Ok(()),
+            other => Err(unexpected(&other)),
+        }
+    }
+
+    /// Asks the service to expect the programs of one review group one by one (never the folder). The service rebuilds the set.
+    pub fn confirm_review_programs(&self, root: String, publisher: Option<String>) -> Result<(), String> {
+        match self.write(&Request::ReviewConfirmPrograms { root, publisher })? {
             Response::Done => Ok(()),
             other => Err(unexpected(&other)),
         }

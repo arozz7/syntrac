@@ -410,6 +410,7 @@ export function findingRow(overrides: Partial<FindingView> = {}): FindingView {
     decidedAtMs: null,
     snoozedUntilMs: null,
     folderScope: null,
+    buildScope: null,
     ...overrides,
   };
 }
@@ -423,6 +424,9 @@ export function expectationRow(overrides: Partial<ExpectationView> = {}): Expect
     createdMs: NOW - 86_400_000,
     sourceFinding: 2,
     ceiling: null,
+    scope: 'item',
+    scopeRoot: null,
+    writableWarning: false,
     ...overrides,
   };
 }
@@ -439,6 +443,7 @@ export function reviewGroup(overrides: Partial<ReviewGroupView> = {}): ReviewGro
     ],
     concerns: [],
     location: 'Program Files',
+    wholeFolderAllowed: true,
     ...overrides,
   };
 }
@@ -456,6 +461,7 @@ export function reviewView(overrides: Partial<ReviewView> = {}): ReviewView {
         programs: [{ path: 'C:\\Users\\someone\\Downloads\\tool.exe', name: 'tool.exe' }],
         concerns: ['it is not signed', 'it runs from a user folder'],
         location: 'a user folder',
+        wholeFolderAllowed: false,
       }),
       reviewGroup(),
     ],
@@ -465,7 +471,7 @@ export function reviewView(overrides: Partial<ReviewView> = {}): ReviewView {
 
 export function findingsView(overrides: Partial<FindingsView> = {}): FindingsView {
   return {
-    digest: { windowHours: 24, newDestinations: 0, newOwners: 0, ownerData: true },
+    digest: { windowHours: 24, newDestinations: 0, newOwners: 0, ownerData: true, newInBuildFolders: 0 },
     detection: { switchedOnMs: NOW - 5 * 86_400_000, lastRunMs: NOW - 120_000, lastError: null },
     counts: { open: 2, notExpected: 1, snoozed: 0, expected: 3, resolved: 0 },
     findings: [
@@ -617,6 +623,7 @@ export function makeFakeApi(overrides: Partial<Api> = {}): Api & { [K in keyof A
     notify: vi.fn(async (): Promise<void> => undefined),
     review: vi.fn(async () => ok(reviewView())),
     confirmReview: vi.fn(async (): Promise<WriteOutcome> => ({ ok: true, id: null, message: null })),
+    confirmReviewPrograms: vi.fn(async (): Promise<WriteOutcome> => ({ ok: true, id: null, message: null })),
     programDestinations: vi.fn(async () => ok(programDestinationsView())),
     newDestinations: vi.fn(async () => ok(newDestinationsView())),
     destinationHistory: vi.fn(async () => ok(destinationHistoryView())),

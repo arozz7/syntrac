@@ -131,14 +131,14 @@ function FindingCard({ finding, onChanged }: { finding: FindingView; onChanged: 
   const [problem, setProblem] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
   const [note, setNote] = useState('');
-  const [wholeFolder, setWholeFolder] = useState(false);
+  const [scope, setScope] = useState<'item' | 'folder' | 'build'>('item');
   const [days, setDays] = useState('7');
   const tier = TIERS[finding.tier];
   const line = statusLine(finding);
 
   const decide = async (
     decision: FindingDecision,
-    options?: { days?: number; note?: string; scope?: 'this_folder' },
+    options?: { days?: number; note?: string; scope?: 'this_folder' | 'build_folder' },
   ) => {
     setBusy(true);
     setProblem(null);
@@ -183,27 +183,46 @@ function FindingCard({ finding, onChanged }: { finding: FindingView; onChanged: 
       ) : asking ? (
         <div className="finding__actions">
           <p className="muted">Only this kind of finding is silenced, and only for what you choose here.</p>
-          {finding.folderScope !== null && (
+          {(finding.folderScope !== null || finding.buildScope !== null) && (
             <fieldset className="finding__scope">
               <legend className="muted">What should this cover?</legend>
               <label>
                 <input
                   type="radio"
                   name={`scope-${finding.id}`}
-                  checked={!wholeFolder}
-                  onChange={() => setWholeFolder(false)}
+                  checked={scope === 'item'}
+                  onChange={() => setScope('item')}
                 />{' '}
                 Only this program
               </label>
-              <label>
-                <input
-                  type="radio"
-                  name={`scope-${finding.id}`}
-                  checked={wholeFolder}
-                  onChange={() => setWholeFolder(true)}
-                />{' '}
-                Everything below {finding.folderScope}
-              </label>
+              {finding.folderScope !== null && (
+                <label>
+                  <input
+                    type="radio"
+                    name={`scope-${finding.id}`}
+                    checked={scope === 'folder'}
+                    onChange={() => setScope('folder')}
+                  />{' '}
+                  Everything below {finding.folderScope}
+                </label>
+              )}
+              {finding.buildScope !== null && (
+                <>
+                  <label>
+                    <input
+                      type="radio"
+                      name={`scope-${finding.id}`}
+                      checked={scope === 'build'}
+                      onChange={() => setScope('build')}
+                    />{' '}
+                    New programs in the build folder {finding.buildScope}
+                  </label>
+                  <p className="muted">
+                    For a tool or project folder you write programs into. A program copied there by anything else would
+                    not be called new either; it is counted in the summary above, and every other rule still applies.
+                  </p>
+                </>
+              )}
             </fieldset>
           )}
           <input
@@ -222,7 +241,8 @@ function FindingCard({ finding, onChanged }: { finding: FindingView; onChanged: 
             onClick={() => {
               const options = {
                 ...(note.trim() === '' ? {} : { note: note.trim() }),
-                ...(wholeFolder && finding.folderScope !== null ? { scope: 'this_folder' as const } : {}),
+                ...(scope === 'folder' && finding.folderScope !== null ? { scope: 'this_folder' as const } : {}),
+                ...(scope === 'build' && finding.buildScope !== null ? { scope: 'build_folder' as const } : {}),
               };
               void decide('always_expected', Object.keys(options).length === 0 ? undefined : options);
             }}
@@ -348,7 +368,17 @@ function Expectations({ expectations, onChanged }: { expectations: ExpectationVi
             {expectations.map((expectation) => (
               <tr key={expectation.id}>
                 <td>{kindLabel(expectation.kind)}</td>
-                <td className="path">{expectation.subject}</td>
+                <td className="path">
+                  {expectation.scope === 'folder' && <>Everything below {expectation.scopeRoot}</>}
+                  {expectation.scope === 'build' && <>New programs in the build folder {expectation.scopeRoot}</>}
+                  {expectation.scope === 'item' && expectation.subject}
+                  {expectation.writableWarning && (
+                    <div>
+                      Made before whole folders were limited to Windows and Program Files: a program copied there is
+                      never called new. Remove it to be told about new programs here.
+                    </div>
+                  )}
+                </td>
                 <td>
                   {expectation.note ?? (expectation.ceiling === null ? '—' : null)}
                   {expectation.ceiling !== null && <div>{ceilingText(expectation)}</div>}
@@ -388,14 +418,23 @@ function writeLastLooked(ms: number) {
 
 function Digest({ digest }: { digest: DigestView }) {
   return (
-    <p className="muted">
-      In the last {digest.windowHours} hours: {digest.newDestinations} new internet{' '}
-      {digest.newDestinations === 1 ? 'address' : 'addresses'}
-      {digest.ownerData
-        ? ` and ${digest.newOwners} ${digest.newOwners === 1 ? 'network' : 'networks'} never reached before`
-        : '. Download the owner data (History, Network) to count the networks too'}
-      . Counted, not raised: new destinations appear every day; see them under History, Network.
-    </p>
+    <>
+      <p className="muted">
+        In the last {digest.windowHours} hours: {digest.newDestinations} new internet{' '}
+        {digest.newDestinations === 1 ? 'address' : 'addresses'}
+        {digest.ownerData
+          ? ` and ${digest.newOwners} ${digest.newOwners === 1 ? 'network' : 'networks'} never reached before`
+          : '. Download the owner data (History, Network) to count the networks too'}
+        . Counted, not raised: new destinations appear every day; see them under History, Network.
+      </p>
+      {digest.newInBuildFolders > 0 && (
+        <p className="muted">
+          {digest.newInBuildFolders} new {digest.newInBuildFolders === 1 ? 'program' : 'programs'} appeared in your
+          build folders in that time. Not raised, because you said new programs there are expected; they are still
+          listed under Programs.
+        </p>
+      )}
+    </>
   );
 }
 

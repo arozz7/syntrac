@@ -128,6 +128,11 @@ fn class_of(path: &SplitPath) -> LocationClass {
     }
 }
 
+/// The lower-cased root (`c:`) and folders (the file name dropped) of an absolute path; `None` for any other text.
+pub(crate) fn root_and_folders(path: &str) -> Option<(String, Vec<String>)> {
+    split(path).map(|split| (split.root, split.folders))
+}
+
 pub fn classify_location(path: &str) -> LocationClass {
     split(path).map_or(LocationClass::Unknown, |split| class_of(&split))
 }

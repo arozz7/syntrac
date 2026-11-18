@@ -249,7 +249,7 @@ fn a_run_stores_then_touches_and_expectations_silence_it<R: FindingsSubject>(mut
     // The user says a.exe is always expected: it is marked and an expectation is stored, and the run stops raising it.
     let a = repo.findings_for_keys(&["new_program:a.exe".into()]).unwrap().remove(0);
     let effect =
-        apply_decision(&a, &Decision::AlwaysExpected { note: None, scope: ExpectationScope::ThisItem }, at(2500))
+        apply_decision(&a, &Decision::AlwaysExpected { note: None, scope: ExpectationScope::ThisItem }, at(2500), "c:")
             .unwrap();
     repo.set_status(a.id, effect.status, at(2500), effect.snoozed_until).unwrap();
     repo.add_expectation(&effect.new_expectation.unwrap(), at(2500)).unwrap();

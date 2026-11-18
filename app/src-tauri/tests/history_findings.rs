@@ -40,7 +40,7 @@ fn repo() -> InMemoryRepository {
 }
 
 fn view(repo: &InMemoryRepository, status: Option<&str>) -> FindingsView {
-    findings_view(repo, status, 100, t(9, 0)).unwrap()
+    findings_view(repo, status, 100, t(9, 0), "c:").unwrap()
 }
 
 #[test]
@@ -69,13 +69,13 @@ fn no_status_lists_everything_newest_first_and_a_limit_applies() {
     let all = view(&repo(), None);
     assert_eq!(all.findings.iter().map(|f| f.subject.as_str()).collect::<Vec<_>>(), vec!["c.exe", "b.exe", "a.exe"]);
 
-    let one = findings_view(&repo(), None, 1, t(9, 0)).unwrap();
+    let one = findings_view(&repo(), None, 1, t(9, 0), "c:").unwrap();
     assert_eq!(one.findings.len(), 1);
 }
 
 #[test]
 fn an_unknown_status_is_refused_in_plain_words() {
-    let error = findings_view(&repo(), Some("malicious"), 10, t(9, 0)).unwrap_err();
+    let error = findings_view(&repo(), Some("malicious"), 10, t(9, 0), "c:").unwrap_err();
 
     assert!(error.to_string().contains("status"), "{error}");
 }
@@ -130,18 +130,90 @@ fn an_empty_database_gives_an_empty_view() {
 #[test]
 fn a_program_finding_offers_the_install_folder_as_a_scope_and_other_findings_do_not() {
     let mut repo = InMemoryRepository::default();
-    let mut program = candidate(r"c:\users\someone\.cargo\bin\cargo.exe", Tier::Suspicious, 100);
-    program.dedupe_key = "new_program:cargo".into();
-    let mut other = candidate(r"c:\users\someone\.cargo\bin\cargo.exe", Tier::Suspicious, 200);
+    let mut program = candidate(r"c:\program files\acme\bin\acme.exe", Tier::Suspicious, 100);
+    program.dedupe_key = "new_program:acme".into();
+    let mut other = candidate(r"c:\program files\acme\bin\acme.exe", Tier::Suspicious, 200);
     other.kind = "new_start_entry".into();
-    other.dedupe_key = "new_start_entry:cargo".into();
+    other.dedupe_key = "new_start_entry:acme".into();
     repo.apply_writes(&[FindingWrite::Insert(program), FindingWrite::Insert(other)]).unwrap();
 
     let view = view(&repo, None);
 
     let by_kind = |kind: &str| view.findings.iter().find(|f| f.kind == kind).unwrap();
-    assert_eq!(by_kind("new_program").folder_scope.as_deref(), Some(r"c:\users\someone\.cargo"));
+    assert_eq!(by_kind("new_program").folder_scope.as_deref(), Some(r"c:\program files\acme"));
+    assert_eq!(
+        by_kind("new_program").build_scope,
+        None,
+        "a protected folder has the whole-folder choice, not a build folder"
+    );
     assert_eq!(by_kind("new_start_entry").folder_scope, None);
+    assert_eq!(by_kind("new_start_entry").build_scope, None);
+}
+
+#[test]
+fn a_program_in_a_writable_tool_folder_offers_a_build_folder_and_never_the_whole_folder() {
+    let mut repo = InMemoryRepository::default();
+    for (n, path) in
+        [r"c:\users\someone\.cargo\bin\cargo.exe", r"c:\users\someone\downloads\setup.exe", r"c:\windows\temp\x.exe"]
+            .into_iter()
+            .enumerate()
+    {
+        let mut program = candidate(path, Tier::Suspicious, 100 + n as i64);
+        program.dedupe_key = format!("new_program:{n}");
+        repo.apply_writes(&[FindingWrite::Insert(program)]).unwrap();
+    }
+
+    let view = view(&repo, None);
+
+    let scopes = |subject: &str| {
+        let finding = view.findings.iter().find(|f| f.subject == subject).unwrap();
+        (finding.folder_scope.clone(), finding.build_scope.clone())
+    };
+    assert_eq!(scopes(r"c:\users\someone\.cargo\bin\cargo.exe"), (None, Some(r"c:\users\someone\.cargo".to_owned())));
+    assert_eq!(scopes(r"c:\users\someone\downloads\setup.exe"), (None, None), "a place things get dropped");
+    assert_eq!(scopes(r"c:\windows\temp\x.exe"), (None, None));
+}
+
+fn expectation(kind: &str, subject: &str) -> NewExpectation {
+    NewExpectation { kind: kind.into(), subject: subject.into(), note: None, source_finding: None, ceiling: None }
+}
+
+#[test]
+fn the_list_of_what_is_expected_says_how_wide_each_one_is_and_warns_about_a_folder_anyone_can_write_to() {
+    let mut repo = InMemoryRepository::default();
+    for (kind, subject) in [
+        ("new_program", r"c:\tool.exe"),
+        ("new_program", r"folder:c:\program files\acme"),
+        ("new_program", r"folder:c:\users\someone\.cargo"),
+        ("new_program", r"folder:d:\program files\acme"),
+        ("new_program", r"build:d:\src"),
+    ] {
+        repo.add_expectation(&expectation(kind, subject), at(10)).unwrap();
+    }
+
+    let list = view(&repo, None).expectations;
+
+    let row = |subject: &str| list.iter().find(|e| e.subject == subject).unwrap();
+    assert_eq!((row(r"c:\tool.exe").scope, row(r"c:\tool.exe").writable_warning), ("item", false));
+    assert_eq!(
+        (row(r"folder:c:\program files\acme").scope, row(r"folder:c:\program files\acme").writable_warning),
+        ("folder", false)
+    );
+    let cargo = row(r"folder:c:\users\someone\.cargo");
+    assert_eq!(
+        (cargo.scope, cargo.writable_warning, cargo.scope_root.as_deref()),
+        ("folder", true, Some(r"c:\users\someone\.cargo"))
+    );
+    assert!(
+        row(r"folder:d:\program files\acme").writable_warning,
+        "another drive's Program Files follows its own permissions"
+    );
+    let build = row(r"build:d:\src");
+    assert_eq!(
+        (build.scope, build.writable_warning),
+        ("build", false),
+        "chosen on purpose, so labelled rather than warned"
+    );
 }
 
 // ---- review what is here today (F4)
@@ -179,7 +251,7 @@ fn the_review_lists_what_was_here_before_the_switch_on_with_what_deserves_a_look
     let mut repo = reviewed_world();
     repo.switch_on(t(5, 0)).unwrap();
 
-    let review = review_view(&repo, 60).unwrap();
+    let review = review_view(&repo, 60, "c:").unwrap();
 
     assert_eq!(review.groups.len(), 2);
     assert_eq!(review.groups[0].programs[0].name, "tool.exe", "unsigned in a user folder comes first");
@@ -195,7 +267,7 @@ fn a_program_after_the_switch_on_is_not_in_the_review_and_an_expectation_takes_a
     let mut repo = reviewed_world();
     // Switched on between the two programs: only the first was already here.
     repo.switch_on(t(1, 0)).unwrap();
-    assert_eq!(review_view(&repo, 60).unwrap().groups.len(), 1);
+    assert_eq!(review_view(&repo, 60, "c:").unwrap().groups.len(), 1);
 
     let mut repo = reviewed_world();
     repo.switch_on(t(5, 0)).unwrap();
@@ -210,9 +282,38 @@ fn a_program_after_the_switch_on_is_not_in_the_review_and_an_expectation_takes_a
         t(6, 0),
     )
     .unwrap();
-    let review = review_view(&repo, 60).unwrap();
+    let review = review_view(&repo, 60, "c:").unwrap();
     assert_eq!(review.groups.len(), 1);
     assert_eq!(review.groups[0].programs[0].name, "tool.exe");
+}
+
+#[test]
+fn a_group_says_whether_its_whole_folder_may_be_expected_or_only_its_programs_one_by_one() {
+    let mut repo = reviewed_world();
+    repo.switch_on(t(5, 0)).unwrap();
+
+    let review = review_view(&repo, 60, "c:").unwrap();
+
+    let acme = review.groups.iter().find(|g| g.root == r"c:\program files\acme").unwrap();
+    let tool = review.groups.iter().find(|g| g.programs[0].name == "tool.exe").unwrap();
+    assert!(acme.whole_folder_allowed);
+    assert!(!tool.whole_folder_allowed, "a Downloads folder is somewhere anything gets dropped");
+}
+
+// ---- the digest counts what a build folder hides (F6)
+
+#[test]
+fn the_digest_counts_new_programs_in_build_folders_so_they_are_never_invisible() {
+    let mut repo = InMemoryRepository::default();
+    seed_executables(&mut repo, &[r"D:\Src\app\a.exe", r"D:\Src\app\b.exe", r"D:\Elsewhere\c.exe"]);
+    repo.add_expectation(&expectation("new_program", r"build:d:\src"), at(1)).unwrap();
+
+    let digest = syntrac_app_lib::history_findings::digest_view(&repo, t(10, 0)).unwrap();
+    assert_eq!(digest.new_in_build_folders, 2, "only the programs of the build folder, first seen in the last day");
+
+    // Two days later they are no longer new.
+    let later = syntrac_app_lib::history_findings::digest_view(&repo, t(80, 0)).unwrap();
+    assert_eq!(later.new_in_build_folders, 0);
 }
 
 #[test]
@@ -220,7 +321,7 @@ fn the_list_is_limited_and_says_how_many_groups_there_are() {
     let mut repo = reviewed_world();
     repo.switch_on(t(5, 0)).unwrap();
 
-    let review = review_view(&repo, 1).unwrap();
+    let review = review_view(&repo, 1, "c:").unwrap();
 
     assert_eq!((review.groups.len(), review.total_groups), (1, 2));
 }

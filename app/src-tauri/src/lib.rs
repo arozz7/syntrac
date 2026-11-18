@@ -48,6 +48,7 @@ pub fn run() {
             commands::remove_expectation,
             commands::get_review,
             commands::confirm_review,
+            commands::confirm_review_programs,
             commands::get_program_destinations,
             commands::get_new_destinations,
             commands::get_destination_history,

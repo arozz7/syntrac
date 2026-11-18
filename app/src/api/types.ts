@@ -526,11 +526,13 @@ export interface FindingView {
   hits: number;
   decidedAtMs: number | null;
   snoozedUntilMs: number | null;
-  /** The install folder "always expected" could cover as a whole (program findings only); null when there is none to offer. */
+  /** The install folder "always expected" could cover as a whole (a program in Windows or Program Files only); null when there is none to offer. */
   folderScope: string | null;
+  /** A writable tool or project folder the user may deliberately call a build folder (new programs only); null where a program could simply be dropped in. */
+  buildScope: string | null;
 }
 
-/** Something the user said is expected: one kind of finding about exactly one subject. */
+/** Something the user said is expected: one kind of finding about exactly one subject, or (older, or a build folder) a folder. */
 export interface ExpectationView {
   id: number;
   kind: string;
@@ -539,6 +541,12 @@ export interface ExpectationView {
   createdMs: number;
   sourceFinding: number | null;
   ceiling: number | null;
+  /** How wide it is: one subject, everything below a folder, or new programs below a build folder. */
+  scope: 'item' | 'folder' | 'build';
+  /** The folder of a `folder` or `build` expectation. */
+  scopeRoot: string | null;
+  /** A whole-folder expectation for a folder ordinary programs can write to: still honoured, but a program copied there is never called new. */
+  writableWarning: boolean;
 }
 
 export interface FindingCountsView {
@@ -564,6 +572,8 @@ export interface DigestView {
   newOwners: number;
   /** The owner data is on this machine; without it networks cannot be counted. */
   ownerData: boolean;
+  /** Programs first seen in the window inside a build folder: not raised, so counted here and never invisible. */
+  newInBuildFolders: number;
 }
 
 export interface FindingsView {
@@ -592,6 +602,8 @@ export interface ReviewGroupView {
   /** Why it deserves a closer look, as phrases; empty when it does not. */
   concerns: string[];
   location: string;
+  /** The folder is protected, so the whole folder may be expected; otherwise only the programs, one by one. */
+  wholeFolderAllowed: boolean;
 }
 
 export interface ReviewView {

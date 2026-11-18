@@ -53,16 +53,25 @@ pub enum Request {
         days: Option<u32>,
         #[serde(default)]
         note: Option<String>,
-        /// For `always_expected`: `this_item` (the default) or `this_folder` (everything of that kind below the program's install
-        /// folder, which the service works out itself).
+        /// For `always_expected`: `this_item` (the default), `this_folder` (everything of that kind below the program's install
+        /// folder, which the service works out itself; refused for a folder ordinary programs can write to) or `build_folder`
+        /// (new programs only, below a writable tool or project folder the service works out itself and may refuse).
         #[serde(default)]
         scope: Option<String>,
     },
     /// Remove something the user said is expected.
     ExpectationRemove { id: i64 },
     /// "Review what is here today" (docs/ALERTS-PLAN.md, F4): expect new programs below this install folder. The service checks that
-    /// a program it knows is installed there; the folder is never taken on trust.
+    /// a program it knows is installed there; the folder is never taken on trust. Refused for a folder ordinary programs can write to.
     ReviewConfirm { root: String },
+    /// "Review what is here today" for a folder ordinary programs can write to (docs/ALERTS-PLAN.md, F6): expect exactly the
+    /// programs the review shows for this folder and publisher (`None`: unsigned programs), one by one. The service rebuilds that set
+    /// itself; a group over the limit is refused whole.
+    ReviewConfirmPrograms {
+        root: String,
+        #[serde(default)]
+        publisher: Option<String>,
+    },
 }
 
 // A status reply is one small message every few seconds; boxing the report would only add noise at every use.

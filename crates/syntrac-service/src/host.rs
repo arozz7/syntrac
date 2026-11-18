@@ -510,7 +510,9 @@ fn start_pipe(
             // The findings commands work whether or not the detect worker runs: the user can always manage what they said is expected.
             match SqliteStore::open(database_path) {
                 Ok(findings_store) => {
-                    Arc::new(handler.with_findings(Arc::new(FindingsAdmin::new(findings_store, SystemClock))))
+                    let admin = FindingsAdmin::new(findings_store, SystemClock)
+                        .with_system_drive(&syntrac_core::system_drive());
+                    Arc::new(handler.with_findings(Arc::new(admin)))
                 }
                 Err(error) => {
                     warn!(%error, "The findings commands could not open the database; the pipe answers without them");

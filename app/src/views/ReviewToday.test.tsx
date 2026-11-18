@@ -3,7 +3,7 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiProvider } from '../api/ApiContext';
-import { makeFakeApi, reviewView } from '../test/fakeApi';
+import { makeFakeApi, reviewGroup, reviewView } from '../test/fakeApi';
 import { ReviewToday } from './ReviewToday';
 
 afterEach(cleanup);
@@ -58,6 +58,46 @@ describe('ReviewToday', () => {
     expect(api.confirmReview).toHaveBeenCalledWith('c:\\program files\\acme');
     await waitFor(() => expect(api.review.mock.calls.length).toBeGreaterThan(before));
     expect(changed).toHaveBeenCalled();
+  });
+
+  it('a folder anything can be copied into is expected program by program, never as a whole folder', async () => {
+    const changed = vi.fn();
+    const api = show(makeFakeApi(), changed);
+    await open();
+    await screen.findByText('Acme Suite');
+    const before = api.review.mock.calls.length;
+    const looked = group('downloads');
+
+    expect(within(looked).queryByRole('button', { name: 'Mark as expected' })).toBeNull();
+    await userEvent.click(within(looked).getByRole('button', { name: 'Mark this program as expected' }));
+
+    expect(api.confirmReviewPrograms).toHaveBeenCalledWith('c:\\users\\someone\\downloads', null);
+    expect(api.confirmReview).not.toHaveBeenCalled();
+    await waitFor(() => expect(api.review.mock.calls.length).toBeGreaterThan(before));
+    expect(changed).toHaveBeenCalled();
+  });
+
+  it('names how many programs a group of several will mark, and says a later program is still raised', async () => {
+    const many = reviewGroup({
+      root: 'd:\\src',
+      label: 'src',
+      publisher: 'maker inc',
+      count: 12,
+      wholeFolderAllowed: false,
+      location: 'another drive',
+    });
+    const api = show(
+      makeFakeApi({
+        review: vi.fn(async () => ({ state: 'ok' as const, data: reviewView({ groups: [many], totalGroups: 1 }) })),
+      }),
+    );
+    await open();
+    await screen.findByText('src');
+
+    expect(within(group('src')).getByText(/a program that appears later is still raised/i)).toBeTruthy();
+    await userEvent.click(within(group('src')).getByRole('button', { name: 'Mark these 12 programs as expected' }));
+
+    expect(api.confirmReviewPrograms).toHaveBeenCalledWith('d:\\src', 'maker inc');
   });
 
   it('"Mark as a known program" uses the first program of the group and the group name', async () => {

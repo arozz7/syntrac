@@ -43,7 +43,7 @@ stops the pack loading; a test parses the shipped pack, so such a mistake fails 
 - One kind of finding per pattern (`pattern_<id>`), so "always expected" silences exactly one pattern for exactly one program.
 - The subject is the program (for a start entry: the program and the entry). The **pack version is not part of the key**: updating the pack does not raise everything again. The version is shown in each finding's evidence.
 - At most **50** findings of one pattern per run (the most serious stay); the global cap of the detect worker still applies.
-- "Always expected" offers this item only (no "this folder" for patterns in F5a).
+- "Always expected" offers this item only. There is deliberately no "this folder" for patterns: a program copied into an expected folder would then slip past every pattern (see the folder rule in `docs/ALERTS-PLAN.md`, F6).
 
 ## The shipped patterns (pack 2026.11.2)
 

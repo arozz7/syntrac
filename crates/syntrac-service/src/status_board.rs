@@ -122,7 +122,8 @@ impl<C: Clock + Send + Sync> Handler for StatusBoard<C> {
             | Request::OwnerDataRefresh
             | Request::FindingDecide { .. }
             | Request::ExpectationRemove { .. }
-            | Request::ReviewConfirm { .. } => {
+            | Request::ReviewConfirm { .. }
+            | Request::ReviewConfirmPrograms { .. } => {
                 Response::Error { message: "this endpoint only answers status requests".into() }
             }
         }

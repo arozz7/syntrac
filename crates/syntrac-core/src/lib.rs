@@ -13,6 +13,7 @@ pub mod exe_location;
 pub mod findings;
 pub mod findings_run;
 pub mod flow;
+pub mod folder_protection;
 pub mod identity;
 pub mod identity_run;
 pub mod install_records;
@@ -67,15 +68,19 @@ pub use exe_identity::{
 };
 pub use exe_location::{classify_location, install_root, product_key, LocationClass, ProductKey};
 pub use findings::{
-    apply_decision, expectation_covers, folder_scope_of, reconcile, Candidate, Decision, DecisionEffect, DecisionError,
-    Expectation, ExpectationScope, Finding, FindingStatus, FindingWrite, NewExpectation, ReconcileSettings, Reconciled,
-    Tier, FOLDER_SCOPE_PREFIX,
+    apply_decision, build_scope_of, expectation_covers, folder_scope_of, reconcile, Candidate, Decision,
+    DecisionEffect, DecisionError, Expectation, ExpectationScope, Finding, FindingStatus, FindingWrite, NewExpectation,
+    ReconcileSettings, Reconciled, Tier, BUILD_FOLDER_PREFIX, FOLDER_SCOPE_PREFIX,
 };
 pub use findings_run::{
     clean_candidate, run_detection, DetectError, DetectionState, DetectionStateRepository, Detector,
     ExpectationRepository, FindingRepository, RunReport,
 };
 pub use flow::{Destination, FlowAggregator, FlowRow};
+pub use folder_protection::{
+    build_folder_problem, is_protected_folder, is_protected_folder_on_system_drive, is_protected_on_system_drive,
+    is_protected_path, system_drive,
+};
 pub use identity::ProcessInstanceId;
 pub use identity_run::{inspect_due, retry_after, IdentityPass, IdentitySettings};
 pub use install_records::{
@@ -116,7 +121,7 @@ pub use ports::{
     ProcessRecord, ProcessRepository, RepoError, Retention, SourceError, TelemetrySource,
 };
 pub use program_group::{group_programs, rank_groups, GroupKey, ProgramGroup};
-pub use review::{review_groups, ReviewGroup, ReviewProgram, PROGRAMS_LISTED};
+pub use review::{review_group_keys, review_groups, ReviewGroup, ReviewProgram, PROGRAMS_LISTED};
 pub use rollup::{Executable, HourInput, HourRollup, LedgerEntry, ProcessHour, SystemHour, TrafficHour};
 pub use rollup_ledger::LedgerObservations;
 pub use rollup_run::{roll_up_due, RollupPass, RollupRepository, RollupSettings};

@@ -1,7 +1,7 @@
 //! "Review what is here today" (docs/ALERTS-PLAN.md, F4): the programs that were already here when detection was switched on, grouped
 //! by product, so the user can look at them once and say what is expected. All pure.
 
-use syntrac_core::review::review_groups;
+use syntrac_core::review::{review_group_keys, review_groups};
 use syntrac_core::{
     Executable, Expectation, FileFacts, IdentityEntry, IdentityRecord, KnownProduct, LedgerEntry, Signature,
     SignatureStatus, Timestamp, VersionInfo,
@@ -159,4 +159,48 @@ fn a_path_with_no_folder_to_group_by_is_left_out() {
     let entries = vec![entry("bare.exe", Some(2), Some(facts(SignatureStatus::Unsigned, None, None)))];
 
     assert!(review_groups(&entries, &[], &[], ON).is_empty());
+}
+
+// ---- every program of one group (F6: "Mark these N programs as expected" for a folder anyone can write to)
+
+#[test]
+fn every_program_of_a_group_is_listed_not_only_the_first_few_shown_on_the_screen() {
+    let entries: Vec<IdentityEntry> = (0..12)
+        .map(|n| {
+            entry(&format!(r"D:\Src\app\tool{n}.exe"), Some(2), Some(facts(SignatureStatus::Unsigned, None, None)))
+        })
+        .collect();
+
+    let groups = review_groups(&entries, &[], &[], ON);
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].programs.len(), 8, "the screen lists the first few");
+
+    let keys = review_group_keys(&entries, &[], &[], ON, &groups[0].root, groups[0].publisher.as_deref());
+    assert_eq!(keys.len(), 12, "the batch covers the whole group the count promised");
+    assert_eq!(keys.len(), groups[0].count);
+}
+
+#[test]
+fn a_group_is_exactly_what_the_review_shows_nothing_newer_known_or_already_expected() {
+    let entries = vec![
+        entry(r"D:\Src\a.exe", Some(2), Some(facts(SignatureStatus::Unsigned, None, None))),
+        // After the switch-on: it belongs to the new-program rule, which may have an open finding. Never swept in.
+        entry(r"D:\Src\newer.exe", Some(12), Some(facts(SignatureStatus::Unsigned, None, None))),
+        entry(r"D:\Src\listed.exe", Some(2), Some(facts(SignatureStatus::Unsigned, None, None))),
+        // The same folder but a different maker: another group.
+        entry(r"D:\Src\signed.exe", Some(2), Some(valid("MAKER INC", "Maker"))),
+    ];
+    let expectations = vec![expectation(r"d:\src\listed.exe")];
+
+    let unsigned = review_group_keys(&entries, &[], &expectations, ON, r"d:\src", None);
+    assert_eq!(unsigned, vec![r"d:\src\a.exe".to_owned()]);
+
+    let signed = review_group_keys(&entries, &[], &expectations, ON, r"d:\src", Some("maker inc"));
+    assert_eq!(signed, vec![r"d:\src\signed.exe".to_owned()]);
+}
+
+#[test]
+fn a_folder_with_nothing_to_review_has_no_programs() {
+    let entries = vec![entry(r"D:\Src\a.exe", Some(2), None)];
+    assert!(review_group_keys(&entries, &[], &[], ON, r"d:\nowhere", None).is_empty());
 }

@@ -1,8 +1,8 @@
 //! Findings: what a detector found, how repeats and expectations are handled, and what each decision of the user does. All pure.
 
 use syntrac_core::findings::{
-    apply_decision, folder_scope_of, reconcile, Candidate, Decision, DecisionEffect, Expectation, ExpectationScope,
-    Finding, FindingStatus, FindingWrite, ReconcileSettings, Tier,
+    apply_decision, build_scope_of, folder_scope_of, reconcile, Candidate, Decision, DecisionEffect, Expectation,
+    ExpectationScope, Finding, FindingStatus, FindingWrite, ReconcileSettings, Reconciled, Tier,
 };
 use syntrac_core::Timestamp;
 
@@ -203,7 +203,7 @@ fn when_there_is_a_cap_the_most_serious_come_first_and_the_rest_are_counted_not_
 // ---- the user's decisions
 
 fn effect(decision: Decision, status: FindingStatus) -> DecisionEffect {
-    apply_decision(&finding(7, "k", status), &decision, at(10)).unwrap()
+    apply_decision(&finding(7, "k", status), &decision, at(10), "c:").unwrap()
 }
 
 #[test]
@@ -245,9 +245,13 @@ fn snoozing_sets_when_it_comes_back() {
 #[test]
 fn a_snooze_must_be_between_one_day_and_a_year() {
     for days in [0, 366] {
-        assert!(apply_decision(&finding(7, "k", FindingStatus::Open), &Decision::Snooze { days }, at(10)).is_err());
+        assert!(
+            apply_decision(&finding(7, "k", FindingStatus::Open), &Decision::Snooze { days }, at(10), "c:").is_err()
+        );
     }
-    assert!(apply_decision(&finding(7, "k", FindingStatus::Open), &Decision::Snooze { days: 365 }, at(10)).is_ok());
+    assert!(
+        apply_decision(&finding(7, "k", FindingStatus::Open), &Decision::Snooze { days: 365 }, at(10), "c:").is_ok()
+    );
 }
 
 #[test]
@@ -264,13 +268,15 @@ fn a_note_is_cleaned_and_limited() {
     assert!(apply_decision(
         &finding(7, "k", FindingStatus::Open),
         &Decision::AlwaysExpected { note: Some(long), scope: ExpectationScope::ThisItem },
-        at(10)
+        at(10),
+        "c:",
     )
     .is_err());
     let cleaned = apply_decision(
         &finding(7, "k", FindingStatus::Open),
         &Decision::AlwaysExpected { note: Some("  fine\u{0007} note ".into()), scope: ExpectationScope::ThisItem },
         at(10),
+        "c:",
     )
     .unwrap();
     assert_eq!(cleaned.new_expectation.unwrap().note.as_deref(), Some("fine note"));
@@ -294,7 +300,7 @@ fn status_and_tier_names_round_trip_and_unknown_names_are_refused() {
     assert_eq!(Tier::parse("malicious"), None);
 }
 
-// ---- a folder scope (everything under a program's install folder)
+// ---- a folder scope (everything under a program's install folder; docs/ALERTS-PLAN.md, F6)
 
 fn program_finding(kind: &str, subject: &str) -> Finding {
     Finding { kind: kind.into(), subject: subject.into(), ..finding(7, "k", FindingStatus::Open) }
@@ -304,35 +310,45 @@ fn folder_expectation(root: &str) -> Expectation {
     expectation("new_program", &format!("folder:{root}"))
 }
 
-#[test]
-fn a_folder_expectation_covers_programs_below_that_folder_of_its_own_kind_and_nothing_else() {
-    let root = r"c:\users\someone\.cargo";
-    let result = run(
-        vec![
-            candidate("new_program", r"c:\users\someone\.cargo\bin\cargo.exe", Tier::Unusual),
-            candidate("new_program", r"c:\users\someone\.cargo\registry\deep\x.exe", Tier::Unusual),
-            candidate("new_program", r"c:\users\someone\.cargo2\bin\y.exe", Tier::Unusual),
-            candidate("new_program", r"c:\users\someone\other\z.exe", Tier::Unusual),
-            candidate("new_start_entry", r"c:\users\someone\.cargo\bin\cargo.exe", Tier::Unusual),
-        ],
-        &[],
-        &[folder_expectation(root)],
-    );
+fn build_expectation(root: &str) -> Expectation {
+    expectation("new_program", &format!("build:{root}"))
+}
 
-    let raised: Vec<String> = result
+fn raised(result: &Reconciled) -> Vec<String> {
+    result
         .writes
         .iter()
         .filter_map(|write| match write {
             FindingWrite::Insert(c) => Some(format!("{}:{}", c.kind, c.subject)),
             _ => None,
         })
-        .collect();
-    assert_eq!(
-        raised,
+        .collect()
+}
+
+fn always(scope: ExpectationScope) -> Decision {
+    Decision::AlwaysExpected { note: None, scope }
+}
+
+#[test]
+fn a_folder_expectation_covers_programs_below_that_folder_of_its_own_kind_and_nothing_else() {
+    let result = run(
         vec![
-            r"new_program:c:\users\someone\.cargo2\bin\y.exe",
-            r"new_program:c:\users\someone\other\z.exe",
-            r"new_start_entry:c:\users\someone\.cargo\bin\cargo.exe",
+            candidate("new_program", r"c:\program files\acme\bin\acme.exe", Tier::Unusual),
+            candidate("new_program", r"c:\program files\acme\deep\er\x.exe", Tier::Unusual),
+            candidate("new_program", r"c:\program files\acme2\bin\y.exe", Tier::Unusual),
+            candidate("new_program", r"c:\program files\other\z.exe", Tier::Unusual),
+            candidate("new_start_entry", r"c:\program files\acme\bin\acme.exe", Tier::Unusual),
+        ],
+        &[],
+        &[folder_expectation(r"c:\program files\acme")],
+    );
+
+    assert_eq!(
+        raised(&result),
+        vec![
+            r"new_program:c:\program files\acme2\bin\y.exe",
+            r"new_program:c:\program files\other\z.exe",
+            r"new_start_entry:c:\program files\acme\bin\acme.exe",
         ],
         "a folder named like the start of another is not below it, and another kind is not covered"
     );
@@ -340,37 +356,165 @@ fn a_folder_expectation_covers_programs_below_that_folder_of_its_own_kind_and_no
 }
 
 #[test]
-fn always_expected_for_the_folder_stores_the_install_folder_of_the_program() {
-    let finding = program_finding("new_program", r"c:\users\someone\.cargo\bin\cargo.exe");
+fn an_older_folder_expectation_for_a_writable_folder_is_still_honoured() {
+    // Kept on purpose (nothing is switched off by an upgrade); the Findings tab flags it.
+    let result = run(
+        vec![candidate("new_program", r"c:\users\someone\.cargo\bin\cargo.exe", Tier::Unusual)],
+        &[],
+        &[folder_expectation(r"c:\users\someone\.cargo")],
+    );
+    assert!(raised(&result).is_empty());
+    assert_eq!(result.suppressed, 1);
+}
 
-    let effect =
-        apply_decision(&finding, &Decision::AlwaysExpected { note: None, scope: ExpectationScope::ThisFolder }, at(10))
-            .unwrap();
+#[test]
+fn a_folder_expectation_for_a_protected_folder_does_not_cover_a_writable_folder_inside_it() {
+    let result = run(
+        vec![
+            candidate("new_program", r"c:\windows\system32\new.exe", Tier::Unusual),
+            candidate("new_program", r"c:\windows\temp\dropped.exe", Tier::Unusual),
+            candidate("new_program", r"c:\windows\tasks\dropped.exe", Tier::Unusual),
+            candidate("new_program", r"c:\windows\system32\tasks\dropped.exe", Tier::Unusual),
+            candidate("new_program", r"c:\windows\system32\spool\drivers\color\dropped.exe", Tier::Unusual),
+        ],
+        &[],
+        &[folder_expectation(r"c:\windows")],
+    );
+    let mut found = raised(&result);
+    found.sort();
+    let mut expected = vec![
+        r"new_program:c:\windows\temp\dropped.exe".to_owned(),
+        r"new_program:c:\windows\tasks\dropped.exe".to_owned(),
+        r"new_program:c:\windows\system32\tasks\dropped.exe".to_owned(),
+        r"new_program:c:\windows\system32\spool\drivers\color\dropped.exe".to_owned(),
+    ];
+    expected.sort();
+    assert_eq!(found, expected);
+    assert_eq!(result.suppressed, 1);
+}
+
+#[test]
+fn a_build_folder_covers_new_programs_below_it_and_no_other_kind() {
+    let result = run(
+        vec![
+            candidate("new_program", r"d:\src\app\target\debug\app.exe", Tier::Suspicious),
+            candidate("new_program", r"d:\src2\app.exe", Tier::Unusual),
+            candidate("new_start_entry", r"d:\src\app\target\debug\app.exe", Tier::Unusual),
+            candidate("changed_file", r"d:\src\app\target\debug\app.exe", Tier::Unusual),
+        ],
+        &[],
+        &[build_expectation(r"d:\src")],
+    );
+    let mut found = raised(&result);
+    found.sort();
+    assert_eq!(
+        found,
+        vec![
+            r"changed_file:d:\src\app\target\debug\app.exe".to_owned(),
+            r"new_program:d:\src2\app.exe".to_owned(),
+            r"new_start_entry:d:\src\app\target\debug\app.exe".to_owned(),
+        ],
+        "a sibling folder and the other kinds are still raised"
+    );
+    assert_eq!(result.suppressed, 1);
+}
+
+#[test]
+fn always_expected_for_the_folder_stores_the_install_folder_of_a_protected_program() {
+    let finding = program_finding("new_program", r"c:\program files\acme\bin\acme.exe");
+
+    let effect = apply_decision(&finding, &always(ExpectationScope::ThisFolder), at(10), "c:").unwrap();
 
     let expectation = effect.new_expectation.expect("an expectation");
     assert_eq!(
         (expectation.kind.as_str(), expectation.subject.as_str()),
-        ("new_program", r"folder:c:\users\someone\.cargo")
+        ("new_program", r"folder:c:\program files\acme")
     );
     assert_eq!(effect.status, FindingStatus::Expected);
 }
 
 #[test]
+fn a_whole_folder_is_refused_where_a_program_could_simply_be_copied_in() {
+    let folder = always(ExpectationScope::ThisFolder);
+    for (path, why) in [
+        (r"c:\users\someone\.cargo\bin\cargo.exe", "a user's tool folder"),
+        (r"c:\users\someone\downloads\x\setup.exe", "downloads"),
+        (r"c:\windows\temp\x.exe", "windows temp"),
+        (r"c:\windows\tasks\x.exe", "a writable folder inside windows"),
+        (r"d:\program files\acme\a.exe", "another drive's program files"),
+        (r"c:\programdata\acme\a.exe", "programdata"),
+    ] {
+        let error = apply_decision(&program_finding("new_program", path), &folder, at(10), "c:").unwrap_err();
+        assert!(error.0.contains("written"), "{why}: {error}");
+    }
+}
+
+#[test]
 fn a_folder_scope_is_only_for_programs_and_never_for_a_drive_or_a_path_with_no_folder() {
-    let folder = Decision::AlwaysExpected { note: None, scope: ExpectationScope::ThisFolder };
-    assert!(apply_decision(&program_finding("new_start_entry", r"c:\a\b.exe"), &folder, at(10)).is_err());
-    assert!(apply_decision(&program_finding("new_program", r"c:\tool.exe"), &folder, at(10)).is_err(), "a drive root");
-    assert!(apply_decision(&program_finding("new_program", "tool.exe"), &folder, at(10)).is_err(), "no folder");
+    let folder = always(ExpectationScope::ThisFolder);
+    assert!(apply_decision(&program_finding("new_start_entry", r"c:\a\b.exe"), &folder, at(10), "c:").is_err());
+    assert!(
+        apply_decision(&program_finding("new_program", r"c:\tool.exe"), &folder, at(10), "c:").is_err(),
+        "a drive root"
+    );
+    assert!(apply_decision(&program_finding("new_program", "tool.exe"), &folder, at(10), "c:").is_err(), "no folder");
 }
 
 #[test]
 fn the_folder_a_finding_could_be_expected_for_is_offered_only_where_it_makes_sense() {
     assert_eq!(
-        folder_scope_of("new_program", r"c:\program files\vendor\app\tool.exe").as_deref(),
+        folder_scope_of("new_program", r"c:\program files\vendor\app\tool.exe", "c:").as_deref(),
         Some(r"c:\program files\vendor")
     );
-    assert_eq!(folder_scope_of("new_program", r"c:\tool.exe"), None);
-    assert_eq!(folder_scope_of("changed_file", r"c:\a\b\c.exe"), None);
+    assert_eq!(folder_scope_of("new_program", r"c:\tool.exe", "c:"), None);
+    assert_eq!(folder_scope_of("changed_file", r"c:\a\b\c.exe", "c:"), None);
+    assert_eq!(folder_scope_of("new_program", r"c:\users\someone\.cargo\bin\cargo.exe", "c:"), None, "writable");
+    assert_eq!(folder_scope_of("new_program", r"d:\program files\acme\a.exe", "c:"), None, "not the windows drive");
+    assert_eq!(folder_scope_of("new_program", r"c:\windows\system32\spool\drivers\color\x.exe", "c:"), None);
+}
+
+#[test]
+fn a_build_folder_is_chosen_from_a_new_program_in_a_writable_tool_or_project_folder() {
+    let effect = apply_decision(
+        &program_finding("new_program", r"c:\users\someone\.cargo\bin\cargo.exe"),
+        &always(ExpectationScope::BuildFolder),
+        at(10),
+        "c:",
+    )
+    .unwrap();
+    let expectation = effect.new_expectation.expect("an expectation");
+    assert_eq!(
+        (expectation.kind.as_str(), expectation.subject.as_str()),
+        ("new_program", r"build:c:\users\someone\.cargo")
+    );
+    assert_eq!(effect.status, FindingStatus::Expected);
+
+    assert_eq!(build_scope_of("new_program", r"d:\src\app\target\debug\app.exe", "c:").as_deref(), Some(r"d:\src"));
+}
+
+#[test]
+fn a_build_folder_is_refused_for_drop_places_protected_folders_and_other_kinds() {
+    let decision = always(ExpectationScope::BuildFolder);
+    for (kind, path) in [
+        ("new_program", r"c:\users\someone\appdata\local\temp\toolx\x.exe"),
+        ("new_program", r"c:\users\someone\downloads\x.exe"),
+        ("new_program", r"c:\users\someone\desktop\x.exe"),
+        ("new_program", r"c:\users\someone\x.exe"),
+        ("new_program", r"c:\users\someone\appdata\local\x.exe"),
+        // The Startup folder and the shared Microsoft folders: where things are dropped and made to look legitimate.
+        ("new_program", r"c:\users\someone\appdata\roaming\microsoft\windows\start menu\programs\startup\x.exe"),
+        ("new_program", r"c:\users\someone\appdata\local\microsoft\x\y.exe"),
+        ("new_program", r"c:\programdata\microsoft\windows\x.exe"),
+        ("new_program", r"c:\windows\tasks\x.exe"),
+        ("new_program", r"c:\program files\acme\a.exe"),
+        ("new_program", r"c:\tool.exe"),
+        ("new_program", "tool.exe"),
+        ("new_start_entry", r"d:\src\a.exe"),
+        ("changed_file", r"d:\src\a.exe"),
+    ] {
+        assert!(apply_decision(&program_finding(kind, path), &decision, at(10), "c:").is_err(), "{kind} {path}");
+        assert_eq!(build_scope_of(kind, path, "c:"), None, "{kind} {path}");
+    }
 }
 
 // ---- a ceiling ("raise the limit to what I just saw")
@@ -407,7 +551,7 @@ fn an_expectation_without_a_ceiling_covers_every_level() {
 fn raising_the_limit_stores_the_level_the_finding_measured_as_the_ceiling() {
     let finding = Finding { level: Some(55.5), ..program_finding("usage", "p.exe|cpu") };
 
-    let effect = apply_decision(&finding, &Decision::RaiseLimit, at(10)).unwrap();
+    let effect = apply_decision(&finding, &Decision::RaiseLimit, at(10), "c:").unwrap();
 
     assert_eq!(effect.status, FindingStatus::Expected);
     let expectation = effect.new_expectation.expect("an expectation");
@@ -417,6 +561,9 @@ fn raising_the_limit_stores_the_level_the_finding_measured_as_the_ceiling() {
 
 #[test]
 fn only_a_usage_finding_that_measured_a_level_can_have_its_limit_raised() {
-    assert!(apply_decision(&program_finding("new_program", "a.exe"), &Decision::RaiseLimit, at(10)).is_err());
-    assert!(apply_decision(&program_finding("usage", "p.exe|cpu"), &Decision::RaiseLimit, at(10)).is_err(), "no level");
+    assert!(apply_decision(&program_finding("new_program", "a.exe"), &Decision::RaiseLimit, at(10), "c:").is_err());
+    assert!(
+        apply_decision(&program_finding("usage", "p.exe|cpu"), &Decision::RaiseLimit, at(10), "c:").is_err(),
+        "no level"
+    );
 }

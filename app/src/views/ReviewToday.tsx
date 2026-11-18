@@ -48,16 +48,33 @@ function Group({ group, onChanged }: { group: ReviewGroupView; onChanged: () => 
         {group.count > group.programs.length && <li className="muted">+{group.count - group.programs.length} more</li>}
       </ul>
       <p className="muted">Folder: {group.root}</p>
+      {!group.wholeFolderAllowed && (
+        <p className="muted">
+          Anything can be copied into this folder, so only the programs of this group are marked: a program that appears
+          later is still raised.
+        </p>
+      )}
       {problem !== null && <p role="alert">{problem}</p>}
       <div className="finding__actions">
-        <button
-          type="button"
-          className="range__button"
-          disabled={busy}
-          onClick={() => void run(() => api.confirmReview(group.root))}
-        >
-          Mark as expected
-        </button>
+        {group.wholeFolderAllowed ? (
+          <button
+            type="button"
+            className="range__button"
+            disabled={busy}
+            onClick={() => void run(() => api.confirmReview(group.root))}
+          >
+            Mark as expected
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="range__button"
+            disabled={busy}
+            onClick={() => void run(() => api.confirmReviewPrograms(group.root, group.publisher))}
+          >
+            {group.count === 1 ? 'Mark this program as expected' : `Mark these ${group.count} programs as expected`}
+          </button>
+        )}
         {first !== undefined && (
           <button
             type="button"
@@ -89,8 +106,8 @@ function ReviewBody({ onChanged }: { onChanged: () => void }) {
             {view.switchedOnMs === null
               ? 'Detection has not been switched on yet, so this is every program seen running so far.'
               : `These programs were already here when detection was switched on (${formatDateTime(view.switchedOnMs)}), so they are never raised as new.`}{' '}
-            Look at the ones marked, and say what is expected: new programs in a folder you mark as expected are not
-            raised either.
+            Look at the ones marked, and say what is expected. For Windows and Program Files, new programs in a folder
+            you mark are not raised either; for any other folder only the programs listed here are marked.
           </p>
           {view.groups.length === 0 ? (
             <p className="muted">Nothing left to review.</p>

@@ -67,7 +67,11 @@ describe('Findings: the last day and what is new since you looked', () => {
     show(
       makeFakeApi({
         findings: vi.fn(async () =>
-          ok(findingsView({ digest: { windowHours: 24, newDestinations: 14, newOwners: 3, ownerData: true } })),
+          ok(
+            findingsView({
+              digest: { windowHours: 24, newDestinations: 14, newOwners: 3, ownerData: true, newInBuildFolders: 0 },
+            }),
+          ),
         ),
       }),
     );
@@ -75,11 +79,36 @@ describe('Findings: the last day and what is new since you looked', () => {
     expect(screen.getByText(/3 networks never reached before/i)).toBeTruthy();
   });
 
+  it('counts the programs a build folder hid, so they are never invisible', async () => {
+    show(
+      makeFakeApi({
+        findings: vi.fn(async () =>
+          ok(
+            findingsView({
+              digest: { windowHours: 24, newDestinations: 0, newOwners: 0, ownerData: true, newInBuildFolders: 4 },
+            }),
+          ),
+        ),
+      }),
+    );
+    expect(await screen.findByText(/4 new programs appeared in your build folders/i)).toBeTruthy();
+  });
+
+  it('says nothing about build folders when none hid anything', async () => {
+    show();
+    await screen.findByText('New program tool.exe');
+    expect(screen.queryByText(/build folders/i)).toBeNull();
+  });
+
   it('says networks cannot be counted without the owner data', async () => {
     show(
       makeFakeApi({
         findings: vi.fn(async () =>
-          ok(findingsView({ digest: { windowHours: 24, newDestinations: 2, newOwners: 0, ownerData: false } })),
+          ok(
+            findingsView({
+              digest: { windowHours: 24, newDestinations: 2, newOwners: 0, ownerData: false, newInBuildFolders: 0 },
+            }),
+          ),
         ),
       }),
     );
@@ -176,6 +205,22 @@ describe('Findings: teaching SYNTRAC what is expected', () => {
     await userEvent.click(within(first).getByRole('button', { name: 'Save as always expected' }));
 
     expect(api.decideFinding).toHaveBeenCalledWith(1, 'always_expected', { scope: 'this_folder' });
+  });
+
+  it('offers a build folder, never the whole folder, for a program in a writable tool folder', async () => {
+    const inToolFolder = findingRow({ folderScope: null, buildScope: 'd:\\src' });
+    const api = show(makeFakeApi({ findings: vi.fn(async () => ok(findingsView({ findings: [inToolFolder] }))) }));
+    await screen.findByText('New program tool.exe');
+    const first = card('New program tool.exe');
+
+    await userEvent.click(within(first).getByRole('button', { name: 'Always expected' }));
+    expect(within(first).getByRole('radio', { name: /only this program/i })).toHaveProperty('checked', true);
+    expect(within(first).queryByRole('radio', { name: /everything below/i })).toBeNull();
+    expect(within(first).getByText(/copied there by anything else would not be called new either/i)).toBeTruthy();
+    await userEvent.click(within(first).getByRole('radio', { name: /new programs in the build folder d:\\src/i }));
+    await userEvent.click(within(first).getByRole('button', { name: 'Save as always expected' }));
+
+    expect(api.decideFinding).toHaveBeenCalledWith(1, 'always_expected', { scope: 'build_folder' });
   });
 
   it('offers no folder choice when the finding has no folder to offer', async () => {
@@ -313,6 +358,47 @@ describe('Findings: what you told SYNTRAC is expected', () => {
 
     expect(await screen.findByText('Up to 40.0%')).toBeTruthy();
     expect(screen.getByText('Up to 3.0 MB')).toBeTruthy();
+  });
+
+  it('says how wide a folder expectation is, and warns when the folder is one anything can be copied into', async () => {
+    show(
+      makeFakeApi({
+        findings: vi.fn(async () =>
+          ok(
+            findingsView({
+              expectations: [
+                expectationRow({
+                  id: 20,
+                  subject: 'folder:c:\\program files\\acme',
+                  scope: 'folder',
+                  scopeRoot: 'c:\\program files\\acme',
+                }),
+                expectationRow({
+                  id: 21,
+                  subject: 'folder:c:\\users\\someone\\.cargo',
+                  scope: 'folder',
+                  scopeRoot: 'c:\\users\\someone\\.cargo',
+                  writableWarning: true,
+                }),
+                expectationRow({
+                  id: 22,
+                  subject: 'build:d:\\src',
+                  scope: 'build',
+                  scopeRoot: 'd:\\src',
+                }),
+              ],
+            }),
+          ),
+        ),
+      }),
+    );
+
+    const protectedRow = (await screen.findByText(/everything below c:\\program files\\acme/i)).closest('tr')!;
+    expect(within(protectedRow).queryByText(/never called new/i)).toBeNull();
+    const writableRow = screen.getByText(/everything below c:\\users\\someone\\.cargo/i).closest('tr')!;
+    expect(within(writableRow).getByText(/a program copied there is never called new/i)).toBeTruthy();
+    const buildRow = screen.getByText(/new programs in the build folder d:\\src/i).closest('tr')!;
+    expect(within(buildRow).queryByText(/never called new/i)).toBeNull();
   });
 
   it('removes one only after asking, and reads the lists again', async () => {

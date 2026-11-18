@@ -8,13 +8,24 @@ use std::collections::{HashMap, HashSet};
 
 use crate::clean_text::clean_text;
 use crate::exe_location::install_root;
+use crate::folder_protection::{
+    build_folder_problem, is_protected_folder, is_protected_folder_on_system_drive, is_protected_on_system_drive,
+    is_protected_path,
+};
 use crate::time::Timestamp;
 
 /// Longest note the user can attach to an expectation.
 pub const MAX_NOTE_CHARS: usize = 200;
 
-/// An expectation whose subject starts with this covers every finding of its kind whose subject is below the folder after it.
+/// An expectation whose subject starts with this covers every finding of its kind whose subject is below the folder after it. It can
+/// only be created for a protected folder (`folder_protection`); older ones for writable folders are still honoured.
 pub const FOLDER_SCOPE_PREFIX: &str = "folder:";
+
+/// The one deliberate exception for a writable folder (a tool or project folder): covers the `new_program` finding only.
+pub const BUILD_FOLDER_PREFIX: &str = "build:";
+
+/// The only kind a folder scope or a build folder is for.
+const PROGRAM_KIND: &str = "new_program";
 
 const DAY_MICROS: i64 = 86_400 * 1_000_000;
 const MAX_SNOOZE_DAYS: u32 = 365;
@@ -252,19 +263,59 @@ fn covers_parts(expectation: &Expectation, kind: &str, subject: &str, level: Opt
             return false;
         }
     }
-    match expectation.subject.strip_prefix(FOLDER_SCOPE_PREFIX) {
-        Some(root) => subject.strip_prefix(root).is_some_and(|rest| rest.starts_with('\\')),
-        None => expectation.subject == subject,
+    if let Some(root) = expectation.subject.strip_prefix(FOLDER_SCOPE_PREFIX) {
+        // A protected folder covers only what is protected inside it: `Windows` does not cover `Windows\Temp`.
+        return is_below(root, subject) && (!is_protected_folder(root) || is_protected_path(subject));
+    }
+    if let Some(root) = expectation.subject.strip_prefix(BUILD_FOLDER_PREFIX) {
+        return kind == PROGRAM_KIND && is_below(root, subject);
+    }
+    expectation.subject == subject
+}
+
+fn is_below(root: &str, subject: &str) -> bool {
+    subject.strip_prefix(root).is_some_and(|rest| rest.starts_with('\\'))
+}
+
+const WRITABLE_FOLDER: &str =
+    "That folder can be written to by ordinary programs, so a program copied into it would never be \
+called new. Say this one program is expected instead.";
+
+/// The folder a finding could be expected for as a whole: the install folder of the program of a `new_program` finding, never a
+/// drive root, and only where the program is PROTECTED (Windows or Program Files on the Windows drive, `system_drive`).
+fn folder_scope_check(kind: &str, subject: &str, system_drive: &str) -> Result<String, String> {
+    const NONE: &str = "That finding has no install folder that could be expected as a whole.";
+    if kind != PROGRAM_KIND {
+        return Err(NONE.into());
+    }
+    let root = install_root(subject).filter(|root| !root.ends_with('\\')).ok_or(NONE)?;
+    if is_protected_on_system_drive(subject, system_drive) && is_protected_folder_on_system_drive(&root, system_drive) {
+        Ok(root)
+    } else {
+        Err(WRITABLE_FOLDER.into())
     }
 }
 
-/// The folder a finding could be expected for as a whole: the install folder of the program of a `new_program` finding, never a
-/// drive root. `None` where it makes no sense (other kinds, a path with no folder).
-pub fn folder_scope_of(kind: &str, subject: &str) -> Option<String> {
-    if kind != "new_program" {
-        return None;
+/// `None` where it makes no sense (other kinds, a path with no folder) or where a program could simply be copied in.
+pub fn folder_scope_of(kind: &str, subject: &str, system_drive: &str) -> Option<String> {
+    folder_scope_check(kind, subject, system_drive).ok()
+}
+
+/// The folder of a `new_program` finding that may be a BUILD FOLDER: a writable tool or project folder the user chooses on purpose
+/// (see `folder_protection::build_folder_problem`). Mutually exclusive with `folder_scope_of`.
+fn build_scope_check(kind: &str, subject: &str, system_drive: &str) -> Result<String, String> {
+    if kind != PROGRAM_KIND {
+        return Err("Only a finding about a new program can have a build folder.".into());
     }
-    install_root(subject).filter(|root| !root.ends_with('\\'))
+    let root = install_root(subject).ok_or("That finding has no folder.")?;
+    match build_folder_problem(&root, system_drive) {
+        None => Ok(root),
+        Some(problem) => Err(problem.to_owned()),
+    }
+}
+
+pub fn build_scope_of(kind: &str, subject: &str, system_drive: &str) -> Option<String> {
+    build_scope_check(kind, subject, system_drive).ok()
 }
 
 /// What an "always expected" covers.
@@ -272,8 +323,10 @@ pub fn folder_scope_of(kind: &str, subject: &str) -> Option<String> {
 pub enum ExpectationScope {
     /// Exactly this finding's subject (the default, the narrowest).
     ThisItem,
-    /// Every finding of this kind below the program's install folder (see `folder_scope_of`).
+    /// Every finding of this kind below the program's install folder, when that folder is protected (see `folder_scope_of`).
     ThisFolder,
+    /// A writable tool or project folder the user chose on purpose: new programs only (see `build_scope_of`).
+    BuildFolder,
 }
 
 /// What the user can do with a finding.
@@ -306,8 +359,14 @@ pub struct DecisionEffect {
 #[error("{0}")]
 pub struct DecisionError(pub String);
 
-/// What a decision does to a finding. Refuses a snooze outside one day to a year, and a note that is too long.
-pub fn apply_decision(finding: &Finding, decision: &Decision, now: Timestamp) -> Result<DecisionEffect, DecisionError> {
+/// What a decision does to a finding. Refuses a snooze outside one day to a year, a note that is too long, and a folder scope that
+/// would let a program simply be copied in. `system_drive` is the Windows drive (`folder_protection::system_drive`).
+pub fn apply_decision(
+    finding: &Finding,
+    decision: &Decision,
+    now: Timestamp,
+    system_drive: &str,
+) -> Result<DecisionEffect, DecisionError> {
     let plain = |status| DecisionEffect { status, snoozed_until: None, new_expectation: None };
     match decision {
         Decision::ExpectedThisTime => Ok(plain(FindingStatus::Expected)),
@@ -346,14 +405,18 @@ pub fn apply_decision(finding: &Finding, decision: &Decision, now: Timestamp) ->
             };
             let subject = match scope {
                 ExpectationScope::ThisItem => finding.subject.clone(),
-                ExpectationScope::ThisFolder => match folder_scope_of(&finding.kind, &finding.subject) {
-                    Some(root) => format!("{FOLDER_SCOPE_PREFIX}{root}"),
-                    None => {
-                        return Err(DecisionError(
-                            "That finding has no install folder that could be expected as a whole.".into(),
-                        ));
+                ExpectationScope::ThisFolder => {
+                    match folder_scope_check(&finding.kind, &finding.subject, system_drive) {
+                        Ok(root) => format!("{FOLDER_SCOPE_PREFIX}{root}"),
+                        Err(message) => return Err(DecisionError(message)),
                     }
-                },
+                }
+                ExpectationScope::BuildFolder => {
+                    match build_scope_check(&finding.kind, &finding.subject, system_drive) {
+                        Ok(root) => format!("{BUILD_FOLDER_PREFIX}{root}"),
+                        Err(message) => return Err(DecisionError(message)),
+                    }
+                }
             };
             Ok(DecisionEffect {
                 status: FindingStatus::Expected,
