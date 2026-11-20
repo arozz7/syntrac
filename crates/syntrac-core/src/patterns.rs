@@ -29,6 +29,16 @@ pub enum Subject {
     ProcessStart,
 }
 
+/// How much GPU, for how many hours in a row: a share (1 to 100) of the program's busiest GPU engine, not of the machine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SustainedGpu {
+    pub percent: u32,
+    pub hours: u32,
+}
+
+/// The most hours a `sustained_gpu` condition may ask for (the detector reads this many plus a few).
+pub const MAX_SUSTAINED_HOURS: u32 = 24;
+
 /// The conditions of a pattern; every one that is present must hold.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct When {
@@ -53,6 +63,8 @@ pub struct When {
     pub parent_is: Vec<String>,
     /// The program used the network for the first time after detection was switched on (it had no earlier sighting at all).
     pub first_network_use: bool,
+    /// (programs only) the program's hourly GPU average was at least this in EACH of the last completed hours (consecutive; a missing hour counts as zero).
+    pub sustained_gpu: Option<SustainedGpu>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -121,6 +133,24 @@ struct RawWhen {
     entry_kind_is: Option<Vec<String>>,
     parent_is: Option<Vec<String>>,
     first_network_use: Option<bool>,
+    sustained_gpu: Option<RawSustainedGpu>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawSustainedGpu {
+    percent: u32,
+    hours: u32,
+}
+
+fn sustained_gpu(id: &str, raw: Option<RawSustainedGpu>) -> Result<Option<SustainedGpu>, PackError> {
+    let Some(raw) = raw else { return Ok(None) };
+    if !(1..=100).contains(&raw.percent) || !(1..=MAX_SUSTAINED_HOURS).contains(&raw.hours) {
+        return Err(PackError(format!(
+            "{id}: sustained_gpu needs a percent from 1 to 100 and hours from 1 to {MAX_SUSTAINED_HOURS}"
+        )));
+    }
+    Ok(Some(SustainedGpu { percent: raw.percent, hours: raw.hours }))
 }
 
 fn words(id: &str, field: &str, list: Option<Vec<String>>) -> Result<Vec<String>, PackError> {
@@ -191,6 +221,7 @@ fn when_of(id: &str, raw: RawWhen) -> Result<When, PackError> {
         entry_kinds: named(id, "entry_kind_is", raw.entry_kind_is, LauncherKind::parse)?,
         parent_is: words(id, "parent_is", raw.parent_is)?,
         first_network_use: only_true(id, "first_network_use", raw.first_network_use)?,
+        sustained_gpu: sustained_gpu(id, raw.sustained_gpu)?,
     })
 }
 
@@ -248,6 +279,9 @@ fn pattern_of(raw: RawPattern) -> Result<Pattern, PackError> {
     if when.first_network_use && subject != Subject::Program {
         return Err(PackError(format!("{id}: first_network_use only makes sense for a program")));
     }
+    if when.sustained_gpu.is_some() && subject != Subject::Program {
+        return Err(PackError(format!("{id}: sustained_gpu only makes sense for a program")));
+    }
     Ok(Pattern {
         title: text(&id, "title", &raw.title, 80)?,
         technique: raw.technique.trim().to_owned(),
@@ -289,6 +323,11 @@ impl PatternPack {
         names.sort();
         names.dedup();
         names
+    }
+
+    /// Whether any pattern needs the hourly GPU rows (they are only read when one does).
+    pub fn uses_sustained_gpu(&self) -> bool {
+        self.patterns.iter().any(|pattern| pattern.when.sustained_gpu.is_some())
     }
 
     pub fn uses_first_network_use(&self) -> bool {

@@ -2,7 +2,8 @@
 //! Explainable statistics only: for each program and metric the last two completed hours are compared with the program's earlier
 //! hours (the 95th percentile and the maximum of its ACTIVE hours), and the numbers are in the sentence. No machine learning.
 //!
-//! Covers per program: CPU (average share of the whole machine in the hour), memory (peak in the hour), bytes sent and bytes
+//! Covers per program: CPU (average share of the whole machine in the hour), memory (peak in the hour), GPU (average share of the
+//! program's busiest GPU engine in the hour, NOT of the machine) and GPU memory (peak), bytes sent and bytes
 //! received. NOT disk per program: the hourly rollups hold no per-program I/O.
 //!
 //! A finding needs ALL of: more than `max(3 x the 95th percentile, 1.5 x the highest hour)`, over an absolute floor, and sustained
@@ -26,7 +27,7 @@ const MB: u64 = 1024 * 1024;
 pub const MAX_USAGE_PER_RUN: usize = 100;
 
 /// More than this long after the newest hour of data, the rollups are considered stopped and nothing is raised.
-const STALE_AFTER: i64 = 4 * HOUR;
+pub(crate) const STALE_AFTER: i64 = 4 * HOUR;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct UsageSettings {
@@ -38,6 +39,10 @@ pub struct UsageSettings {
     pub cpu_floor_percent: f64,
     /// Memory must be at least this much above the program's highest peak.
     pub memory_floor_bytes: u64,
+    /// GPU (a share of ONE engine, never scaled by cores) must be at least this.
+    pub gpu_floor_percent: f64,
+    /// GPU memory must be at least this much above the program's highest peak.
+    pub gpu_memory_floor_bytes: u64,
     /// Bytes sent or received in an hour must be at least this.
     pub net_floor_bytes: u64,
     pub p95_multiplier: f64,
@@ -53,6 +58,8 @@ impl Default for UsageSettings {
             min_active_hours: 48,
             cpu_floor_percent: 25.0,
             memory_floor_bytes: 500 * MB,
+            gpu_floor_percent: 20.0,
+            gpu_memory_floor_bytes: 500 * MB,
             net_floor_bytes: 100 * MB,
             p95_multiplier: 3.0,
             max_multiplier: 1.5,
@@ -67,7 +74,7 @@ pub fn cpu_floor_for_cores(cores: usize) -> f64 {
     (50.0 / cores.max(1) as f64).max(1.5)
 }
 
-/// One hour of one program's CPU and memory, from the hourly rollups.
+/// One hour of one program's CPU, memory and GPU, from the hourly rollups.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProcessHourRow {
     pub exe: Executable,
@@ -76,6 +83,10 @@ pub struct ProcessHourRow {
     /// Average CPU as a percentage of the whole machine.
     pub cpu_avg: f64,
     pub memory_peak: u64,
+    /// Average share of the program's busiest GPU engine in the hour (see `gpu`); 0 also means "no GPU data" (an hour rolled up before the GPU was recorded).
+    pub gpu_avg: f64,
+    /// Highest dedicated GPU memory in the hour.
+    pub gpu_memory_peak: u64,
 }
 
 /// One hour of one program's network traffic (all addresses added up, loopback left out).
@@ -117,17 +128,22 @@ pub struct UsageFacts<'a> {
 enum Metric {
     Cpu,
     Memory,
+    /// A share of the program's busiest GPU engine (not of the machine).
+    Gpu,
+    GpuMemory,
     Sent,
     Received,
 }
 
 impl Metric {
-    const ALL: [Metric; 4] = [Self::Cpu, Self::Memory, Self::Sent, Self::Received];
+    const ALL: [Metric; 6] = [Self::Cpu, Self::Memory, Self::Gpu, Self::GpuMemory, Self::Sent, Self::Received];
 
     fn slug(self) -> &'static str {
         match self {
             Self::Cpu => "cpu",
             Self::Memory => "memory",
+            Self::Gpu => "gpu",
+            Self::GpuMemory => "gpu_memory",
             Self::Sent => "sent",
             Self::Received => "received",
         }
@@ -137,6 +153,8 @@ impl Metric {
         match self {
             Self::Cpu => format!("{name} used more CPU than usual"),
             Self::Memory => format!("{name} used more memory than usual"),
+            Self::Gpu => format!("{name} used more of the GPU than usual"),
+            Self::GpuMemory => format!("{name} used more GPU memory than usual"),
             Self::Sent => format!("{name} uploaded more than usual"),
             Self::Received => format!("{name} downloaded more than usual"),
         }
@@ -144,7 +162,7 @@ impl Metric {
 
     fn show(self, value: f64) -> String {
         match self {
-            Self::Cpu => format!("{value:.1}%"),
+            Self::Cpu | Self::Gpu => format!("{value:.1}%"),
             _ => bytes(value),
         }
     }
@@ -174,6 +192,8 @@ fn series(facts: &UsageFacts<'_>) -> (Series, HashMap<String, Executable>) {
         let hour = row.hour.as_micros();
         by_metric.entry((row.exe.key.clone(), Metric::Cpu)).or_default().insert(hour, row.cpu_avg);
         by_metric.entry((row.exe.key.clone(), Metric::Memory)).or_default().insert(hour, row.memory_peak as f64);
+        by_metric.entry((row.exe.key.clone(), Metric::Gpu)).or_default().insert(hour, row.gpu_avg);
+        by_metric.entry((row.exe.key.clone(), Metric::GpuMemory)).or_default().insert(hour, row.gpu_memory_peak as f64);
     }
     for row in facts.traffic {
         programs.entry(row.exe.key.clone()).or_insert_with(|| row.exe.clone());
@@ -255,6 +275,8 @@ pub fn usage_candidates(facts: &UsageFacts<'_>) -> Vec<Candidate> {
             let floor_ok = |value: f64| match metric {
                 Metric::Cpu => value >= settings.cpu_floor_percent,
                 Metric::Memory => value >= usual.highest + settings.memory_floor_bytes as f64,
+                Metric::Gpu => value >= settings.gpu_floor_percent,
+                Metric::GpuMemory => value >= usual.highest + settings.gpu_memory_floor_bytes as f64,
                 Metric::Sent | Metric::Received => value >= settings.net_floor_bytes as f64,
             };
             let clearly = |value: f64| value > threshold && floor_ok(value);
@@ -276,11 +298,14 @@ pub fn usage_candidates(facts: &UsageFacts<'_>) -> Vec<Candidate> {
             let what = match metric {
                 Metric::Cpu => "It used",
                 Metric::Memory => "Its memory peaked at",
+                Metric::Gpu => "It used",
+                Metric::GpuMemory => "Its GPU memory peaked at",
                 Metric::Sent => "It sent",
                 Metric::Received => "It received",
             };
             let how = match metric {
                 Metric::Cpu => " of the machine's CPU on average",
+                Metric::Gpu => " of one GPU engine on average",
                 _ => "",
             };
             let why = if sustained {

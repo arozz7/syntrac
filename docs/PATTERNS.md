@@ -27,6 +27,7 @@ A pattern is data: an id, a title, a technique id, a tier, a "why", a "benign" t
 | `entry_kind_is` | (start entries only) service_auto, task, run_key, run_once, startup_folder |
 | `parent_is` | (started programs only) the file name of the program that STARTED it equals one of these |
 | `first_network_use` | the program had no network sighting at all before detection was switched on and has one now |
+| `sustained_gpu` | (programs only) `{ percent = 30, hours = 3 }`: the program's HOURLY GPU average was at least `percent` in EACH of the last `hours` completed hours in a row. The figure is a share of the program's busiest GPU engine (what Task Manager shows), not of the machine. A missing hour counts as zero, so the hours must be consecutive; rollups that stopped more than four hours ago match nothing. Percent 1 to 100, hours 1 to 24. It needs no history of the program, so it can judge a brand-new one (G2) |
 
 A pattern is about one of three things (`applies_to`): a `program` that has been seen running, a `start_entry`, or a `process_start` (a program started by another program; it must name its parents with `parent_is` and the programs it cares about with `name_is`).
 
@@ -45,7 +46,7 @@ stops the pack loading; a test parses the shipped pack, so such a mistake fails 
 - At most **50** findings of one pattern per run (the most serious stay); the global cap of the detect worker still applies.
 - "Always expected" offers this item only. There is deliberately no "this folder" for patterns: a program copied into an expected folder would then slip past every pattern (see the folder rule in `docs/ALERTS-PLAN.md`, F6).
 
-## The shipped patterns (pack 2026.11.2)
+## The shipped patterns (pack 2026.11.3)
 
 | Id | Technique | Tier | What it says |
 |---|---|---|---|
@@ -61,6 +62,7 @@ stops the pack loading; a test parses the shipped pack, so such a mistake fails 
 | `office_starts_shell` | T1059 | suspicious | Word, Excel, PowerPoint, Outlook, OneNote, Access, Publisher, Visio or Acrobat started cmd, PowerShell, wscript, cscript or mshta (F5b) |
 | `browser_starts_shell` | T1059 | unusual | Chrome, Edge, Firefox, Brave, Opera, Vivaldi or Internet Explorer started one of those (F5b) |
 | `script_helper_first_network_use` | T1218 | suspicious | powershell, pwsh, wscript, cscript, mshta, regsvr32, rundll32, certutil, bitsadmin or msiexec used the network for the FIRST time since detection was switched on (F5b) |
+| `unsigned_program_keeps_gpu_busy` | T1496.001 (Compute Hijacking) | unusual (NOT lifted: unsigned in a writable folder is already part of the condition) | Not validly signed, in a user-writable folder, and at least 30% of a GPU engine in each of the last three hours (G2). Harmless explanations: a game, a render or video tool, a local AI tool, something you built. Cryptocurrency miners look the same; mark a program you run on purpose expected |
 
 Readings of the plan that were narrowed on purpose (the backtest on this machine's copy is in `aiChangeLog/phase-F5a.md`):
 - "A start entry whose target is unsigned **or** user-writable" is built as unsigned **and** in a user-writable folder. The "or" would match every validly signed app that starts from AppData (OneDrive, Teams, Discord): the backtest found 9 of those against 3 unsigned targets anywhere.
@@ -107,3 +109,6 @@ Names, folders and signers are weak evidence on their own: anyone can name a fil
 program that avoids every pattern will not match. The value is catching the careless majority and giving a short, explained list.
 Remote-access, tunnel and bulk-copy tools are used by administrators as much as by attackers: expect each tool you really use to raise once,
 and mark it expected.
+The GPU pattern (G2) reads hourly figures, so it notices a program only after three completed hours (plus up to about an hour for the rollup) and it
+misses a burst shorter than that. A program that uses the GPU lightly, or in a browser (in-browser mining is the browser's GPU use), is not caught by it.
+A local AI tool or a game from an unsigned build will match once: mark it expected.

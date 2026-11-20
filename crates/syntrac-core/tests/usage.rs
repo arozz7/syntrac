@@ -45,13 +45,27 @@ impl Series {
     fn set(&mut self, hour: i64, cpu: f64, memory: u64, sent: u64, received: u64) {
         self.process.retain(|row| row.hour != at_hour(hour));
         self.traffic.retain(|row| row.hour != at_hour(hour));
-        self.process.push(ProcessHourRow { exe: exe(), hour: at_hour(hour), cpu_avg: cpu, memory_peak: memory });
+        self.process.push(ProcessHourRow {
+            exe: exe(),
+            hour: at_hour(hour),
+            cpu_avg: cpu,
+            memory_peak: memory,
+            gpu_avg: 0.0,
+            gpu_memory_peak: 0,
+        });
         self.traffic.push(TrafficHourRow {
             exe: exe(),
             hour: at_hour(hour),
             bytes_sent: sent,
             bytes_received: received,
         });
+    }
+
+    /// The GPU of one hour (a share of one engine, and dedicated GPU memory); the hour must already have a row.
+    fn set_gpu(&mut self, hour: i64, gpu: f64, gpu_memory: u64) {
+        let row = self.process.iter_mut().find(|row| row.hour == at_hour(hour)).expect("a row for that hour");
+        row.gpu_avg = gpu;
+        row.gpu_memory_peak = gpu_memory;
     }
 
     fn two_busy_hours(mut self, cpu: f64, memory: u64, sent: u64, received: u64) -> Self {
@@ -223,4 +237,107 @@ fn the_cpu_floor_is_half_of_one_core_of_this_machine_never_below_one_and_a_half_
     assert_eq!(cpu_floor_for_cores(16), 3.125);
     assert_eq!(cpu_floor_for_cores(64), 1.5, "many cores: the floor stops falling");
     assert_eq!(cpu_floor_for_cores(0), 50.0, "an unknown count is treated as one core");
+}
+
+// ---- the GPU (docs/ALERTS-PLAN.md, slice G2)
+
+impl Series {
+    /// Steady GPU use in every hour of the history: 5% of one engine and 200 MB of GPU memory.
+    fn with_steady_gpu(mut self) -> Self {
+        for hour in 0..HISTORY_HOURS {
+            self.set_gpu(hour, 5.0, 200 * MB);
+        }
+        self
+    }
+
+    fn two_busy_gpu_hours(mut self, gpu: f64, gpu_memory: u64) -> Self {
+        for hour in [LATEST - 1, LATEST] {
+            self.set(hour, 2.0, 100 * MB, 5 * MB, 20 * MB);
+            self.set_gpu(hour, gpu, gpu_memory);
+        }
+        self
+    }
+}
+
+#[test]
+fn a_steady_gpu_user_raises_nothing() {
+    let found = Series::steady().with_steady_gpu().two_busy_gpu_hours(5.0, 200 * MB).run();
+    assert!(of(&found, "gpu").is_empty() && of(&found, "gpu_memory").is_empty());
+}
+
+#[test]
+fn two_hours_of_much_more_gpu_than_ever_before_is_raised_with_the_numbers() {
+    let found = Series::steady().with_steady_gpu().two_busy_gpu_hours(60.0, 200 * MB).run();
+
+    let gpu = of(&found, "gpu");
+    assert_eq!(gpu.len(), 1);
+    assert_eq!(gpu[0].kind, "usage");
+    assert_eq!(gpu[0].subject, format!("{}|gpu", PROGRAM.to_lowercase()));
+    assert_eq!(gpu[0].tier, Tier::Unusual);
+    assert_eq!(gpu[0].level, Some(60.0));
+    assert!(gpu[0].title.contains("GPU"), "{}", gpu[0].title);
+    assert!(gpu[0].why.contains("60.0%") && gpu[0].why.contains("one GPU engine"), "{}", gpu[0].why);
+    assert!(of(&found, "gpu_memory").is_empty(), "the memory did not change");
+    assert!(of(&found, "cpu").is_empty());
+}
+
+#[test]
+fn one_busy_gpu_hour_is_not_enough_and_neither_is_a_rise_below_the_floor() {
+    let mut one = Series::steady().with_steady_gpu().two_busy_gpu_hours(5.0, 200 * MB);
+    one.set_gpu(LATEST, 80.0, 200 * MB);
+    assert!(of(&one.run(), "gpu").is_empty(), "only the last hour was busy");
+
+    // Four times the usual 5% but under the 20% floor.
+    let small = Series::steady().with_steady_gpu().two_busy_gpu_hours(19.0, 200 * MB);
+    assert!(of(&small.run(), "gpu").is_empty());
+}
+
+#[test]
+fn a_program_with_no_gpu_history_is_not_judged_on_the_gpu_so_the_hours_before_v16_cannot_raise_anything() {
+    // Every earlier hour has 0 GPU (the rollups made before the GPU was recorded): they are not active hours, so the program has
+    // no GPU baseline and a sudden 90% is left to the pattern that needs no history.
+    let found = Series::steady().two_busy_gpu_hours(90.0, 2000 * MB).run();
+    assert!(of(&found, "gpu").is_empty() && of(&found, "gpu_memory").is_empty());
+}
+
+#[test]
+fn a_rise_in_gpu_memory_needs_to_be_well_above_the_usual_peak_and_by_the_floor() {
+    let found = Series::steady().with_steady_gpu().two_busy_gpu_hours(5.0, 1500 * MB).run();
+    let memory = of(&found, "gpu_memory");
+    assert_eq!(memory.len(), 1);
+    assert_eq!(memory[0].subject, format!("{}|gpu_memory", PROGRAM.to_lowercase()));
+    assert_eq!(memory[0].level, Some((1500 * MB) as f64));
+    assert!(memory[0].title.contains("GPU memory"), "{}", memory[0].title);
+    assert!(memory[0].why.contains("1.5 GB"), "{}", memory[0].why);
+    assert!(of(&found, "gpu").is_empty());
+
+    // 600 MB is three times the usual but not 500 MB above the highest peak.
+    let small = Series::steady().with_steady_gpu().two_busy_gpu_hours(5.0, 600 * MB);
+    assert!(of(&small.run(), "gpu_memory").is_empty());
+}
+
+#[test]
+fn the_gpu_floor_is_a_flat_share_of_one_engine_that_comes_from_the_settings() {
+    let series = Series::steady().with_steady_gpu().two_busy_gpu_hours(19.0, 200 * MB);
+    let lower = UsageSettings { gpu_floor_percent: 10.0, ..UsageSettings::default() };
+    assert_eq!(of(&series.run_with(&lower, &[], now()), "gpu").len(), 1);
+    // The floor is never scaled by the number of cores: the default is the same on any machine.
+    assert_eq!(UsageSettings::default().gpu_floor_percent, 20.0);
+}
+
+#[test]
+fn hours_that_already_raised_a_gpu_finding_are_left_out_of_the_gpu_baseline() {
+    let mut series = Series::steady().with_steady_gpu().two_busy_gpu_hours(70.0, 200 * MB);
+    // An earlier spell of 70% that the user was told about.
+    for hour in 200..210 {
+        series.set_gpu(hour, 70.0, 200 * MB);
+    }
+    let spell =
+        FlaggedSpan { subject: format!("{}|gpu", PROGRAM.to_lowercase()), from: at_hour(198), to: at_hour(211) };
+
+    let unflagged = series.run_with(&UsageSettings::default(), &[], now());
+    let flagged = series.run_with(&UsageSettings::default(), &[spell], now());
+
+    assert!(of(&unflagged, "gpu").is_empty(), "without the flag, 70% has become normal");
+    assert_eq!(of(&flagged, "gpu").len(), 1, "with the flag, the earlier spell is not part of what is usual");
 }

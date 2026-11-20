@@ -19,6 +19,8 @@ impl UsageRepository for InMemoryRepository {
                     hour: row.hour,
                     cpu_avg: row.cpu_avg,
                     memory_peak: row.memory_peak,
+                    gpu_avg: row.gpu_avg,
+                    gpu_memory_peak: row.gpu_memory_peak,
                 })
             })
             .collect())

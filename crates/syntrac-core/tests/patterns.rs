@@ -6,6 +6,7 @@ use syntrac_core::findings_run::clean_candidate;
 use syntrac_core::pattern_run::{osa_distance, pattern_candidates, PatternFacts, MAX_PER_PATTERN, RECENT_DAYS};
 use syntrac_core::patterns::{built_in_pack, parse_pack, PatternPack, BUILT_IN_PACK};
 use syntrac_core::spawns::SpawnPair;
+use syntrac_core::usage::ProcessHourRow;
 use syntrac_core::{
     Executable, FileFacts, IdentityEntry, IdentityRecord, KnownProduct, LauncherKind, LauncherSeen, LedgerEntry,
     Signature, SignatureStatus, Timestamp, VersionInfo,
@@ -83,6 +84,7 @@ struct World {
     launchers: Vec<(Executable, Vec<LauncherSeen>)>,
     first_online: Vec<Executable>,
     spawns: Vec<SpawnPair>,
+    gpu_hours: Vec<ProcessHourRow>,
 }
 
 impl World {
@@ -102,6 +104,7 @@ impl World {
                 launchers: &self.launchers,
                 first_online: &self.first_online,
                 spawns: &self.spawns,
+                gpu_hours: &self.gpu_hours,
             },
         )
     }
@@ -418,7 +421,7 @@ fn every_match_says_which_pattern_why_and_what_could_be_harmless_and_a_new_pack_
     let evidence = found.evidence.join("\n");
     assert!(evidence.contains("T1567.002"), "{evidence}");
     assert!(evidence.contains("Often harmless"), "{evidence}");
-    assert!(evidence.contains("Pattern pack 2026.11.2"), "{evidence}");
+    assert!(evidence.contains("Pattern pack 2026.11.3"), "{evidence}");
     assert!(!found.dedupe_key.contains("2026"), "the pack version is not part of the key");
 }
 
@@ -591,4 +594,125 @@ fn the_new_vocabulary_is_checked_too() {
     assert!(base("process_start", "parent_is = [\"a.exe\"]\nalready_here = true\n").is_err());
     assert!(base("start_entry", "first_network_use = true\nentry_kind_is = [\"task\"]\n").is_err());
     assert!(base("program", "first_network_use = false\nname_is = [\"a.exe\"]\n").is_err());
+}
+
+// ---- the GPU (docs/ALERTS-PLAN.md, slice G2)
+
+const HOUR: i64 = 3_600_000_000;
+const MINER: &str = r"C:\Users\alice\AppData\Roaming\toolx\toolx.exe";
+const GPU_PATTERN: &str = "unsigned_program_keeps_gpu_busy";
+
+/// The program's hourly GPU average `hours_ago` hours before now (1 = the last completed hour).
+fn gpu_row(path: &str, hours_ago: i64, gpu_avg: f64) -> ProcessHourRow {
+    ProcessHourRow {
+        exe: Executable::from_path(path).unwrap(),
+        hour: Timestamp::from_micros(NOW * DAY - hours_ago * HOUR),
+        cpu_avg: 1.0,
+        memory_peak: 1,
+        gpu_avg,
+        gpu_memory_peak: 0,
+    }
+}
+
+fn busy_for(path: &str, hours: &[(i64, f64)]) -> Vec<ProcessHourRow> {
+    hours.iter().map(|(ago, gpu)| gpu_row(path, *ago, *gpu)).collect()
+}
+
+fn miner_world(file: FileFacts, path: &str, hours: &[(i64, f64)]) -> World {
+    World { gpu_hours: busy_for(path, hours), ..World::with(vec![entry(path, Some(file))]) }
+}
+
+#[test]
+fn the_shipped_pack_has_the_gpu_pattern_and_says_it_needs_the_gpu_hours() {
+    let pack = built_in_pack();
+    let pattern = pack.patterns.iter().find(|p| p.id == GPU_PATTERN).expect("the GPU pattern is shipped");
+    assert_eq!(pattern.technique, "T1496.001");
+    assert_eq!(pattern.tier, Tier::Unusual);
+    assert!(!pattern.raise_if_concerning, "unsigned in a writable folder is already part of the condition");
+    assert!(pack.uses_sustained_gpu());
+    assert!(!parse_pack(&minimal_pack("downloaded = true")).unwrap().uses_sustained_gpu());
+}
+
+fn minimal_pack(when: &str) -> String {
+    format!(
+        "version = \"t\"\n[[pattern]]\nid = \"x\"\ntitle = \"x\"\ntechnique = \"T1496.001\"\ntier = \"unusual\"\napplies_to = \"program\"\nwhy = \"w\"\nbenign = \"b\"\n[pattern.when]\n{when}\n"
+    )
+}
+
+#[test]
+fn the_sustained_gpu_condition_is_validated_and_only_for_programs() {
+    assert!(parse_pack(&minimal_pack("sustained_gpu = { percent = 30, hours = 3 }")).is_ok());
+    for bad in [
+        "sustained_gpu = { percent = 0, hours = 3 }",
+        "sustained_gpu = { percent = 101, hours = 3 }",
+        "sustained_gpu = { percent = 30, hours = 0 }",
+        "sustained_gpu = { percent = 30, hours = 25 }",
+        "sustained_gpu = { percent = 30 }",
+        "sustained_gpu = { percent = 30, hours = 3, extra = 1 }",
+        "sustained_gpu = 30",
+    ] {
+        assert!(parse_pack(&minimal_pack(bad)).is_err(), "{bad} must be refused");
+    }
+    let entry_pack = minimal_pack("sustained_gpu = { percent = 30, hours = 3 }").replace("program\"", "start_entry\"");
+    assert!(parse_pack(&entry_pack).is_err(), "a start entry has no GPU use of its own");
+}
+
+#[test]
+fn an_unsigned_program_in_a_user_folder_that_keeps_the_gpu_busy_is_raised_with_the_hours_in_the_sentence() {
+    let world = miner_world(unsigned(), MINER, &[(1, 71.0), (2, 69.5), (3, 72.0)]);
+
+    let found = world.of(GPU_PATTERN);
+
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].tier, Tier::Unusual);
+    assert_eq!(found[0].subject, MINER.to_lowercase());
+    let evidence = found[0].evidence.join("\n");
+    assert!(evidence.contains("71.0%") && evidence.contains("69.5%") && evidence.contains("72.0%"), "{evidence}");
+    assert!(evidence.contains("one GPU engine") && evidence.contains("30%"), "{evidence}");
+    assert!(evidence.contains("T1496.001"), "{evidence}");
+    assert!(evidence.contains("Often harmless"), "{evidence}");
+}
+
+#[test]
+fn a_look_alike_that_is_harmless_is_not_raised() {
+    let busy = [(1, 71.0), (2, 69.5), (3, 72.0)];
+    // Signed by a real maker.
+    assert!(miner_world(facts(SignatureStatus::Valid, Some("Acme Ltd")), MINER, &busy).of(GPU_PATTERN).is_empty());
+    // Unsigned but in Program Files (not a folder a user can write to).
+    let installed = r"C:\Program Files\Toolx\toolx.exe";
+    assert!(miner_world(unsigned(), installed, &[(1, 71.0), (2, 69.5), (3, 72.0)]).of(GPU_PATTERN).is_empty());
+    // Only two busy hours.
+    assert!(miner_world(unsigned(), MINER, &[(1, 71.0), (2, 69.5)]).of(GPU_PATTERN).is_empty());
+    // A quiet hour in the middle (a missing hour counts as zero too).
+    assert!(miner_world(unsigned(), MINER, &[(1, 71.0), (2, 5.0), (3, 72.0)]).of(GPU_PATTERN).is_empty());
+    assert!(miner_world(unsigned(), MINER, &[(1, 71.0), (3, 72.0), (4, 70.0)]).of(GPU_PATTERN).is_empty());
+    // Under the limit in one hour.
+    assert!(miner_world(unsigned(), MINER, &[(1, 71.0), (2, 29.9), (3, 72.0)]).of(GPU_PATTERN).is_empty());
+}
+
+#[test]
+fn another_programs_gpu_hours_do_not_count_and_a_covered_program_is_not_raised() {
+    let other = r"C:\Users\alice\AppData\Roaming\other\other.exe";
+    let mut world = miner_world(unsigned(), MINER, &[]);
+    world.gpu_hours = busy_for(other, &[(1, 90.0), (2, 90.0), (3, 90.0)]);
+    assert!(world.of(GPU_PATTERN).is_empty());
+
+    let mut covered = miner_world(unsigned(), MINER, &[(1, 71.0), (2, 69.5), (3, 72.0)]);
+    covered.known = vec![KnownProduct {
+        id: 1,
+        label: "Toolx".into(),
+        publisher: None,
+        root: r"c:\users\alice\appdata\roaming\toolx".into(),
+        product_name: None,
+        note: None,
+        created_at: at(1),
+    }];
+    assert!(covered.of(GPU_PATTERN).is_empty());
+}
+
+#[test]
+fn rollups_that_stopped_long_ago_raise_nothing() {
+    // The last completed hour in the data is ten hours old: the rollups have stopped, so "the last three hours" means nothing.
+    let world = miner_world(unsigned(), MINER, &[(10, 71.0), (11, 69.5), (12, 72.0)]);
+    assert!(world.of(GPU_PATTERN).is_empty());
 }

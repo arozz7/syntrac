@@ -8,7 +8,7 @@ use syntrac_core::{
     TrafficHourRow, UsageRepository,
 };
 
-use crate::fixtures::{metrics_sample, process_metric, EventFactory, BEACON_TARGET};
+use crate::fixtures::{gpu_process_metric, metrics_sample, process_metric, EventFactory, BEACON_TARGET};
 use crate::rollup_contract::{flow_event, secs, settings, start_process, t, A_EXE, B_EXE, OTHER_TARGET};
 
 pub trait UsageSubject:
@@ -28,13 +28,19 @@ pub fn usage_contract<R: UsageSubject>(make: impl Fn() -> R) {
     the_rows_survive_the_purge_of_detail(make());
 }
 
-/// Hour 0: A uses 30% CPU and talks to two addresses (and to loopback); an unattributed program talks too. Hour 1: A uses 10%, B
+/// Hour 0: A uses 30% CPU, 40% of a GPU engine (2 000 bytes of GPU memory) and talks to two addresses (and to loopback); an unattributed program talks too. Hour 1: A uses 10%, B
 /// uploads 7 bytes.
 fn scenario<R: UsageSubject>(repo: &mut R) {
     let a = start_process(repo, 10, t(0, 0), A_EXE);
     let b = start_process(repo, 11, t(0, 0), B_EXE);
-    repo.append_metrics(&metrics_sample(secs(0, 10), 40.0, vec![process_metric(10, Some(a.id), 30.0)], 0.0, 0))
-        .unwrap();
+    repo.append_metrics(&metrics_sample(
+        secs(0, 10),
+        40.0,
+        vec![gpu_process_metric(10, Some(a.id), 30.0, 40.0, 2_000)],
+        0.0,
+        0,
+    ))
+    .unwrap();
     repo.append_metrics(&metrics_sample(secs(1, 10), 15.0, vec![process_metric(10, Some(a.id), 10.0)], 0.0, 0))
         .unwrap();
     let mut f = EventFactory::default();
@@ -73,8 +79,11 @@ fn cpu_and_memory_come_back_per_program_and_hour<R: UsageSubject>(mut repo: R) {
     assert_eq!((rows[0].exe.path.as_str(), rows[0].hour), (A_EXE, t(0, 0)));
     assert!((rows[0].cpu_avg - 30.0).abs() < 0.01, "{}", rows[0].cpu_avg);
     assert_eq!(rows[0].memory_peak, 50_000_000);
+    assert!((rows[0].gpu_avg - 40.0).abs() < 0.01, "the GPU share comes back too: {}", rows[0].gpu_avg);
+    assert_eq!(rows[0].gpu_memory_peak, 2_000);
     assert_eq!(rows[1].hour, t(1, 0));
     assert!((rows[1].cpu_avg - 10.0).abs() < 0.01);
+    assert_eq!((rows[1].gpu_avg, rows[1].gpu_memory_peak), (0.0, 0), "no GPU use is zero");
 }
 
 fn traffic_is_added_up_over_addresses_and_leaves_out_loopback_and_unattributed_programs<R: UsageSubject>(mut repo: R) {

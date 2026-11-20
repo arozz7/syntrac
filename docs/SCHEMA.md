@@ -180,7 +180,7 @@ A folder expectation (F2) is an `expectations` row whose `subject` is `folder:<i
 
 ## What a usage rule measured (v15)
 
-`findings.level` (migration v15, additive, nullable): for the usage rules (F3), how much was measured: a share of the whole machine for CPU, bytes for memory and for
+`findings.level` (migration v15, additive, nullable): for the usage rules (F3, G2), how much was measured: a share of the whole machine for CPU, a share of ONE GPU engine for the GPU (subject ending `|gpu`), bytes for memory, GPU memory (`|gpu_memory`) and for
 bytes sent or received. NULL for every other kind of finding. "Raise the limit to this level" stores it as the `ceiling` of an expectation; a later finding of the same
 subject is raised again only when it measured MORE than the ceiling. The usage rules read the hourly rollups (`rollup_process_hour`, `rollup_traffic_hour`) and write nothing of their own.
 

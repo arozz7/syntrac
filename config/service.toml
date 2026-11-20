@@ -95,3 +95,6 @@ usage_min_active_hours = 48
 usage_cpu_floor_percent = 0.0
 usage_memory_floor_mb = 500
 usage_net_floor_mb = 100
+# GPU (G2): a share of ONE GPU engine (what Task Manager shows), never scaled by cores; 1 to 100. Memory is MB above the program's highest peak.
+usage_gpu_floor_percent = 20.0
+usage_gpu_memory_floor_mb = 500

@@ -349,6 +349,14 @@ describe('Findings: what you told SYNTRAC is expected', () => {
                   note: null,
                   ceiling: 3 * 1024 ** 2,
                 }),
+                expectationRow({ id: 9, kind: 'usage', subject: 'c:\\apps\\c.exe|gpu', note: null, ceiling: 45 }),
+                expectationRow({
+                  id: 10,
+                  kind: 'usage',
+                  subject: 'c:\\apps\\d.exe|gpu_memory',
+                  note: null,
+                  ceiling: 2 * 1024 ** 3,
+                }),
               ],
             }),
           ),
@@ -358,6 +366,9 @@ describe('Findings: what you told SYNTRAC is expected', () => {
 
     expect(await screen.findByText('Up to 40.0%')).toBeTruthy();
     expect(screen.getByText('Up to 3.0 MB')).toBeTruthy();
+    // A GPU level is a share of one engine, not bytes (it must never read "45 B"), and GPU memory is bytes.
+    expect(screen.getByText('Up to 45.0% of one GPU engine')).toBeTruthy();
+    expect(screen.getByText('Up to 2.0 GB')).toBeTruthy();
   });
 
   it('says how wide a folder expectation is, and warns when the folder is one anything can be copied into', async () => {

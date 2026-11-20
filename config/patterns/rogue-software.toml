@@ -17,10 +17,12 @@
 #   entry_kind_is           (start entries only) service_auto, task, run_key, run_once, startup_folder
 #   parent_is               (process_start only) the file name of the program that started it equals one of these
 #   first_network_use       the program had no network sighting before detection was switched on and has one now
+#   sustained_gpu           (program only) its hourly GPU average was at least `percent` in EACH of the last `hours` completed hours in a row
+#                           (a share of its busiest GPU engine, not of the machine; a missing hour counts as zero): { percent = 30, hours = 3 }
 # applies_to: program, start_entry, or process_start (a program started by another; needs parent_is and name_is)
 # raise_if_concerning = true lifts the tier to "suspicious" when the program is unsigned or untrusted in a place users can write.
 
-version = "2026.11.2"
+version = "2026.11.3"
 
 [[pattern]]
 id = "system_name_outside_windows"
@@ -174,3 +176,22 @@ benign = "An update, an installer or a script you ran yourself. Each of these he
 [pattern.when]
 name_is = ["powershell.exe", "pwsh.exe", "wscript.exe", "cscript.exe", "mshta.exe", "regsvr32.exe", "rundll32.exe", "certutil.exe", "bitsadmin.exe", "msiexec.exe"]
 first_network_use = true
+
+# ---- G2: a program that keeps the GPU busy
+# "sustained_gpu" reads the hourly rollups of the GPU (a share of the program's busiest GPU engine, what Task Manager shows). It needs no
+# history of the program, so it can judge a brand-new one: the usage rule cannot (it needs 48 active GPU hours of a program's own).
+# The tier is unusual and NOT lifted: being unsigned in a user-writable folder is already part of the condition, so lifting would make
+# every match suspicious (and toasts only come for suspicious findings). Mark a program you run on purpose (local AI, a render tool) expected.
+
+[[pattern]]
+id = "unsigned_program_keeps_gpu_busy"
+title = "An unsigned program in a user-writable folder keeps the GPU busy"
+technique = "T1496.001"
+tier = "unusual"
+applies_to = "program"
+why = "It is not validly signed, it runs from a folder any user can write, and it kept a GPU engine at least 30% busy in each of the last three hours."
+benign = "A game, a video or 3D tool, a local AI tool or a program you built yourself. Cryptocurrency miners look the same. If you know it, mark it expected."
+[pattern.when]
+signature_is = ["unsigned", "untrusted", "altered"]
+location_is = ["user_profile", "temporary", "program_data", "network"]
+sustained_gpu = { percent = 30, hours = 3 }

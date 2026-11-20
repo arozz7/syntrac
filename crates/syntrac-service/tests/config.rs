@@ -169,3 +169,28 @@ fn launch_records_are_on_every_ten_minutes_by_default_and_the_interval_must_be_p
     assert!(ServiceConfig::from_toml_str("launch_interval_minutes = 0").is_err());
     assert!(!ServiceConfig::from_toml_str("launch_enabled = false").unwrap().launch_enabled);
 }
+
+#[test]
+fn gpu_use_is_recorded_by_default_and_can_be_switched_off() {
+    assert!(ServiceConfig::from_toml_str("").unwrap().gpu_metrics_enabled);
+    assert!(!ServiceConfig::from_toml_str("gpu_metrics_enabled = false").unwrap().gpu_metrics_enabled);
+}
+
+#[test]
+fn the_gpu_usage_floors_have_defaults_and_must_make_sense() {
+    let config = ServiceConfig::from_toml_str("").unwrap();
+    assert_eq!((config.usage_gpu_floor_percent, config.usage_gpu_memory_floor_mb), (20.0, 500));
+    let tuned =
+        ServiceConfig::from_toml_str("usage_gpu_floor_percent = 35.5\nusage_gpu_memory_floor_mb = 1000").unwrap();
+    assert_eq!((tuned.usage_gpu_floor_percent, tuned.usage_gpu_memory_floor_mb), (35.5, 1000));
+    // A share of one engine: zero would raise on any hint of use, more than a whole engine could never fire.
+    for bad in [
+        "usage_gpu_floor_percent = 0",
+        "usage_gpu_floor_percent = -5",
+        "usage_gpu_floor_percent = 100.5",
+        "usage_gpu_memory_floor_mb = 0",
+    ] {
+        assert!(ServiceConfig::from_toml_str(bad).is_err(), "{bad} must be rejected");
+    }
+    assert!(ServiceConfig::from_toml_str("usage_gpu_floor_percent = 100").is_ok());
+}

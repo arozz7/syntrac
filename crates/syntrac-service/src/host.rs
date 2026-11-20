@@ -407,6 +407,8 @@ fn detectors(database_path: &Path, config: &ServiceConfig) -> Vec<Box<dyn Detect
         },
         memory_floor_bytes: config.usage_memory_floor_mb.saturating_mul(1024 * 1024),
         net_floor_bytes: config.usage_net_floor_mb.saturating_mul(1024 * 1024),
+        gpu_floor_percent: config.usage_gpu_floor_percent,
+        gpu_memory_floor_bytes: config.usage_gpu_memory_floor_mb.saturating_mul(1024 * 1024),
         ..UsageSettings::default()
     };
     match SqliteStore::open(database_path) {

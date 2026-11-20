@@ -21,7 +21,7 @@ use syntrac_core::findings::Tier;
 use syntrac_core::{
     built_in_pack, cpu_floor_for_cores, parse_pack, pattern_candidates, Clock, DestinationTrendRepository, Detector,
     IdentityRepository, KnownProductRepository, LauncherRepository, NewThingsDetector, PatternFacts, SpawnRepository,
-    SystemClock, Timestamp, UsageDetector, UsageSettings, RECENT_DAYS,
+    SystemClock, Timestamp, UsageDetector, UsageRepository, UsageSettings, RECENT_DAYS,
 };
 use syntrac_store::SqliteStore;
 
@@ -90,6 +90,7 @@ fn main() {
         ..shipped
     };
     usage_replay("much more sensitive (comparison only)", &copy, now, replay_days, sensitive);
+    gpu_report(&copy, now);
     pattern_report(&copy, now);
     println!("\ncopy left at {}", copy.display());
 }
@@ -132,6 +133,9 @@ fn pattern_report(copy: &std::path::Path, now: Timestamp) {
     let launchers = store.all_launchers().expect("start entries");
     let since = Timestamp::from_micros(now.as_micros() - DAY_MICROS); // as if switched on yesterday: older things are "already here"
     let first_online = store.first_online_since(since).expect("first network use");
+    let gpu_hours = store
+        .process_hour_rows(Timestamp::from_micros(now.as_micros() - 28 * 3_600_000_000), now)
+        .expect("the hourly GPU use");
     let shipped = built_in_pack();
     let branches = parse_pack(START_ENTRY_BRANCHES).expect("rehearsal pack");
     println!("\nknown patterns (pack {}), {} program(s) in the copy", shipped.version, entries.len());
@@ -159,6 +163,7 @@ fn pattern_report(copy: &std::path::Path, now: Timestamp) {
                     launchers: &launchers,
                     first_online: &first_online,
                     spawns: &spawns,
+                    gpu_hours: &gpu_hours,
                 },
             );
             let mut by_kind: BTreeMap<(&str, &str), usize> = BTreeMap::new();
@@ -216,4 +221,31 @@ fn usage_replay(label: &str, copy: &std::path::Path, now: Timestamp, days: i64, 
     for (_, title, why) in raised.values().take(8) {
         println!("  {title} -- {why}");
     }
+}
+
+/// GPU use (docs/ALERTS-PLAN.md, slice G): how much history there is for the rules to judge. A database made before the GPU was
+/// recorded has none, and then the GPU rules cannot be judged on this data: this says so instead of printing zeros that look like a result.
+fn gpu_report(copy: &std::path::Path, now: Timestamp) {
+    let store = SqliteStore::open(copy).expect("open the copy");
+    let from = Timestamp::from_micros(now.as_micros() - 14 * DAY_MICROS);
+    let rows = store.process_hour_rows(from, now).expect("the hourly rows");
+    let mut active_hours: BTreeMap<&str, usize> = BTreeMap::new();
+    for row in rows.iter().filter(|row| row.gpu_avg > 0.0 || row.gpu_memory_peak > 0) {
+        *active_hours.entry(row.exe.key.as_str()).or_default() += 1;
+    }
+    let busy = rows.iter().filter(|row| row.gpu_avg >= 30.0).count();
+    println!("\nGPU use, last 14 days of hourly rows ({} program-hour rows in all):", rows.len());
+    if active_hours.is_empty() {
+        println!(
+            "  no GPU history yet: no hour of this copy has GPU use recorded (it was made before the GPU was recorded, or the counters are not available).\n  \
+             The GPU usage rule and the GPU pattern cannot be judged on this data; run this again after about two weeks of capture."
+        );
+        return;
+    }
+    let judgeable = active_hours.values().filter(|hours| **hours >= 48).count();
+    println!(
+        "  {} program(s) with GPU use in at least one hour; {} with 48 or more active GPU hours (the usage rule can judge them); {busy} program-hour(s) at 30% or more of one engine",
+        active_hours.len(),
+        judgeable
+    );
 }

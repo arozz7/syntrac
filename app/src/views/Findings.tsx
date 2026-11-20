@@ -53,7 +53,14 @@ function kindLabel(kind: string): string {
 /** What a raised limit allows, in the unit of what the rule measures (the end of the subject says which). */
 function ceilingText(expectation: ExpectationView): string {
   const ceiling = expectation.ceiling ?? 0;
-  return expectation.subject.endsWith('|cpu') ? `Up to ${ceiling.toFixed(1)}%` : `Up to ${formatBytes(ceiling)}`;
+  if (expectation.subject.endsWith('|cpu')) {
+    return `Up to ${ceiling.toFixed(1)}%`;
+  }
+  // The GPU figure is a share of the program's busiest engine, not of the machine.
+  if (expectation.subject.endsWith('|gpu')) {
+    return `Up to ${ceiling.toFixed(1)}% of one GPU engine`;
+  }
+  return `Up to ${formatBytes(ceiling)}`;
 }
 
 function DetectionNote({ detection }: { detection: DetectionView | null }) {

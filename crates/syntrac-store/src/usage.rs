@@ -14,7 +14,7 @@ impl UsageRepository for SqliteStore {
         let mut statement = self
             .conn
             .prepare(
-                "SELECT r.hour_start, e.path_key, e.path, r.cpu_avg, r.memory_peak
+                "SELECT r.hour_start, e.path_key, e.path, r.cpu_avg, r.memory_peak, r.gpu_avg, r.gpu_memory_peak
                  FROM rollup_process_hour r JOIN executables e ON e.id = r.exe_id
                  WHERE e.id <> 1 AND r.hour_start >= ?1 AND r.hour_start <= ?2",
             )
@@ -27,6 +27,8 @@ impl UsageRepository for SqliteStore {
                 exe: Executable { key: row.get(1).map_err(backend)?, path: row.get(2).map_err(backend)? },
                 cpu_avg: row.get(3).map_err(backend)?,
                 memory_peak: to_u64(row.get(4).map_err(backend)?),
+                gpu_avg: row.get(5).map_err(backend)?,
+                gpu_memory_peak: to_u64(row.get(6).map_err(backend)?),
             });
         }
         Ok(found)

@@ -88,6 +88,10 @@ pub struct ServiceConfig {
     pub usage_memory_floor_mb: u64,
     /// Usage rules: bytes sent or received in an hour must be at least this many MB.
     pub usage_net_floor_mb: u64,
+    /// Usage rules (G2): the GPU (a share of ONE engine, never scaled by cores) must be at least this many percent, 1 to 100.
+    pub usage_gpu_floor_percent: f64,
+    /// Usage rules (G2): GPU memory must be at least this many MB above the program's highest peak.
+    pub usage_gpu_memory_floor_mb: u64,
     /// Whether the service may ever download the owner dataset (docs/OWNER-PLAN.md). The download itself still happens only when
     /// the user asks for it in the app; `false` makes the service refuse even then. The only network use SYNTRAC has.
     pub owner_data_allowed: bool,
@@ -136,6 +140,8 @@ impl Default for ServiceConfig {
             usage_cpu_floor_percent: 0.0,
             usage_memory_floor_mb: 500,
             usage_net_floor_mb: 100,
+            usage_gpu_floor_percent: 20.0,
+            usage_gpu_memory_floor_mb: 500,
             owner_data_allowed: true,
             status_interval_secs: 30,
             etw_silent_restart_secs: 180,
@@ -176,6 +182,7 @@ impl ServiceConfig {
             (self.usage_min_active_hours as u64, "usage_min_active_hours"),
             (self.usage_memory_floor_mb, "usage_memory_floor_mb"),
             (self.usage_net_floor_mb, "usage_net_floor_mb"),
+            (self.usage_gpu_memory_floor_mb, "usage_gpu_memory_floor_mb"),
             (self.top_processes as u64, "top_processes"),
             (self.status_interval_secs, "status_interval_secs"),
             (self.etw_silent_restart_secs, "etw_silent_restart_secs"),
@@ -185,6 +192,9 @@ impl ServiceConfig {
         }
         if let Some((_, name)) = checks.iter().find(|(value, _)| *value == 0) {
             return Err(ConfigError::Invalid(format!("{name} must be greater than zero")));
+        }
+        if !(self.usage_gpu_floor_percent > 0.0 && self.usage_gpu_floor_percent <= 100.0) {
+            return Err(ConfigError::Invalid("usage_gpu_floor_percent must be above 0 and at most 100".to_owned()));
         }
         if self.hard_floor_free_gb >= self.min_free_space_gb {
             return Err(ConfigError::Invalid(format!(

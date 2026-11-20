@@ -29,3 +29,7 @@ Slice G1 of `docs/ALERTS-PLAN.md`, requested by the user on 2026-11-20 ("should 
 ## Not built here
 - G2 (usage rule for GPU, pattern `sustained_gpu`, backtest section): next slice.
 - Per-adapter temperature, power and clock speed: out of scope.
+
+## Verified after the build
+- A long-lived counter query DOES see processes that start after it was opened: in a 45-second run, new programs started at second 20 appeared in the next read (55 to 57 processes, 1,211 to 1,268 engine rows), and a fresh query at the end knew no process the long-lived one missed. So one query kept open is enough (`measure_gpu 45`).
+- Verified from a user session only. The service runs as SYSTEM: see "Not verified yet" in `phase-G2.md`.

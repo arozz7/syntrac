@@ -6,7 +6,7 @@
 //! pattern needs the file. Each pattern is one kind of finding (`pattern_<id>`), the subject is the program (or, for a start entry,
 //! the program and the entry), and the pack version is NOT part of the key, so updating the pack does not raise everything again.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::destination_trend::DestinationTrendRepository;
 use crate::exe_identity::{FileFacts, IdentityEntry, IdentityRepository};
@@ -16,11 +16,12 @@ use crate::findings_run::{DetectError, Detector};
 use crate::known::{KnownIndex, KnownProduct, KnownProductRepository, Standing};
 use crate::launchers::{LauncherRepository, LauncherSeen};
 use crate::new_things::{concerns, location_label, signature_line};
-use crate::patterns::{Pattern, PatternPack, Subject, When};
+use crate::patterns::{Pattern, PatternPack, Subject, SustainedGpu, When, MAX_SUSTAINED_HOURS};
 use crate::ports::RepoError;
 use crate::rollup::Executable;
 use crate::spawns::{SpawnPair, SpawnRepository};
 use crate::time::Timestamp;
+use crate::usage::{ProcessHourRow, UsageRepository, STALE_AFTER};
 
 /// Only programs seen running within this many days are judged.
 pub const RECENT_DAYS: i64 = 30;
@@ -29,6 +30,7 @@ pub const RECENT_DAYS: i64 = 30;
 pub const MAX_PER_PATTERN: usize = 50;
 
 const DAY_MICROS: i64 = 86_400 * 1_000_000;
+const HOUR_MICROS: i64 = 3_600 * 1_000_000;
 const MIN_NEAR_LEN: usize = 5;
 const PROGRAM_EXTENSIONS: [&str; 10] = ["exe", "scr", "com", "bat", "cmd", "pif", "js", "vbs", "msi", "jar"];
 const DOCUMENT_EXTENSIONS: [&str; 20] = [
@@ -52,6 +54,8 @@ pub struct PatternFacts<'a> {
     pub first_online: &'a [Executable],
     /// Which program started which, from the raw process rows (the detail retention).
     pub spawns: &'a [SpawnPair],
+    /// The programs' hourly GPU rows of the last completed hours (read only when a pattern asks for them).
+    pub gpu_hours: &'a [ProcessHourRow],
 }
 
 /// The number of single-character edits (change, add, remove, or swap two neighbours) between two names: optimal string
@@ -87,6 +91,10 @@ struct Target<'a> {
     entry: Option<&'a LauncherSeen>,
     spawn: Option<&'a SpawnPair>,
     first_online: bool,
+    /// The program's hourly GPU averages (hour start in microseconds), and the newest completed hour of all the data when it is
+    /// fresh enough to mean "the last hours" (`None` when the rollups have stopped).
+    gpu: Option<&'a BTreeMap<i64, f64>>,
+    gpu_latest: Option<i64>,
 }
 
 fn facts_of(entry: &IdentityEntry) -> Option<&FileFacts> {
@@ -126,6 +134,15 @@ fn direction_control(name: &str) -> Option<char> {
     name.chars().find(|c| DIRECTION_CONTROLS.contains(c))
 }
 
+/// The program's hourly GPU averages in each of the last `wanted.hours` completed hours (newest first), when EVERY one of them is at
+/// least `wanted.percent`. A missing hour counts as zero, so the hours must be consecutive; rollups that have stopped match nothing.
+fn sustained_gpu_hours(target: &Target<'_>, wanted: &SustainedGpu) -> Option<Vec<f64>> {
+    let (series, latest) = (target.gpu?, target.gpu_latest?);
+    (0..i64::from(wanted.hours))
+        .map(|back| series.get(&(latest - back * HOUR_MICROS)).copied().filter(|gpu| *gpu >= f64::from(wanted.percent)))
+        .collect()
+}
+
 fn holds(when: &When, target: &Target<'_>) -> bool {
     let lower = target.name.to_lowercase();
     let located = target.class != LocationClass::Unknown;
@@ -149,6 +166,7 @@ fn holds(when: &When, target: &Target<'_>) -> bool {
         && (when.parent_is.is_empty()
             || target.spawn.is_some_and(|spawn| when.parent_is.contains(&file_name(&spawn.parent.path).to_lowercase())))
         && (!when.first_network_use || target.first_online)
+        && when.sustained_gpu.is_none_or(|wanted| sustained_gpu_hours(target, &wanted).is_some())
 }
 
 fn candidate(pattern: &Pattern, pack: &PatternPack, target: &Target<'_>, now: Timestamp) -> Candidate {
@@ -173,6 +191,17 @@ fn candidate(pattern: &Pattern, pack: &PatternPack, target: &Target<'_>, now: Ti
     };
     evidence.push(format!("Location: {}", location_label(target.class)));
     evidence.push(signature_line(target.facts));
+    if let Some(wanted) = pattern.when.sustained_gpu {
+        if let Some(hours) = sustained_gpu_hours(target, &wanted) {
+            let list: Vec<String> = hours.iter().map(|gpu| format!("{gpu:.1}%")).collect();
+            evidence.push(format!(
+                "GPU use in each of the last {} hours (newest first): {}; the limit is {}% of one GPU engine (a share of its busiest engine, not of the machine)",
+                wanted.hours,
+                list.join(", "),
+                wanted.percent
+            ));
+        }
+    }
     if let Some(control) = direction_control(target.name) {
         evidence.push(format!("Its name contains the text-direction control character U+{:04X}", u32::from(control)));
     }
@@ -219,6 +248,18 @@ pub fn pattern_candidates(pack: &PatternPack, facts: &PatternFacts<'_>) -> Vec<C
 
     let online: HashSet<&str> = facts.first_online.iter().map(|exe| exe.key.as_str()).collect();
 
+    // "The last hours" only means something while the rollups keep up: older than the usage rule's limit, nothing matches.
+    let gpu_latest = facts
+        .gpu_hours
+        .iter()
+        .map(|row| row.hour.as_micros())
+        .max()
+        .filter(|latest| facts.now.as_micros() - latest <= STALE_AFTER);
+    let mut gpu_series: HashMap<&str, BTreeMap<i64, f64>> = HashMap::new();
+    for row in facts.gpu_hours {
+        gpu_series.entry(row.exe.key.as_str()).or_default().insert(row.hour.as_micros(), row.gpu_avg);
+    }
+
     let mut targets: Vec<(Subject, Target<'_>)> = Vec::new();
     for entry in facts.entries {
         let Some(seen) = entry.seen.filter(|seen| seen.last_seen >= recent_since) else { continue };
@@ -237,6 +278,8 @@ pub fn pattern_candidates(pack: &PatternPack, facts: &PatternFacts<'_>) -> Vec<C
                 entry: None,
                 spawn: None,
                 first_online: online.contains(entry.exe.key.as_str()),
+                gpu: gpu_series.get(entry.exe.key.as_str()),
+                gpu_latest,
             },
         ));
     }
@@ -257,6 +300,8 @@ pub fn pattern_candidates(pack: &PatternPack, facts: &PatternFacts<'_>) -> Vec<C
                     entry: Some(launcher),
                     spawn: None,
                     first_online: false,
+                    gpu: None,
+                    gpu_latest: None,
                 },
             ));
         }
@@ -273,6 +318,8 @@ pub fn pattern_candidates(pack: &PatternPack, facts: &PatternFacts<'_>) -> Vec<C
                 entry: None,
                 spawn: Some(spawn),
                 first_online: false,
+                gpu: None,
+                gpu_latest: None,
             },
         ));
     }
@@ -309,7 +356,12 @@ impl<R> PatternDetector<R> {
 
 impl<R> Detector for PatternDetector<R>
 where
-    R: IdentityRepository + LauncherRepository + KnownProductRepository + DestinationTrendRepository + SpawnRepository,
+    R: IdentityRepository
+        + LauncherRepository
+        + KnownProductRepository
+        + DestinationTrendRepository
+        + SpawnRepository
+        + UsageRepository,
 {
     fn name(&self) -> &'static str {
         "known patterns"
@@ -322,6 +374,13 @@ where
         // Only what the pack asks about is read: the process rows are the big table.
         let first_online = if self.pack.uses_first_network_use() {
             self.repo.first_online_since(since).map_err(failed("the first network use"))?
+        } else {
+            Vec::new()
+        };
+        // The hourly rows are read only when a pattern asks for the GPU: the last hours any pattern may ask about, plus a few.
+        let gpu_hours = if self.pack.uses_sustained_gpu() {
+            let from = Timestamp::from_micros(now.as_micros() - (i64::from(MAX_SUSTAINED_HOURS) + 4) * HOUR_MICROS);
+            self.repo.process_hour_rows(from, now).map_err(failed("the hourly GPU use"))?
         } else {
             Vec::new()
         };
@@ -340,6 +399,7 @@ where
                 launchers: &launchers,
                 first_online: &first_online,
                 spawns: &spawns,
+                gpu_hours: &gpu_hours,
             },
         ))
     }
