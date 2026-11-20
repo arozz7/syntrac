@@ -25,6 +25,8 @@ fn hour_row(start_secs: i64, cpu_avg: f64, memory_used: u64) -> SystemHour {
         net_received: 3_000,
         net_sent: 400,
         others_cpu_avg: 1.5,
+        gpu_avg: Some(20.0),
+        gpu_max: Some(35.0),
     }
 }
 
@@ -59,6 +61,7 @@ fn an_hour_row_becomes_percentages_and_millisecond_times() {
     assert_eq!((hour.net_received_bytes, hour.net_sent_bytes), (3_000, 400));
     assert_eq!((hour.disk_read_bytes, hour.disk_write_bytes), (11, 22));
     assert!((hour.others_cpu_avg_percent - 1.5).abs() < 1e-9);
+    assert_eq!((hour.gpu_avg_percent, hour.gpu_max_percent), (Some(20.0), Some(35.0)));
 }
 
 #[test]
@@ -142,4 +145,18 @@ fn the_backend_serves_history_from_a_real_database_and_reports_missing_ones() {
 
     let missing = Backend::new(settings(&dir.path().join("nope.db")), ManualClock::new(now()));
     assert!(matches!(missing.system_history(24 * 3600), Data::NoDatabase { .. }));
+}
+
+#[test]
+fn an_hour_without_gpu_counters_has_no_gpu_figures_not_zeros() {
+    let mut repo = InMemoryRepository::default();
+    repo.store_hour(&roll(
+        90 * HOUR,
+        Some(SystemHour { gpu_avg: None, gpu_max: None, ..hour_row(90 * HOUR, 1.0, 4_000) }),
+    ))
+    .unwrap();
+
+    let view = system_history(&repo, now(), 24 * 3600).unwrap();
+
+    assert_eq!((view.hours[0].gpu_avg_percent, view.hours[0].gpu_max_percent), (None, None));
 }

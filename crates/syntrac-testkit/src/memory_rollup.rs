@@ -135,6 +135,8 @@ impl RollupRepository for InMemoryRepository {
                     exe_path: self.exe_path_of(process.instance),
                     cpu_percent: process.cpu_percent,
                     memory_bytes: process.memory_bytes,
+                    gpu_percent: process.gpu_percent,
+                    gpu_memory_bytes: process.gpu_memory_bytes,
                 });
             }
         }
@@ -306,6 +308,8 @@ impl syntrac_core::TrendRepository for InMemoryRepository {
                 cpu_weighted: 0.0,
                 cpu_peak: 0.0,
                 memory_peak: 0,
+                gpu_peak: 0.0,
+                gpu_memory_peak: 0,
                 starts: 0,
             });
             totals.hours_present += 1;
@@ -313,6 +317,8 @@ impl syntrac_core::TrendRepository for InMemoryRepository {
             totals.cpu_weighted += row.cpu_avg * f64::from(system.samples);
             totals.cpu_peak = totals.cpu_peak.max(row.cpu_peak);
             totals.memory_peak = totals.memory_peak.max(row.memory_peak);
+            totals.gpu_peak = totals.gpu_peak.max(row.gpu_peak);
+            totals.gpu_memory_peak = totals.gpu_memory_peak.max(row.gpu_memory_peak);
             totals.starts += u64::from(row.starts);
         }
         Ok(by_key.into_values().collect())

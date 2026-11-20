@@ -184,6 +184,17 @@ A folder expectation (F2) is an `expectations` row whose `subject` is `folder:<i
 bytes sent or received. NULL for every other kind of finding. "Raise the limit to this level" stores it as the `ceiling` of an expectation; a later finding of the same
 subject is raised again only when it measured MORE than the ceiling. The usage rules read the hourly rollups (`rollup_process_hour`, `rollup_traffic_hour`) and write nothing of their own.
 
+## GPU use per program (v16)
+
+Migration v16 (additive, `ALTER TABLE ... ADD COLUMN`, no backup needed) adds GPU columns to the metric and rollup tables (`docs/ALERTS-PLAN.md`, slice G1):
+`process_metrics.gpu_percent` and `gpu_memory`; `system_metrics.gpu_percent` (NULL = the GPU counters were not available), `others_gpu_percent` and `others_gpu_memory`;
+`rollup_system_hour.gpu_avg` and `gpu_max` (NULL when no sample of the hour had a reading); `rollup_process_hour.gpu_avg`, `gpu_peak` and `gpu_memory_peak`.
+
+The unit (`syntrac-core/src/gpu.rs`): a process's GPU figure is the share (0-100) of its BUSIEST ENGINE over all adapters, the way Task Manager shows it. It is a share of ONE engine,
+NOT of the whole machine, so it is never divided by a core count. Instances of one program are added per sample but never above 100. GPU memory is dedicated GPU memory added over adapters.
+Rows written before v16 keep 0 (programs) or NULL (system): "no GPU data", which is not an idle GPU. The per-sample list holds the top N by CPU plus up to five more that use the GPU
+(at least 1%), so a program heavy on the GPU and light on the CPU is named; the rest is summed in `others_*` (`others_gpu_percent` is the largest single value, memory the sum).
+
 ## Retention
 
 `Retention::purge_before(cutoff)` removes events, flows, metrics older than the cutoff, and ended processes that ended

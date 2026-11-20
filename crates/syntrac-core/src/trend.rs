@@ -18,6 +18,8 @@ pub enum ProgramMetric {
     Starts,
     /// Bytes sent plus received, not counting traffic to this machine itself.
     NetworkBytes,
+    /// The highest GPU share (of the busiest engine) in the range; see `gpu`.
+    GpuPeak,
 }
 
 /// One executable's process rollups, summed over a range. Only hours that also have a system row count (their samples are the
@@ -32,6 +34,9 @@ pub struct ProcessTotals {
     pub cpu_weighted: f64,
     pub cpu_peak: f64,
     pub memory_peak: u64,
+    /// The highest hourly GPU peak (a share of the busiest engine) and dedicated GPU memory peak.
+    pub gpu_peak: f64,
+    pub gpu_memory_peak: u64,
     pub starts: u64,
 }
 
@@ -65,6 +70,9 @@ pub struct ProgramSummary {
     pub cpu_avg_percent: f64,
     pub cpu_peak_percent: f64,
     pub memory_peak_bytes: u64,
+    /// The highest share of one GPU engine (see `gpu`) and the highest dedicated GPU memory; 0 also means "no GPU data".
+    pub gpu_peak_percent: f64,
+    pub gpu_memory_peak_bytes: u64,
     pub starts: u64,
     /// In how many hours the program was recorded among the heaviest processes.
     pub hours_present: u32,
@@ -83,6 +91,8 @@ impl ProgramSummary {
             cpu_avg_percent: 0.0,
             cpu_peak_percent: 0.0,
             memory_peak_bytes: 0,
+            gpu_peak_percent: 0.0,
+            gpu_memory_peak_bytes: 0,
             starts: 0,
             hours_present: 0,
             bytes_sent: 0,
@@ -98,6 +108,7 @@ impl ProgramSummary {
         match metric {
             ProgramMetric::CpuAverage => self.cpu_avg_percent,
             ProgramMetric::MemoryPeak => self.memory_peak_bytes as f64,
+            ProgramMetric::GpuPeak => self.gpu_peak_percent,
             ProgramMetric::Starts => self.starts as f64,
             ProgramMetric::NetworkBytes => self.bytes_sent.saturating_add(self.bytes_received) as f64,
         }
@@ -120,6 +131,8 @@ pub fn merge_programs(
         summary.cpu_avg_percent = if system_samples == 0 { 0.0 } else { totals.cpu_weighted / system_samples as f64 };
         summary.cpu_peak_percent = totals.cpu_peak;
         summary.memory_peak_bytes = totals.memory_peak;
+        summary.gpu_peak_percent = totals.gpu_peak;
+        summary.gpu_memory_peak_bytes = totals.gpu_memory_peak;
         summary.starts = totals.starts;
         summary.hours_present = totals.hours_present;
     }

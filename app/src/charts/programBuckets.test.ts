@@ -15,6 +15,9 @@ function hour(hourMs: number, overrides: Partial<ProgramHourView> = {}): Program
     cpuAvgPercent: 10,
     cpuPeakPercent: 30,
     memoryPeakBytes: 1000,
+    gpuAvgPercent: 0,
+    gpuPeakPercent: 0,
+    gpuMemoryPeakBytes: 0,
     starts: 1,
     ...overrides,
   };
@@ -69,5 +72,24 @@ describe('bucketProgramHours', () => {
 
   it('returns nothing for no data', () => {
     expect(bucketProgramHours([], 'day', utc)).toEqual([]);
+  });
+});
+
+describe('bucketProgramHours: the GPU', () => {
+  it('weights the GPU average by samples like the CPU, and keeps the highest peak and the highest memory', () => {
+    const start = 100 * DAY;
+    const buckets = bucketProgramHours(
+      [
+        hour(start, { samples: 300, gpuAvgPercent: 40, gpuPeakPercent: 55, gpuMemoryPeakBytes: 2000 }),
+        hour(start + HOUR, { samples: 100, gpuAvgPercent: 0, gpuPeakPercent: 10, gpuMemoryPeakBytes: 9000 }),
+      ],
+      'day',
+      utc,
+    );
+    const day = buckets[0]!;
+    if (day.gap) throw new Error('expected data');
+    expect(day.gpuAvg).toBeCloseTo(30, 9); // (40*300 + 0*100) / 400
+    expect(day.gpuMax).toBe(55);
+    expect(day.gpuMemoryPeak).toBe(9000);
   });
 });

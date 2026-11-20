@@ -7,7 +7,9 @@ use syntrac_core::{
     RollupRepository, TrendRepository,
 };
 
-use crate::fixtures::{metrics_sample, process_metric, process_started, EventFactory, BEACON_TARGET};
+use crate::fixtures::{
+    gpu_process_metric, metrics_sample, process_metric, process_started, with_gpu_reading, EventFactory, BEACON_TARGET,
+};
 use crate::rollup_contract::{flow_event, secs, settings, start_process, t, A_EXE, B_EXE, OTHER_TARGET};
 
 pub trait TrendSubject:
@@ -27,6 +29,8 @@ pub fn trend_contract<R: TrendSubject>(make: impl Fn() -> R) {
     starts_and_memory_rank_too(make());
     each_ranked_program_carries_its_permanent_first_and_last_seen(make());
     rankings_survive_the_purge_of_detail(make());
+    gpu_use_is_rolled_up_summarised_and_ranked(make());
+    an_hour_without_any_gpu_reading_has_no_gpu_system_figures(make());
 }
 
 /// A in hours 0 and 1: hour 0 has 3 samples (A at 6% in one of them), hour 1 has one sample (A at 8%).
@@ -144,4 +148,58 @@ fn rankings_survive_the_purge_of_detail<R: TrendSubject>(mut repo: R) {
     repo.purge_before(t(100, 0)).unwrap();
 
     assert_eq!(top_programs(&repo, t(0, 0), t(5, 0), ProgramMetric::CpuAverage, 10).unwrap(), before);
+}
+
+/// GPU use goes the whole way: raw samples, the hourly rollups, the totals of a range and the ranking (docs/ALERTS-PLAN.md, G1).
+fn gpu_use_is_rolled_up_summarised_and_ranked<R: TrendSubject>(mut repo: R) {
+    let a = start_process(&mut repo, 10, t(0, 0), A_EXE);
+    let b = start_process(&mut repo, 11, t(0, 1), B_EXE);
+    let sample = |at, a_gpu: (f32, u64), reading| {
+        with_gpu_reading(
+            metrics_sample(
+                at,
+                5.0,
+                vec![
+                    gpu_process_metric(10, Some(a.id), 1.0, a_gpu.0, a_gpu.1),
+                    gpu_process_metric(11, Some(b.id), 9.0, 0.0, 0),
+                ],
+                0.0,
+                0,
+            ),
+            reading,
+        )
+    };
+    // Hour 0: A at 40% then 20% of an engine (3 000 then 1 000 bytes of GPU memory), a third sample without a reading.
+    repo.append_metrics(&sample(secs(0, 10), (40.0, 3_000), Some(50.0))).unwrap();
+    repo.append_metrics(&sample(secs(0, 20), (20.0, 1_000), Some(30.0))).unwrap();
+    repo.append_metrics(&sample(secs(0, 30), (0.0, 0), None)).unwrap();
+    // Hour 1: A at 70%.
+    repo.append_metrics(&sample(secs(1, 10), (70.0, 500), Some(70.0))).unwrap();
+    roll_up_due(&mut repo, t(3, 0), &settings(10)).unwrap();
+
+    // The system hours: the average is over the samples that HAD a reading.
+    let hours = repo.system_hours(t(0, 0), t(1, 0)).unwrap();
+    assert!((hours[0].gpu_avg.unwrap() - 40.0).abs() < 1e-6, "{:?}", hours[0].gpu_avg);
+    assert!((hours[0].gpu_max.unwrap() - 50.0).abs() < 1e-6);
+    assert!((hours[1].gpu_max.unwrap() - 70.0).abs() < 1e-6);
+
+    // The program's hours: averaged over ALL of the hour's samples (the sample without a reading counts as zero).
+    let program_hours = repo.executable_hours(A_EXE, t(0, 0), t(1, 0)).unwrap();
+    assert!((program_hours[0].gpu_avg - 20.0).abs() < 1e-6, "(40 + 20 + 0) / 3, got {}", program_hours[0].gpu_avg);
+    assert!((program_hours[0].gpu_peak - 40.0).abs() < 1e-6);
+    assert_eq!(program_hours[0].gpu_memory_peak, 3_000);
+
+    // The totals of the range and the ranking.
+    let top = top_programs(&repo, t(0, 0), t(5, 0), ProgramMetric::GpuPeak, 10).unwrap();
+    assert_eq!(top[0].exe.as_ref().unwrap().path, A_EXE, "the GPU user is ranked first although B uses more CPU");
+    assert!((top[0].gpu_peak_percent - 70.0).abs() < 1e-6);
+    assert_eq!(top[0].gpu_memory_peak_bytes, 3_000);
+    assert_eq!(top.len(), 1, "a program that never used the GPU is not ranked by it");
+}
+
+fn an_hour_without_any_gpu_reading_has_no_gpu_system_figures<R: TrendSubject>(mut repo: R) {
+    repo.append_metrics(&metrics_sample(secs(0, 10), 5.0, vec![], 0.0, 0)).unwrap();
+    roll_up_due(&mut repo, t(3, 0), &settings(10)).unwrap();
+    let hours = repo.system_hours(t(0, 0), t(0, 0)).unwrap();
+    assert_eq!((hours[0].gpu_avg, hours[0].gpu_max), (None, None), "no counters is not an idle GPU");
 }

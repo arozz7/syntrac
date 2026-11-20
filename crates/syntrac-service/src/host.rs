@@ -12,6 +12,7 @@ use syntrac_collector::drive_space::DriveFreeSpace;
 use syntrac_collector::etw::EtwSource;
 use syntrac_collector::etw_stats::{EtwReport, EtwStats};
 use syntrac_collector::file_inspector::{InspectorSettings, WindowsFileInspector};
+use syntrac_collector::gpu_counters::PdhGpuSource;
 use syntrac_collector::install_registry::UninstallKeySource;
 use syntrac_collector::launch_env;
 use syntrac_collector::launch_registry::RunKeyLaunchSource;
@@ -146,7 +147,14 @@ pub fn run_host(
     };
     sources.push(Box::new(SnapshotSource::new(SystemClock)));
 
-    let metrics: Box<dyn MetricsSource> = Box::new(SysinfoMetricsSource::new(config.top_processes));
+    let mut sysinfo_metrics = SysinfoMetricsSource::new(config.top_processes);
+    if config.gpu_metrics_enabled {
+        match PdhGpuSource::open() {
+            Some(gpu) => sysinfo_metrics = sysinfo_metrics.with_gpu(Box::new(gpu)),
+            None => warn!("The GPU counters are not available on this machine: GPU use will not be recorded"),
+        }
+    }
+    let metrics: Box<dyn MetricsSource> = Box::new(sysinfo_metrics);
     let settings = CollectorSettings {
         flow_window: Duration::from_secs(config.flow_window_secs),
         flow_flush_grace: Duration::from_secs(config.flow_flush_grace_secs),

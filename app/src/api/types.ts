@@ -120,6 +120,9 @@ export interface SystemHourView {
   diskReadBytes: number;
   diskWriteBytes: number;
   othersCpuAvgPercent: number;
+  /** The busiest GPU engine (a share of ONE engine, not of the machine), averaged over the hour; null when the GPU counters were not available. */
+  gpuAvgPercent: number | null;
+  gpuMaxPercent: number | null;
 }
 
 export interface SystemHistoryView {
@@ -131,7 +134,7 @@ export interface SystemHistoryView {
   hours: SystemHourView[];
 }
 
-export type ProgramMetric = 'cpu' | 'memory' | 'starts' | 'network';
+export type ProgramMetric = 'cpu' | 'memory' | 'starts' | 'network' | 'gpu';
 
 /** Where a program runs from, as the backend classifies the path. */
 export type LocationClass =
@@ -275,6 +278,9 @@ export interface ProgramRowView {
   cpuAvgPercent: number;
   cpuPeakPercent: number;
   memoryPeakBytes: number;
+  /** The highest share of ONE GPU engine (not of the machine) and the highest dedicated GPU memory; 0 also means "no GPU data". */
+  gpuPeakPercent: number;
+  gpuMemoryPeakBytes: number;
   starts: number;
   /** In how many hours the program was recorded among the heaviest processes (out of `hoursInRange`). */
   hoursPresent: number;
@@ -306,6 +312,10 @@ export interface ProgramHourView {
   cpuAvgPercent: number;
   cpuPeakPercent: number;
   memoryPeakBytes: number;
+  /** GPU as a share of ONE engine: the hour's average over all samples, its peak, and the peak of dedicated GPU memory. */
+  gpuAvgPercent: number;
+  gpuPeakPercent: number;
+  gpuMemoryPeakBytes: number;
   starts: number;
 }
 

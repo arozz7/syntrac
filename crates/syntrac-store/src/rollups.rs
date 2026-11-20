@@ -71,8 +71,8 @@ fn insert_rows(tx: &Transaction<'_>, rollup: &HourRollup, ids: &mut HashMap<Stri
     if let Some(s) = &rollup.system {
         tx.execute(
             "INSERT INTO rollup_system_hour (hour_start, samples, cpu_avg, cpu_max, memory_used_avg, memory_used_max,
-                 memory_total, disk_read, disk_write, net_received, net_sent, others_cpu_avg)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                 memory_total, disk_read, disk_write, net_received, net_sent, others_cpu_avg, gpu_avg, gpu_max)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 hour,
                 s.samples,
@@ -85,7 +85,9 @@ fn insert_rows(tx: &Transaction<'_>, rollup: &HourRollup, ids: &mut HashMap<Stri
                 to_i64(s.disk_write),
                 to_i64(s.net_received),
                 to_i64(s.net_sent),
-                s.others_cpu_avg
+                s.others_cpu_avg,
+                s.gpu_avg,
+                s.gpu_max
             ],
         )
         .map_err(backend)?;
@@ -94,8 +96,8 @@ fn insert_rows(tx: &Transaction<'_>, rollup: &HourRollup, ids: &mut HashMap<Stri
         let exe_id = executable_id(tx, ids, p.exe.as_ref())?;
         tx.execute(
             "INSERT INTO rollup_process_hour (hour_start, exe_id, samples_present, cpu_avg, cpu_peak, memory_peak, starts,
-                 first_seen, last_seen)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                 first_seen, last_seen, gpu_avg, gpu_peak, gpu_memory_peak)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 hour,
                 exe_id,
@@ -105,7 +107,10 @@ fn insert_rows(tx: &Transaction<'_>, rollup: &HourRollup, ids: &mut HashMap<Stri
                 to_i64(p.memory_peak),
                 p.starts,
                 p.first_seen.as_micros(),
-                p.last_seen.as_micros()
+                p.last_seen.as_micros(),
+                p.gpu_avg,
+                p.gpu_peak,
+                to_i64(p.gpu_memory_peak)
             ],
         )
         .map_err(backend)?;
@@ -203,7 +208,7 @@ impl RollupRepository for SqliteStore {
             .conn
             .prepare(
                 "SELECT ts, cpu_percent, memory_used, memory_total, disk_read, disk_write, net_received, net_sent,
-                        others_count, others_cpu, others_memory
+                        others_count, others_cpu, others_memory, gpu_percent, others_gpu_percent, others_gpu_memory
                  FROM system_metrics WHERE ts >= ?1 AND ts < ?2 ORDER BY ts",
             )
             .map_err(backend)?;
@@ -219,11 +224,14 @@ impl RollupRepository for SqliteStore {
                     disk_write_bytes: to_u64(row.get(5).map_err(backend)?),
                     net_received_bytes: to_u64(row.get(6).map_err(backend)?),
                     net_sent_bytes: to_u64(row.get(7).map_err(backend)?),
+                    gpu_percent: row.get(11).map_err(backend)?,
                 },
                 others: OtherProcesses {
                     process_count: row.get(8).map_err(backend)?,
                     cpu_percent: row.get(9).map_err(backend)?,
                     memory_bytes: to_u64(row.get(10).map_err(backend)?),
+                    gpu_percent: row.get(12).map_err(backend)?,
+                    gpu_memory_bytes: to_u64(row.get(13).map_err(backend)?),
                 },
             });
         }
@@ -232,7 +240,7 @@ impl RollupRepository for SqliteStore {
         let mut statement = self
             .conn
             .prepare(
-                "SELECT m.ts, p.image_path, m.cpu_percent, m.memory_bytes
+                "SELECT m.ts, p.image_path, m.cpu_percent, m.memory_bytes, m.gpu_percent, m.gpu_memory
                  FROM process_metrics m LEFT JOIN processes p ON p.id = m.instance
                  WHERE m.ts >= ?1 AND m.ts < ?2",
             )
@@ -244,6 +252,8 @@ impl RollupRepository for SqliteStore {
                 exe_path: row.get(1).map_err(backend)?,
                 cpu_percent: row.get(2).map_err(backend)?,
                 memory_bytes: to_u64(row.get(3).map_err(backend)?),
+                gpu_percent: row.get(4).map_err(backend)?,
+                gpu_memory_bytes: to_u64(row.get(5).map_err(backend)?),
             });
         }
 
@@ -311,7 +321,7 @@ impl RollupRepository for SqliteStore {
             .conn
             .prepare(
                 "SELECT hour_start, samples, cpu_avg, cpu_max, memory_used_avg, memory_used_max, memory_total, disk_read,
-                        disk_write, net_received, net_sent, others_cpu_avg
+                        disk_write, net_received, net_sent, others_cpu_avg, gpu_avg, gpu_max
                  FROM rollup_system_hour WHERE hour_start >= ?1 AND hour_start <= ?2 ORDER BY hour_start",
             )
             .map_err(backend)?;
@@ -331,6 +341,8 @@ impl RollupRepository for SqliteStore {
                 net_received: to_u64(row.get(9).map_err(backend)?),
                 net_sent: to_u64(row.get(10).map_err(backend)?),
                 others_cpu_avg: row.get(11).map_err(backend)?,
+                gpu_avg: row.get(12).map_err(backend)?,
+                gpu_max: row.get(13).map_err(backend)?,
             });
         }
         Ok(hours)
@@ -342,7 +354,7 @@ impl RollupRepository for SqliteStore {
             .conn
             .prepare(
                 "SELECT r.hour_start, e.id, e.path_key, e.path, r.samples_present, r.cpu_avg, r.cpu_peak, r.memory_peak,
-                        r.starts, r.first_seen, r.last_seen
+                        r.starts, r.first_seen, r.last_seen, r.gpu_avg, r.gpu_peak, r.gpu_memory_peak
                  FROM rollup_process_hour r JOIN executables e ON e.id = r.exe_id
                  WHERE e.path_key = ?1 AND r.hour_start >= ?2 AND r.hour_start <= ?3
                  ORDER BY r.hour_start",
@@ -362,6 +374,9 @@ impl RollupRepository for SqliteStore {
                 cpu_avg: row.get(5).map_err(backend)?,
                 cpu_peak: row.get(6).map_err(backend)?,
                 memory_peak: to_u64(row.get(7).map_err(backend)?),
+                gpu_avg: row.get(11).map_err(backend)?,
+                gpu_peak: row.get(12).map_err(backend)?,
+                gpu_memory_peak: to_u64(row.get(13).map_err(backend)?),
                 starts: row.get(8).map_err(backend)?,
                 first_seen: ts(row, 9)?,
                 last_seen: ts(row, 10)?,

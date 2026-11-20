@@ -98,6 +98,7 @@ describe('ProgramsHistory', () => {
     show();
     await screen.findByText('chrome.exe');
     expect(screen.getByText(/25 busiest processes/i)).toBeTruthy();
+    expect(screen.getByText(/five busiest on the GPU/i)).toBeTruthy();
     expect(screen.getByText(/counts those times as zero/i)).toBeTruthy();
     expect(screen.getByText(/excludes traffic to this machine itself/i)).toBeTruthy();
   });
@@ -142,5 +143,68 @@ describe('ProgramsHistory', () => {
     );
     await userEvent.click(await screen.findByRole('button', { name: /chrome\.exe/ }));
     expect(await screen.findByText('2026-11-12 09:05')).toBeTruthy();
+  });
+});
+
+describe('ProgramsHistory: the GPU', () => {
+  it('shows the GPU peak and the GPU memory peak of each program', async () => {
+    show(
+      makeFakeApi({
+        topPrograms: vi.fn(async () => ({
+          state: 'ok' as const,
+          data: programsView({ programs: [programRow({ gpuPeakPercent: 87.5, gpuMemoryPeakBytes: 2 * 1024 ** 3 })] }),
+        })),
+      }),
+    );
+    const row = (await screen.findByText('chrome.exe')).closest('tr')!;
+    expect(within(row).getByText('87.5%')).toBeTruthy();
+    expect(within(row).getByText('2.0 GB')).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: /GPU peak/ })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: /GPU memory peak/ })).toBeTruthy();
+  });
+
+  it('ranks by the GPU when GPU is chosen and says what the figure is a share of', async () => {
+    const api = show();
+    await screen.findByText('chrome.exe');
+
+    await userEvent.click(screen.getByRole('button', { name: 'GPU' }));
+
+    await waitFor(() => expect(api.topPrograms).toHaveBeenLastCalledWith(7 * 24 * 3600, 'gpu', undefined, false));
+    expect(await screen.findByText(/busiest GPU engine/i)).toBeTruthy();
+  });
+
+  it('explains an empty GPU ranking in words about the GPU', async () => {
+    const api = makeFakeApi({
+      topPrograms: vi.fn(async (_range: number, metric: string) => ({
+        state: 'ok' as const,
+        data: metric === 'gpu' ? programsView({ programs: [] }) : programsView(),
+      })),
+    });
+    show(api);
+    await screen.findByText('chrome.exe');
+
+    await userEvent.click(screen.getByRole('button', { name: 'GPU' }));
+
+    expect(await screen.findByText(/no program used the GPU/i)).toBeTruthy();
+  });
+
+  it('shows the GPU facts and chart of a program that used the GPU, and none for one that did not', async () => {
+    const hours = programHistoryView().hours.map((hour, index) =>
+      index === 0 ? { ...hour, gpuAvgPercent: 30, gpuPeakPercent: 64, gpuMemoryPeakBytes: 3 * 1024 ** 3 } : hour,
+    );
+    const used = makeFakeApi({
+      programHistory: vi.fn(async () => ({ state: 'ok' as const, data: programHistoryView({ hours }) })),
+    });
+    show(used);
+    await userEvent.click(await screen.findByRole('button', { name: /chrome\.exe/ }));
+    expect(await screen.findByLabelText('Program GPU over time')).toBeTruthy();
+    expect(screen.getByText('64.0%')).toBeTruthy();
+    expect(screen.getByText('3.0 GB')).toBeTruthy();
+    cleanup();
+
+    show();
+    await userEvent.click(await screen.findByRole('button', { name: /chrome\.exe/ }));
+    await screen.findByLabelText('Program CPU over time');
+    expect(screen.queryByLabelText('Program GPU over time')).toBeNull();
   });
 });

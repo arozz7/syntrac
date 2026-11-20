@@ -15,7 +15,10 @@ drain_interval_ms = 500
 
 # Resource sampling.
 metrics_interval_secs = 5
-top_processes = 25            # heaviest processes recorded individually per sample; the rest are summed
+top_processes = 25            # heaviest processes recorded individually per sample; the rest are summed (plus up to 5 more that use the GPU)
+# GPU use per program (docs/ALERTS-PLAN.md, G1): each sample also reads the Windows GPU counters (a share of the busiest GPU engine and the dedicated
+# GPU memory per program). Passive and local; a machine without the counters records "not available". About 2 ms per sample.
+gpu_metrics_enabled = true
 
 # Retention: detail (events, flows, per-process samples) older than this is removed, checked every purge_interval_minutes,
 # but ONLY once it has been rolled up into the permanent hourly summaries. (The old name retention_days still works.)

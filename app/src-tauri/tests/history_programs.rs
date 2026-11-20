@@ -8,7 +8,7 @@ use syntrac_app_lib::settings::AppSettings;
 use syntrac_core::{roll_up_due, EventRepository, MetricsRepository, ProcessRepository, RollupSettings, Timestamp};
 use syntrac_store::SqliteStore;
 use syntrac_testkit::fixtures::{
-    at_secs, metrics_sample, net_flow, process_metric, running_process, EventFactory, BEACON_TARGET,
+    at_secs, gpu_process_metric, metrics_sample, net_flow, process_metric, running_process, EventFactory, BEACON_TARGET,
 };
 use syntrac_testkit::{InMemoryRepository, ManualClock};
 
@@ -209,4 +209,65 @@ fn a_newly_rolled_up_hour_shows_up_even_though_the_sums_of_a_range_are_kept() {
     }
 
     assert_eq!(names(&backend, ProgramMetricParam::Cpu)[0], "late.exe", "the new hour is not hidden by kept sums");
+}
+
+// ---- GPU (docs/ALERTS-PLAN.md, slice G1)
+
+/// Chrome uses the GPU (55% of an engine in one sample, 30% in another); Code is busy on the CPU and never touches the GPU.
+fn gpu_scenario<R: ProcessRepository + MetricsRepository + EventRepository + syntrac_core::RollupRepository>(
+    repo: &mut R,
+) {
+    let chrome = start(repo, 10, secs(0, 0), CHROME);
+    let code = start(repo, 11, secs(0, 0), CODE);
+    repo.append_metrics(&metrics_sample(
+        secs(0, 10),
+        30.0,
+        vec![gpu_process_metric(10, Some(chrome.id), 1.0, 55.0, 2_000), process_metric(11, Some(code.id), 9.0)],
+        0.0,
+        0,
+    ))
+    .unwrap();
+    repo.append_metrics(&metrics_sample(
+        secs(0, 20),
+        30.0,
+        vec![gpu_process_metric(10, Some(chrome.id), 1.0, 30.0, 4_000), process_metric(11, Some(code.id), 9.0)],
+        0.0,
+        0,
+    ))
+    .unwrap();
+    let settings = RollupSettings { settle: std::time::Duration::from_secs(300), max_hours_per_pass: 10 };
+    roll_up_due(repo, at_secs(secs(5, 0)), &settings).unwrap();
+}
+
+#[test]
+fn the_metric_word_gpu_ranks_by_the_highest_gpu_share_and_carries_the_gpu_columns() {
+    let parsed: ProgramMetricParam = serde_json::from_str("\"gpu\"").unwrap();
+    assert_eq!(parsed, ProgramMetricParam::Gpu);
+
+    let mut repo = InMemoryRepository::default();
+    gpu_scenario(&mut repo);
+    let view = program_ranking(&repo, now(), 7 * 24 * 3600, ProgramMetricParam::Gpu, 10, Grouping::None).unwrap();
+
+    assert_eq!(view.programs.len(), 1, "only a program that used the GPU is ranked by it");
+    let chrome = &view.programs[0];
+    assert_eq!(chrome.name, "chrome.exe");
+    assert!((chrome.gpu_peak_percent - 55.0).abs() < 1e-6);
+    assert_eq!(chrome.gpu_memory_peak_bytes, 4_000);
+    // The same columns are on every row of any ranking: by CPU, Code (no GPU) shows zeros.
+    let by_cpu = program_ranking(&repo, now(), 7 * 24 * 3600, ProgramMetricParam::Cpu, 10, Grouping::None).unwrap();
+    let code = by_cpu.programs.iter().find(|p| p.name == "code.exe").unwrap();
+    assert_eq!((code.gpu_peak_percent, code.gpu_memory_peak_bytes), (0.0, 0));
+}
+
+#[test]
+fn one_programs_hours_carry_its_gpu_average_peak_and_memory() {
+    let mut repo = InMemoryRepository::default();
+    gpu_scenario(&mut repo);
+
+    let view = program_history(&repo, now(), 7 * 24 * 3600, CHROME).unwrap();
+
+    let hour = &view.hours[0];
+    assert!((hour.gpu_avg_percent - 42.5).abs() < 1e-6, "(55 + 30) / 2 samples, got {}", hour.gpu_avg_percent);
+    assert!((hour.gpu_peak_percent - 55.0).abs() < 1e-6);
+    assert_eq!(hour.gpu_memory_peak_bytes, 4_000);
 }

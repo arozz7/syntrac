@@ -26,6 +26,8 @@ mod migration_v14_tests;
 #[cfg(test)]
 mod migration_v15_tests;
 #[cfg(test)]
+mod migration_v16_tests;
+#[cfg(test)]
 mod migration_v4_tests;
 #[cfg(test)]
 mod migration_v5_tests;

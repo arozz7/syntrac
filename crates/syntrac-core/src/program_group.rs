@@ -65,6 +65,8 @@ fn merge(members: &[ProgramSummary]) -> ProgramSummary {
         merged.cpu_avg_percent += member.cpu_avg_percent;
         merged.cpu_peak_percent = merged.cpu_peak_percent.max(member.cpu_peak_percent);
         merged.memory_peak_bytes = merged.memory_peak_bytes.max(member.memory_peak_bytes);
+        merged.gpu_peak_percent = merged.gpu_peak_percent.max(member.gpu_peak_percent);
+        merged.gpu_memory_peak_bytes = merged.gpu_memory_peak_bytes.max(member.gpu_memory_peak_bytes);
         merged.starts = merged.starts.saturating_add(member.starts);
         merged.hours_present = merged.hours_present.max(member.hours_present);
         merged.bytes_sent = merged.bytes_sent.saturating_add(member.bytes_sent);

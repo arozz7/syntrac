@@ -15,6 +15,8 @@ fn process(name: &str, cpu_weighted: f64, memory_peak: u64, starts: u64) -> Proc
         cpu_weighted,
         cpu_peak: cpu_weighted / 100.0 * 2.0,
         memory_peak,
+        gpu_peak: 0.0,
+        gpu_memory_peak: 0,
         starts,
     }
 }

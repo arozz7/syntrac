@@ -250,6 +250,7 @@ decides what they mean (using values captured from real traces).
 | `etw` (Kernel-Process, Kernel-Network, DNS-Client) | `etw_map`, `paths` | Bounded channel + `try_send`; drops and parse errors are counted. A stale trace session from a crashed run is stopped at start. Kernel-Process uses keyword mask `0x10` |
 | `snapshot` (processes via Toolhelp, TCP table via IP Helper) | `snapshot_map` | Stamped with the time the snapshot BEGAN; `ProcessObserved`, not `ProcessStarted` |
 | `sysmetrics` (`sysinfo`) | `metrics_build` | One CPU unit: share of the WHOLE machine |
+| `gpu_counters` (the Windows GPU performance counters, through PDH) | `syntrac_core::gpu` (`parse_engine_instance`, `gpu_figures`), `metrics_build` | One GPU unit: share of the busiest ENGINE (not of the machine); no counters = "not available", never zero; read-only, about 2 ms per sample on the test machine |
 | `volumes` (`QueryDosDevice`) | `paths::NtPathConverter` | Injected volume map |
 
 ## Key invariants

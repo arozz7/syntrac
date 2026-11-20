@@ -63,6 +63,9 @@ pub struct ProcessSampleRow {
     pub exe_path: Option<String>,
     pub cpu_percent: f32,
     pub memory_bytes: u64,
+    /// Share (0-100) of the busiest GPU engine (see `gpu`), and dedicated GPU memory.
+    pub gpu_percent: f32,
+    pub gpu_memory_bytes: u64,
 }
 
 /// A `process_started` event.
@@ -122,6 +125,10 @@ pub struct SystemHour {
     pub net_received: u64,
     pub net_sent: u64,
     pub others_cpu_avg: f64,
+    /// The busiest GPU engine (see `gpu`) averaged over the samples that HAD a reading, and its highest value; `None` when no sample of
+    /// the hour had one (the counters were not available), which is not the same as an idle GPU.
+    pub gpu_avg: Option<f64>,
+    pub gpu_max: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -136,6 +143,12 @@ pub struct ProcessHour {
     /// The highest per-sample sum over its instances.
     pub cpu_peak: f64,
     pub memory_peak: u64,
+    /// The executable's GPU share (see `gpu`) summed over its instances (never above 100), averaged over ALL the hour's samples like
+    /// the CPU. 0 also means "no GPU data".
+    pub gpu_avg: f64,
+    pub gpu_peak: f64,
+    /// The highest per-sample sum of its dedicated GPU memory.
+    pub gpu_memory_peak: u64,
     /// `process_started` events in the hour.
     pub starts: u32,
     pub first_seen: Timestamp,
@@ -194,6 +207,7 @@ fn system_hour(hour: Timestamp, points: &[&SystemPoint]) -> Option<SystemHour> {
     }
     let n = points.len() as u128;
     let mut cpu_sum = 0.0_f64;
+    let mut gpu_readings: Vec<f64> = Vec::new();
     let mut others_sum = 0.0_f64;
     let mut memory_sum = 0_u128;
     let mut rollup = SystemHour {
@@ -209,10 +223,13 @@ fn system_hour(hour: Timestamp, points: &[&SystemPoint]) -> Option<SystemHour> {
         net_received: 0,
         net_sent: 0,
         others_cpu_avg: 0.0,
+        gpu_avg: None,
+        gpu_max: None,
     };
     for point in points {
         let cpu = f64::from(point.system.cpu_percent);
         cpu_sum += cpu;
+        gpu_readings.extend(point.system.gpu_percent.map(f64::from));
         rollup.cpu_max = rollup.cpu_max.max(cpu);
         others_sum += f64::from(point.others.cpu_percent);
         memory_sum += u128::from(point.system.memory_used_bytes);
@@ -226,15 +243,30 @@ fn system_hour(hour: Timestamp, points: &[&SystemPoint]) -> Option<SystemHour> {
     rollup.cpu_avg = cpu_sum / n as f64;
     rollup.others_cpu_avg = others_sum / n as f64;
     rollup.memory_used_avg = u64::try_from(memory_sum / n).unwrap_or(u64::MAX);
+    if !gpu_readings.is_empty() {
+        // Added in a fixed order (sorted), so the average does not depend on the order the repository returned the rows in.
+        gpu_readings.sort_by(f64::total_cmp);
+        rollup.gpu_avg = Some(gpu_readings.iter().sum::<f64>() / gpu_readings.len() as f64);
+        rollup.gpu_max = gpu_readings.last().copied();
+    }
     Some(rollup)
+}
+
+/// One executable's instances added up in ONE sample.
+#[derive(Default, Clone, Copy)]
+struct SampleSum {
+    cpu: f64,
+    memory: u64,
+    gpu: f64,
+    gpu_memory: u64,
 }
 
 /// Per-executable working state while an hour is summed. `BTreeMap` keys keep every iteration in one fixed order.
 #[derive(Default)]
 struct ProcessAccumulator {
     paths: BTreeSet<String>,
-    /// Per sample timestamp: (cpu summed over the executable's instances, memory summed likewise).
-    per_sample: BTreeMap<Timestamp, (f64, u64)>,
+    /// Per sample timestamp: the executable's instances added up.
+    per_sample: BTreeMap<Timestamp, SampleSum>,
     starts: u32,
     first_seen: Option<Timestamp>,
     last_seen: Option<Timestamp>,
@@ -260,21 +292,34 @@ fn process_hours(input: &HourInput, hour_samples: u32) -> Vec<ProcessHour> {
     let mut samples: Vec<&ProcessSampleRow> =
         input.process_samples.iter().filter(|s| in_hour(input.hour, s.ts)).collect();
     samples.sort_by(|a, b| {
-        (a.ts, executable_key_of(&a.exe_path), a.cpu_percent.to_bits(), a.memory_bytes).cmp(&(
-            b.ts,
-            executable_key_of(&b.exe_path),
-            b.cpu_percent.to_bits(),
-            b.memory_bytes,
-        ))
+        (
+            a.ts,
+            executable_key_of(&a.exe_path),
+            a.cpu_percent.to_bits(),
+            a.memory_bytes,
+            a.gpu_percent.to_bits(),
+            a.gpu_memory_bytes,
+        )
+            .cmp(&(
+                b.ts,
+                executable_key_of(&b.exe_path),
+                b.cpu_percent.to_bits(),
+                b.memory_bytes,
+                b.gpu_percent.to_bits(),
+                b.gpu_memory_bytes,
+            ))
     });
     for sample in samples {
         let entry = by_exe.entry(executable_key_of(&sample.exe_path)).or_default();
         if let Some(path) = sample.exe_path.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
             entry.paths.insert(path.to_owned());
         }
-        let slot = entry.per_sample.entry(sample.ts).or_insert((0.0, 0));
-        slot.0 += f64::from(sample.cpu_percent);
-        slot.1 = slot.1.saturating_add(sample.memory_bytes);
+        let slot = entry.per_sample.entry(sample.ts).or_default();
+        slot.cpu += f64::from(sample.cpu_percent);
+        slot.memory = slot.memory.saturating_add(sample.memory_bytes);
+        // Instances of one program share the GPU, so their figures are added, but one engine cannot be more than fully busy.
+        slot.gpu = (slot.gpu + f64::from(sample.gpu_percent)).min(100.0);
+        slot.gpu_memory = slot.gpu_memory.saturating_add(sample.gpu_memory_bytes);
         entry.see(sample.ts);
     }
     for start in input.starts.iter().filter(|s| in_hour(input.hour, s.ts)) {
@@ -290,14 +335,19 @@ fn process_hours(input: &HourInput, hour_samples: u32) -> Vec<ProcessHour> {
         .into_iter()
         .filter_map(|(key, acc)| {
             let (first_seen, last_seen) = (acc.first_seen?, acc.last_seen?);
-            let cpu_total: f64 = acc.per_sample.values().map(|(cpu, _)| cpu).sum();
+            let cpu_total: f64 = acc.per_sample.values().map(|sum| sum.cpu).sum();
+            let gpu_total: f64 = acc.per_sample.values().map(|sum| sum.gpu).sum();
+            let average = |total: f64| if hour_samples == 0 { 0.0 } else { total / f64::from(hour_samples) };
             Some(ProcessHour {
                 hour: input.hour,
                 exe: executable_of(&acc.paths, &key),
                 samples_present: acc.per_sample.len() as u32,
-                cpu_avg: if hour_samples == 0 { 0.0 } else { cpu_total / f64::from(hour_samples) },
-                cpu_peak: acc.per_sample.values().map(|(cpu, _)| *cpu).fold(0.0, f64::max),
-                memory_peak: acc.per_sample.values().map(|(_, memory)| *memory).max().unwrap_or(0),
+                cpu_avg: average(cpu_total),
+                cpu_peak: acc.per_sample.values().map(|sum| sum.cpu).fold(0.0, f64::max),
+                memory_peak: acc.per_sample.values().map(|sum| sum.memory).max().unwrap_or(0),
+                gpu_avg: average(gpu_total),
+                gpu_peak: acc.per_sample.values().map(|sum| sum.gpu).fold(0.0, f64::max),
+                gpu_memory_peak: acc.per_sample.values().map(|sum| sum.gpu_memory).max().unwrap_or(0),
                 starts: acc.starts,
                 first_seen,
                 last_seen,

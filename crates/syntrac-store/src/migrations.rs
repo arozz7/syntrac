@@ -457,6 +457,22 @@ pub const MIGRATIONS: &[&str] = &[
     "
     ALTER TABLE findings ADD COLUMN level REAL;
     ",
+    // 16: GPU use per program (docs/ALERTS-PLAN.md, slice G1). Additive: columns with defaults, nothing existing is touched. A
+    // process's GPU figure is the share (0-100) of its busiest GPU engine over all adapters (NOT of the whole machine), its memory the
+    // dedicated GPU memory. `system_metrics.gpu_percent` and the hourly `gpu_avg` / `gpu_max` are NULL when the GPU counters were not
+    // available (an old row, a machine without them): that is not an idle GPU. Per-program columns are 0 for "none or no data".
+    "
+    ALTER TABLE process_metrics ADD COLUMN gpu_percent REAL NOT NULL DEFAULT 0;
+    ALTER TABLE process_metrics ADD COLUMN gpu_memory INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE system_metrics ADD COLUMN gpu_percent REAL;
+    ALTER TABLE system_metrics ADD COLUMN others_gpu_percent REAL NOT NULL DEFAULT 0;
+    ALTER TABLE system_metrics ADD COLUMN others_gpu_memory INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE rollup_system_hour ADD COLUMN gpu_avg REAL;
+    ALTER TABLE rollup_system_hour ADD COLUMN gpu_max REAL;
+    ALTER TABLE rollup_process_hour ADD COLUMN gpu_avg REAL NOT NULL DEFAULT 0;
+    ALTER TABLE rollup_process_hour ADD COLUMN gpu_peak REAL NOT NULL DEFAULT 0;
+    ALTER TABLE rollup_process_hour ADD COLUMN gpu_memory_peak INTEGER NOT NULL DEFAULT 0;
+    ",
 ];
 
 /// The migration (1-based number) that rewrites every table. An existing database gets a backup copy before it is applied

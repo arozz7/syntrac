@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { bucketHours, type DayStart } from './historyBuckets';
-import { buildBytesChartOption, buildLoadChartOption } from './historyChart';
+import { buildBytesChartOption, buildGpuChartOption, buildLoadChartOption } from './historyChart';
 import type { ChartPalette } from './cpuChart';
 
 const HOUR = 3_600_000;
@@ -28,6 +28,8 @@ function hourRow(hourMs: number, cpuAvg: number) {
     diskReadBytes: 100,
     diskWriteBytes: 200,
     othersCpuAvgPercent: 0,
+    gpuAvgPercent: null,
+    gpuMaxPercent: null,
   };
 }
 
@@ -87,5 +89,27 @@ describe('buildBytesChartOption', () => {
     const option = buildBytesChartOption(buckets, 'hour', [{ name: 'Received', pick: (b) => b.netReceived }], palette);
     const formatter = (option.yAxis as { axisLabel: { formatter: (value: number) => string } }).axisLabel.formatter;
     expect(formatter(2048)).toBe('2.0 KB');
+  });
+});
+
+describe('buildGpuChartOption', () => {
+  const withGpu = (hourMs: number, avg: number | null) => ({
+    ...hourRow(hourMs, 10),
+    gpuAvgPercent: avg,
+    gpuMaxPercent: avg === null ? null : avg * 2,
+  });
+  // Hour 0 has a reading, hour 1 is a gap, hour 2 has data but no GPU counters.
+  const gpuBuckets = bucketHours([withGpu(100 * DAY, 20), withGpu(100 * DAY + 2 * HOUR, null)], 'hour', utc);
+  const option = buildGpuChartOption(gpuBuckets, 'hour', palette);
+  const series = option.series as Array<{ name: string; data: Array<number | null> }>;
+
+  it('draws the average and the peak of the busiest engine; a gap and an hour without counters both break the line', () => {
+    expect(series.map((s) => s.name)).toEqual(['GPU average', 'GPU peak']);
+    expect(series[0]!.data).toEqual([20, null, null]);
+    expect(series[1]!.data).toEqual([40, null, null]);
+  });
+
+  it('keeps the axis at 0-100 percent of one engine', () => {
+    expect(option.yAxis).toMatchObject({ min: 0, max: 100 });
   });
 });

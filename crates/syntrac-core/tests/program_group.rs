@@ -13,6 +13,8 @@ fn summary(path: &str) -> ProgramSummary {
         cpu_avg_percent: 0.0,
         cpu_peak_percent: 0.0,
         memory_peak_bytes: 0,
+        gpu_peak_percent: 0.0,
+        gpu_memory_peak_bytes: 0,
         starts: 0,
         hours_present: 0,
         bytes_sent: 0,

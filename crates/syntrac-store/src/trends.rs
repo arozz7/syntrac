@@ -37,7 +37,7 @@ impl TrendRepository for SqliteStore {
             .conn
             .prepare(
                 "SELECT e.id, e.path_key, e.path, COUNT(*), SUM(p.samples_present), SUM(p.cpu_avg * s.samples),
-                        MAX(p.cpu_peak), MAX(p.memory_peak), SUM(p.starts)
+                        MAX(p.cpu_peak), MAX(p.memory_peak), SUM(p.starts), MAX(p.gpu_peak), MAX(p.gpu_memory_peak)
                  FROM rollup_process_hour p
                  JOIN rollup_system_hour s ON s.hour_start = p.hour_start
                  JOIN executables e ON e.id = p.exe_id
@@ -56,6 +56,8 @@ impl TrendRepository for SqliteStore {
                 cpu_peak: row.get(6).map_err(backend)?,
                 memory_peak: to_u64(row.get(7).map_err(backend)?),
                 starts: to_u64(row.get(8).map_err(backend)?),
+                gpu_peak: row.get(9).map_err(backend)?,
+                gpu_memory_peak: to_u64(row.get(10).map_err(backend)?),
             });
         }
         Ok(totals)

@@ -52,6 +52,10 @@ pub struct SystemHourView {
     pub disk_write_bytes: u64,
     /// CPU used by processes that are not individually tracked.
     pub others_cpu_avg_percent: f64,
+    /// The busiest GPU engine (a share of ONE engine, not of the machine) averaged over the hour's samples that had a reading, and its
+    /// highest value; `None` when the GPU counters were not available (not the same as an idle GPU).
+    pub gpu_avg_percent: Option<f64>,
+    pub gpu_max_percent: Option<f64>,
 }
 
 impl From<SystemHour> for SystemHourView {
@@ -68,6 +72,8 @@ impl From<SystemHour> for SystemHourView {
             disk_read_bytes: hour.disk_read,
             disk_write_bytes: hour.disk_write,
             others_cpu_avg_percent: hour.others_cpu_avg,
+            gpu_avg_percent: hour.gpu_avg,
+            gpu_max_percent: hour.gpu_max,
         }
     }
 }

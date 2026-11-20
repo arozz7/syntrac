@@ -13,6 +13,7 @@ pub mod file_inspector;
 pub mod file_parse;
 pub mod file_trust;
 pub mod file_version;
+pub mod gpu_counters;
 pub mod install_registry;
 pub mod launch_env;
 pub mod launch_registry;

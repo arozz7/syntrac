@@ -17,11 +17,28 @@ export interface ProgramBucket extends DataBucketBase {
   cpuAvg: number;
   cpuMax: number;
   memoryPeak: number;
+  /** GPU as a share of ONE engine: weighted by samples like the CPU, the highest peak, the highest dedicated GPU memory. */
+  gpuAvg: number;
+  gpuMax: number;
+  gpuMemoryPeak: number;
   starts: number;
 }
 
 function emptyBucket(startMs: number): ProgramBucket {
-  return { gap: false, startMs, hours: 0, presentHours: 0, samples: 0, cpuAvg: 0, cpuMax: 0, memoryPeak: 0, starts: 0 };
+  return {
+    gap: false,
+    startMs,
+    hours: 0,
+    presentHours: 0,
+    samples: 0,
+    cpuAvg: 0,
+    cpuMax: 0,
+    memoryPeak: 0,
+    gpuAvg: 0,
+    gpuMax: 0,
+    gpuMemoryPeak: 0,
+    starts: 0,
+  };
 }
 
 function add(bucket: ProgramBucket, hour: ProgramHourView): void {
@@ -31,11 +48,16 @@ function add(bucket: ProgramBucket, hour: ProgramHourView): void {
   bucket.cpuAvg += hour.cpuAvgPercent * hour.samples;
   bucket.cpuMax = Math.max(bucket.cpuMax, hour.cpuPeakPercent);
   bucket.memoryPeak = Math.max(bucket.memoryPeak, hour.memoryPeakBytes);
+  bucket.gpuAvg += hour.gpuAvgPercent * hour.samples;
+  bucket.gpuMax = Math.max(bucket.gpuMax, hour.gpuPeakPercent);
+  bucket.gpuMemoryPeak = Math.max(bucket.gpuMemoryPeak, hour.gpuMemoryPeakBytes);
   bucket.starts += hour.starts;
 }
 
 function finish(bucket: ProgramBucket): ProgramBucket {
-  return bucket.samples === 0 ? bucket : { ...bucket, cpuAvg: bucket.cpuAvg / bucket.samples };
+  return bucket.samples === 0
+    ? bucket
+    : { ...bucket, cpuAvg: bucket.cpuAvg / bucket.samples, gpuAvg: bucket.gpuAvg / bucket.samples };
 }
 
 /** One program's hours grouped by hour or by local day, with gaps where nothing was collected. */

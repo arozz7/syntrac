@@ -157,6 +157,8 @@ export function systemHour(hourMs: number, overrides: Partial<SystemHourView> = 
     diskReadBytes: 2048,
     diskWriteBytes: 8192,
     othersCpuAvgPercent: 1,
+    gpuAvgPercent: null,
+    gpuMaxPercent: null,
     ...overrides,
   };
 }
@@ -235,6 +237,8 @@ export function programRow(overrides: Partial<ProgramRowView> = {}): ProgramRowV
     cpuAvgPercent: 10,
     cpuPeakPercent: 20,
     memoryPeakBytes: 1024 ** 3,
+    gpuPeakPercent: 0,
+    gpuMemoryPeakBytes: 0,
     starts: 7,
     hoursPresent: 1,
     bytesSent: 1024,
@@ -281,6 +285,9 @@ export function programHistoryView(overrides: Partial<ProgramHistoryView> = {}):
         cpuAvgPercent: 10,
         cpuPeakPercent: 20,
         memoryPeakBytes: 1024 ** 3,
+        gpuAvgPercent: 0,
+        gpuPeakPercent: 0,
+        gpuMemoryPeakBytes: 0,
         starts: 2,
       },
       {
@@ -290,6 +297,9 @@ export function programHistoryView(overrides: Partial<ProgramHistoryView> = {}):
         cpuAvgPercent: 0,
         cpuPeakPercent: 0,
         memoryPeakBytes: 0,
+        gpuAvgPercent: 0,
+        gpuPeakPercent: 0,
+        gpuMemoryPeakBytes: 0,
         starts: 0,
       },
     ],

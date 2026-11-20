@@ -19,6 +19,9 @@ pub struct SystemMetrics {
     pub disk_write_bytes: u64,
     pub net_received_bytes: u64,
     pub net_sent_bytes: u64,
+    /// The busiest GPU engine over all adapters, 0-100 (see `gpu`); `None` when the GPU counters are not available.
+    #[serde(default)]
+    pub gpu_percent: Option<f32>,
 }
 
 /// One process's usage in one sample.
@@ -30,6 +33,12 @@ pub struct ProcessMetric {
     /// Share of the whole machine, 0-100.
     pub cpu_percent: f32,
     pub memory_bytes: u64,
+    /// Share (0-100) of the process's busiest GPU engine, NOT of the whole machine (see `gpu`). 0 also when the counters are not available.
+    #[serde(default)]
+    pub gpu_percent: f32,
+    /// Dedicated GPU memory.
+    #[serde(default)]
+    pub gpu_memory_bytes: u64,
 }
 
 /// Everything that is not in the per-process list, so the totals still add up.
@@ -39,6 +48,12 @@ pub struct OtherProcesses {
     pub process_count: u32,
     pub cpu_percent: f32,
     pub memory_bytes: u64,
+    /// The largest single GPU figure in the tail (figures of different engines cannot be added).
+    #[serde(default)]
+    pub gpu_percent: f32,
+    /// The sum of the tail's dedicated GPU memory.
+    #[serde(default)]
+    pub gpu_memory_bytes: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

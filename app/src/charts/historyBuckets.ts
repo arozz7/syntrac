@@ -25,6 +25,12 @@ export interface DataBucket extends DataBucketBase {
   netSent: number;
   diskRead: number;
   diskWrite: number;
+  /** The busiest GPU engine (a share of ONE engine): weighted by the samples of the hours that HAD a reading, and the highest peak. null when no hour had one. */
+  gpuAvg: number | null;
+  gpuMax: number | null;
+  /** Working sums for `gpuAvg`: the samples of the hours with a reading, and the sum of their averages weighted by those samples. */
+  gpuSamples: number;
+  gpuWeighted: number;
 }
 
 export type Bucket = DataBucket | GapBucket;
@@ -43,6 +49,10 @@ function emptyBucket(startMs: number): DataBucket {
     netSent: 0,
     diskRead: 0,
     diskWrite: 0,
+    gpuAvg: null,
+    gpuMax: null,
+    gpuSamples: 0,
+    gpuWeighted: 0,
   };
 }
 
@@ -58,13 +68,26 @@ function add(bucket: DataBucket, hour: SystemHourView): void {
   bucket.netSent += hour.netSentBytes;
   bucket.diskRead += hour.diskReadBytes;
   bucket.diskWrite += hour.diskWriteBytes;
+  if (hour.gpuAvgPercent !== null) {
+    bucket.gpuSamples += hour.samples;
+    bucket.gpuWeighted += hour.gpuAvgPercent * hour.samples;
+  }
+  if (hour.gpuMaxPercent !== null) {
+    bucket.gpuMax = Math.max(bucket.gpuMax ?? 0, hour.gpuMaxPercent);
+  }
 }
 
 function finish(bucket: DataBucket): DataBucket {
+  const gpuAvg = bucket.gpuSamples === 0 ? null : bucket.gpuWeighted / bucket.gpuSamples;
   if (bucket.samples === 0) {
-    return bucket;
+    return { ...bucket, gpuAvg };
   }
-  return { ...bucket, cpuAvg: bucket.cpuAvg / bucket.samples, memoryAvg: bucket.memoryAvg / bucket.samples };
+  return {
+    ...bucket,
+    cpuAvg: bucket.cpuAvg / bucket.samples,
+    memoryAvg: bucket.memoryAvg / bucket.samples,
+    gpuAvg,
+  };
 }
 
 /** Hours (oldest first) grouped into buckets by hour or by local day; a bucket with no data between two with data is a gap. */
@@ -87,6 +110,9 @@ export interface Summary {
   netSent: number;
   diskRead: number;
   diskWrite: number;
+  /** The busiest GPU engine (a share of ONE engine) over the range; null when no hour had a GPU reading. */
+  gpuAvg: number | null;
+  gpuMax: number | null;
 }
 
 /** The whole range in one line of facts. `null` when there is no data at all. */
@@ -99,6 +125,7 @@ export function summarise(buckets: Bucket[]): Summary | null {
   const weighted = (pick: (b: DataBucket) => number) =>
     samples === 0 ? 0 : data.reduce((total, b) => total + pick(b) * b.samples, 0) / samples;
   const sum = (pick: (b: DataBucket) => number) => data.reduce((total, b) => total + pick(b), 0);
+  const gpuSamples = sum((b) => b.gpuSamples);
   return {
     hours: sum((b) => b.hours),
     samples,
@@ -110,5 +137,7 @@ export function summarise(buckets: Bucket[]): Summary | null {
     netSent: sum((b) => b.netSent),
     diskRead: sum((b) => b.diskRead),
     diskWrite: sum((b) => b.diskWrite),
+    gpuAvg: gpuSamples === 0 ? null : data.reduce((total, b) => total + (b.gpuAvg ?? 0) * b.gpuSamples, 0) / gpuSamples,
+    gpuMax: data.some((b) => b.gpuMax !== null) ? Math.max(...data.map((b) => b.gpuMax ?? 0)) : null,
   };
 }

@@ -19,7 +19,7 @@ function labels<B extends DataBucketBase>(buckets: Array<Slot<B>>, granularity: 
 
 export function values<B extends DataBucketBase>(
   buckets: Array<Slot<B>>,
-  pick: (bucket: B) => number,
+  pick: (bucket: B) => number | null,
 ): Array<number | null> {
   return buckets.map((bucket) => (isGap(bucket) ? null : pick(bucket)));
 }
@@ -122,5 +122,31 @@ export function buildBytesChartOption<B extends DataBucketBase>(
       itemStyle: { color: colours[index % colours.length] },
       data: values(buckets, entry.pick),
     })),
+  };
+}
+
+/**
+ * The machine's busiest GPU engine: the average as a filled solid line and the peak as a dotted line. It is a share of ONE engine
+ * (what Task Manager shows), so the axis is 0-100. An hour without GPU counters is a break in the line, not a zero.
+ */
+export function buildGpuChartOption(buckets: Bucket[], granularity: Granularity, palette: ChartPalette): EChartsOption {
+  return {
+    ...frame(buckets, granularity, palette),
+    tooltip: tooltip(palette, (value) => `${value.toFixed(1)}%`),
+    yAxis: {
+      type: 'value',
+      min: 0,
+      max: 100,
+      axisLabel: { color: palette.mutedText, formatter: '{value}%' },
+      splitLine: { lineStyle: { color: palette.grid } },
+    },
+    series: [
+      {
+        ...line('GPU average', palette.memory, 'solid', 2),
+        areaStyle: { color: palette.memory, opacity: 0.15 },
+        data: values(buckets, (b) => b.gpuAvg),
+      },
+      { ...line('GPU peak', palette.memory, 'dotted', 1), data: values(buckets, (b) => b.gpuMax) },
+    ],
   };
 }

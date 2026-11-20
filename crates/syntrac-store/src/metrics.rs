@@ -19,8 +19,8 @@ impl MetricsRepository for SqliteStore {
         tx.execute(
             "INSERT OR REPLACE INTO system_metrics
              (ts, cpu_percent, memory_used, memory_total, disk_read, disk_write, net_received, net_sent,
-              others_count, others_cpu, others_memory)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+              others_count, others_cpu, others_memory, gpu_percent, others_gpu_percent, others_gpu_memory)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 ts,
                 sample.system.cpu_percent,
@@ -33,20 +33,25 @@ impl MetricsRepository for SqliteStore {
                 sample.others.process_count,
                 sample.others.cpu_percent,
                 to_i64(sample.others.memory_bytes),
+                sample.system.gpu_percent,
+                sample.others.gpu_percent,
+                to_i64(sample.others.gpu_memory_bytes),
             ],
         )
         .map_err(backend)?;
 
         for process in &sample.processes {
             tx.execute(
-                "INSERT INTO process_metrics (ts, instance, pid, cpu_percent, memory_bytes)
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                "INSERT INTO process_metrics (ts, instance, pid, cpu_percent, memory_bytes, gpu_percent, gpu_memory)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                 params![
                     ts,
                     process.instance.map(instance_to_blob),
                     process.pid,
                     process.cpu_percent,
-                    to_i64(process.memory_bytes)
+                    to_i64(process.memory_bytes),
+                    process.gpu_percent,
+                    to_i64(process.gpu_memory_bytes)
                 ],
             )
             .map_err(backend)?;
@@ -59,7 +64,7 @@ impl MetricsRepository for SqliteStore {
             .conn
             .prepare(
                 "SELECT ts, cpu_percent, memory_used, memory_total, disk_read, disk_write, net_received, net_sent,
-                        others_count, others_cpu, others_memory
+                        others_count, others_cpu, others_memory, gpu_percent, others_gpu_percent, others_gpu_memory
                  FROM system_metrics WHERE ts >= ?1 AND ts <= ?2 ORDER BY ts ASC",
             )
             .map_err(backend)?;
@@ -75,11 +80,14 @@ impl MetricsRepository for SqliteStore {
                         disk_write_bytes: to_u64(row.get(5)?),
                         net_received_bytes: to_u64(row.get(6)?),
                         net_sent_bytes: to_u64(row.get(7)?),
+                        gpu_percent: row.get(11)?,
                     },
                     others: OtherProcesses {
                         process_count: row.get(8)?,
                         cpu_percent: row.get(9)?,
                         memory_bytes: to_u64(row.get(10)?),
+                        gpu_percent: row.get(12)?,
+                        gpu_memory_bytes: to_u64(row.get(13)?),
                     },
                 })
             })

@@ -32,6 +32,8 @@ pub enum ProgramMetricParam {
     Memory,
     Starts,
     Network,
+    /// The highest share of one GPU engine.
+    Gpu,
 }
 
 impl From<ProgramMetricParam> for ProgramMetric {
@@ -41,6 +43,7 @@ impl From<ProgramMetricParam> for ProgramMetric {
             ProgramMetricParam::Memory => ProgramMetric::MemoryPeak,
             ProgramMetricParam::Starts => ProgramMetric::Starts,
             ProgramMetricParam::Network => ProgramMetric::NetworkBytes,
+            ProgramMetricParam::Gpu => ProgramMetric::GpuPeak,
         }
     }
 }
@@ -74,6 +77,9 @@ pub struct ProgramRowView {
     pub cpu_avg_percent: f64,
     pub cpu_peak_percent: f64,
     pub memory_peak_bytes: u64,
+    /// The highest share of ONE GPU engine (not of the machine) and the highest dedicated GPU memory; 0 also means "no GPU data".
+    pub gpu_peak_percent: f64,
+    pub gpu_memory_peak_bytes: u64,
     pub starts: u64,
     /// In how many hours the program was recorded among the heaviest processes (out of `hoursInRange`).
     pub hours_present: u32,
@@ -101,6 +107,8 @@ fn plain_row(program: ProgramSummary, identities: &Identities) -> ProgramRowView
         cpu_avg_percent: program.cpu_avg_percent,
         cpu_peak_percent: program.cpu_peak_percent,
         memory_peak_bytes: program.memory_peak_bytes,
+        gpu_peak_percent: program.gpu_peak_percent,
+        gpu_memory_peak_bytes: program.gpu_memory_peak_bytes,
         starts: program.starts,
         hours_present: program.hours_present,
         bytes_sent: program.bytes_sent,
@@ -294,6 +302,10 @@ pub struct ProgramHourView {
     pub cpu_avg_percent: f64,
     pub cpu_peak_percent: f64,
     pub memory_peak_bytes: u64,
+    /// GPU, as a share of ONE engine (see `ProgramRowView`): the hour's average over all samples, its peak and its memory peak.
+    pub gpu_avg_percent: f64,
+    pub gpu_peak_percent: f64,
+    pub gpu_memory_peak_bytes: u64,
     pub starts: u32,
 }
 
@@ -345,6 +357,9 @@ where
                 cpu_avg_percent: row.as_ref().map_or(0.0, |r| r.cpu_avg),
                 cpu_peak_percent: row.as_ref().map_or(0.0, |r| r.cpu_peak),
                 memory_peak_bytes: row.as_ref().map_or(0, |r| r.memory_peak),
+                gpu_avg_percent: row.as_ref().map_or(0.0, |r| r.gpu_avg),
+                gpu_peak_percent: row.as_ref().map_or(0.0, |r| r.gpu_peak),
+                gpu_memory_peak_bytes: row.as_ref().map_or(0, |r| r.gpu_memory_peak),
                 starts: row.as_ref().map_or(0, |r| r.starts),
             }
         })

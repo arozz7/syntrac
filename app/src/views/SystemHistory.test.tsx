@@ -121,3 +121,29 @@ describe('SystemHistory', () => {
     expect(await screen.findByRole('heading', { name: 'No data yet' })).toBeTruthy();
   });
 });
+
+describe('SystemHistory: the GPU', () => {
+  it('draws a GPU chart with its facts when the hours have GPU readings', async () => {
+    show(
+      withHistory(
+        systemHistory({
+          hours: [
+            systemHour(NOW - 3 * 3_600_000, { gpuAvgPercent: 20, gpuMaxPercent: 60 }),
+            systemHour(NOW - 2 * 3_600_000, { gpuAvgPercent: 40, gpuMaxPercent: 90 }),
+          ],
+        }),
+      ),
+    );
+    expect(await screen.findByLabelText('GPU over time')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'GPU' })).toBeTruthy();
+    expect(screen.getByText('90.0%')).toBeTruthy(); // the peak
+    expect(screen.getByText(/busiest GPU engine/i)).toBeTruthy();
+  });
+
+  it('shows no GPU chart at all when no hour had a reading (no counters is not an idle GPU)', async () => {
+    show();
+    await screen.findByLabelText('CPU and memory over time');
+    expect(screen.queryByLabelText('GPU over time')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'GPU' })).toBeNull();
+  });
+});

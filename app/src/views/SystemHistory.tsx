@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useApi } from '../api/ApiContext';
 import type { SystemHistoryView } from '../api/types';
 import { bucketHours, granularityFor, summarise } from '../charts/historyBuckets';
-import { buildBytesChartOption, buildLoadChartOption } from '../charts/historyChart';
+import { buildBytesChartOption, buildGpuChartOption, buildLoadChartOption } from '../charts/historyChart';
 import { readPalette } from '../charts/readPalette';
 import { Chart } from '../components/Chart';
 import { DataGate } from '../components/DataGate';
@@ -19,6 +19,7 @@ function HistoryBody({ data }: { data: SystemHistoryView }) {
   const summary = useMemo(() => summarise(buckets), [buckets]);
   const palette = useMemo(() => readPalette(), []);
   const load = useMemo(() => buildLoadChartOption(buckets, granularity, palette), [buckets, granularity, palette]);
+  const gpu = useMemo(() => buildGpuChartOption(buckets, granularity, palette), [buckets, granularity, palette]);
   const network = useMemo(
     () =>
       buildBytesChartOption(
@@ -87,6 +88,27 @@ function HistoryBody({ data }: { data: SystemHistoryView }) {
             </div>
           </dl>
         </section>
+
+        {summary.gpuMax !== null && (
+          <section className="card card--wide">
+            <h2>GPU</h2>
+            <p className="muted">
+              The busiest GPU engine of the machine, as a share of that one engine (what Task Manager shows), not of the
+              whole machine. An hour without GPU counters is a break in the line, not zero.
+            </p>
+            <Chart option={gpu} label="GPU over time" />
+            <dl className="facts">
+              <div>
+                <dt>GPU average</dt>
+                <dd>{summary.gpuAvg === null ? '—' : formatPercent(summary.gpuAvg)}</dd>
+              </div>
+              <div>
+                <dt>GPU peak</dt>
+                <dd>{formatPercent(summary.gpuMax)}</dd>
+              </div>
+            </dl>
+          </section>
+        )}
 
         <section className="card">
           <h2>Network</h2>

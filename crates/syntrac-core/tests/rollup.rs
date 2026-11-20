@@ -31,13 +31,21 @@ fn point(minutes: i64, cpu: f32, memory: u64, others_cpu: f32) -> SystemPoint {
             disk_write_bytes: 20,
             net_received_bytes: 100,
             net_sent_bytes: 200,
+            gpu_percent: None,
         },
-        others: OtherProcesses { process_count: 5, cpu_percent: others_cpu, memory_bytes: 1 },
+        others: OtherProcesses { process_count: 5, cpu_percent: others_cpu, memory_bytes: 1, ..Default::default() },
     }
 }
 
 fn sample(minutes: i64, exe: Option<&str>, cpu: f32, memory: u64) -> ProcessSampleRow {
-    ProcessSampleRow { ts: at(minutes), exe_path: exe.map(str::to_owned), cpu_percent: cpu, memory_bytes: memory }
+    ProcessSampleRow {
+        ts: at(minutes),
+        exe_path: exe.map(str::to_owned),
+        cpu_percent: cpu,
+        memory_bytes: memory,
+        gpu_percent: 0.0,
+        gpu_memory_bytes: 0,
+    }
 }
 
 fn flow(minutes: i64, exe: Option<&str>, addr: [u8; 4], port: u16, sent: u64, received: u64) -> FlowInputRow {
@@ -316,4 +324,68 @@ fn a_ledger_entry_only_ever_widens() {
         entry.widened(at(5), at(30)).widened(at(10), at(20)),
         LedgerEntry { first_seen: at(5), last_seen: at(30) }
     );
+}
+
+// ---- GPU (docs/ALERTS-PLAN.md, slice G1)
+
+fn gpu_point(minutes: i64, gpu: Option<f32>) -> SystemPoint {
+    let mut point = point(minutes, 10.0, 1_000, 0.0);
+    point.system.gpu_percent = gpu;
+    point
+}
+
+fn gpu_sample(minutes: i64, exe: &str, gpu: f32, gpu_memory: u64) -> ProcessSampleRow {
+    ProcessSampleRow { gpu_percent: gpu, gpu_memory_bytes: gpu_memory, ..sample(minutes, Some(exe), 0.0, 1) }
+}
+
+#[test]
+fn the_system_gpu_is_averaged_over_the_samples_that_had_a_reading() {
+    let mut rows = input();
+    rows.system = vec![gpu_point(0, Some(10.0)), gpu_point(5, Some(30.0)), gpu_point(10, None)];
+    let system = roll_up_hour(&rows).system.unwrap();
+    assert!((system.gpu_avg.unwrap() - 20.0).abs() < 1e-9, "the sample without a reading is not a zero");
+    assert!((system.gpu_max.unwrap() - 30.0).abs() < 1e-9);
+}
+
+#[test]
+fn an_hour_without_any_gpu_reading_has_no_gpu_figures_at_all() {
+    let mut rows = input();
+    rows.system = vec![gpu_point(0, None), gpu_point(5, None)];
+    let system = roll_up_hour(&rows).system.unwrap();
+    assert_eq!((system.gpu_avg, system.gpu_max), (None, None));
+}
+
+#[test]
+fn a_programs_gpu_is_averaged_over_all_samples_of_the_hour_with_its_peak_and_memory_peak() {
+    let mut rows = input();
+    rows.system = (0..4).map(|n| gpu_point(n * 5, Some(1.0))).collect();
+    rows.process_samples = vec![
+        gpu_sample(0, r"C:\miner.exe", 40.0, 1_000),
+        gpu_sample(5, r"C:\miner.exe", 20.0, 3_000),
+        // absent from the other two samples: counts as zero in the average
+    ];
+    let hour = &roll_up_hour(&rows).processes[0];
+    assert!((hour.gpu_avg - 15.0).abs() < 1e-9, "(40 + 20) / 4 samples, got {}", hour.gpu_avg);
+    assert!((hour.gpu_peak - 40.0).abs() < 1e-9);
+    assert_eq!(hour.gpu_memory_peak, 3_000);
+}
+
+#[test]
+fn several_instances_of_one_program_are_added_up_per_sample_but_never_above_a_full_engine() {
+    let mut rows = input();
+    rows.system = vec![gpu_point(0, Some(1.0))];
+    rows.process_samples = vec![gpu_sample(0, r"C:\a.exe", 70.0, 100), gpu_sample(0, r"C:\A.exe", 60.0, 200)];
+    let hour = &roll_up_hour(&rows).processes[0];
+    assert!((hour.gpu_peak - 100.0).abs() < 1e-9, "clamped, got {}", hour.gpu_peak);
+    assert!((hour.gpu_avg - 100.0).abs() < 1e-9);
+    assert_eq!(hour.gpu_memory_peak, 300, "memory is added up");
+}
+
+#[test]
+fn a_program_that_never_used_the_gpu_has_zero_gpu_figures() {
+    let mut rows = input();
+    rows.system = vec![gpu_point(0, Some(1.0))];
+    rows.process_samples = vec![sample(0, Some(r"C:\a.exe"), 5.0, 1)];
+    let hour = &roll_up_hour(&rows).processes[0];
+    assert_eq!((hour.gpu_avg, hour.gpu_peak, hour.gpu_memory_peak), (0.0, 0.0, 0));
 }

@@ -14,6 +14,7 @@ pub mod findings;
 pub mod findings_run;
 pub mod flow;
 pub mod folder_protection;
+pub mod gpu;
 pub mod identity;
 pub mod identity_run;
 pub mod install_records;
@@ -80,6 +81,10 @@ pub use flow::{Destination, FlowAggregator, FlowRow};
 pub use folder_protection::{
     build_folder_problem, is_protected_folder, is_protected_folder_on_system_drive, is_protected_on_system_drive,
     is_protected_path, system_drive,
+};
+pub use gpu::{
+    gpu_figures, parse_engine_instance, parse_memory_instance, CounterRow, EngineInstance, GpuFigures, GpuReading,
+    GpuSource, ProcessGpu,
 };
 pub use identity::ProcessInstanceId;
 pub use identity_run::{inspect_due, retry_after, IdentityPass, IdentitySettings};

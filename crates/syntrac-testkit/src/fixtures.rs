@@ -125,11 +125,12 @@ pub fn system_metrics(cpu_percent: f32) -> SystemMetrics {
         disk_write_bytes: 2000,
         net_received_bytes: 3000,
         net_sent_bytes: 400,
+        gpu_percent: None,
     }
 }
 
 pub fn process_metric(pid: u32, instance: Option<ProcessInstanceId>, cpu_percent: f32) -> ProcessMetric {
-    ProcessMetric { pid, instance, cpu_percent, memory_bytes: 50_000_000 }
+    ProcessMetric { pid, instance, cpu_percent, memory_bytes: 50_000_000, gpu_percent: 0.0, gpu_memory_bytes: 0 }
 }
 
 /// A metrics sample at `at` seconds with the given heaviest processes and a long-tail remainder.
@@ -144,7 +145,13 @@ pub fn metrics_sample(
         ts: at_secs(at),
         system: system_metrics(system_cpu),
         processes,
-        others: OtherProcesses { process_count: others_count, cpu_percent: others_cpu, memory_bytes: 1_000_000_000 },
+        others: OtherProcesses {
+            process_count: others_count,
+            cpu_percent: others_cpu,
+            memory_bytes: 1_000_000_000,
+            gpu_percent: 0.0,
+            gpu_memory_bytes: 0,
+        },
     }
 }
 
@@ -178,4 +185,21 @@ pub fn beacon_scenario() -> Vec<EventEnvelope> {
         f.make(at_secs(210), net_activity(POWERSHELL_PID, NetAction::Connect, Ipv4Addr::new(198, 51, 100, 7), 0)),
     );
     events
+}
+
+/// A process that also uses the GPU (`gpu_percent` is a share of its busiest engine, see `syntrac_core::gpu`).
+pub fn gpu_process_metric(
+    pid: u32,
+    instance: Option<ProcessInstanceId>,
+    cpu_percent: f32,
+    gpu_percent: f32,
+    gpu_memory_bytes: u64,
+) -> ProcessMetric {
+    ProcessMetric { gpu_percent, gpu_memory_bytes, ..process_metric(pid, instance, cpu_percent) }
+}
+
+/// The same sample with a GPU reading for the whole machine (`None`: the counters were not available).
+pub fn with_gpu_reading(mut sample: MetricsSample, busiest_engine_percent: Option<f32>) -> MetricsSample {
+    sample.system.gpu_percent = busiest_engine_percent;
+    sample
 }

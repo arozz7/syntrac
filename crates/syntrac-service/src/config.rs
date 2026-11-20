@@ -32,6 +32,8 @@ pub struct ServiceConfig {
     pub metrics_interval_secs: u64,
     /// How many of the heaviest processes are recorded individually per metrics sample.
     pub top_processes: usize,
+    /// GPU use per program (docs/ALERTS-PLAN.md, slice G1): whether the GPU performance counters are read with every metrics sample. Passive and local.
+    pub gpu_metrics_enabled: bool,
     /// How long detail (events, flows, per-process samples) is kept, in days. Detail is deleted only once it is also rolled up.
     /// The old name `retention_days` is still accepted.
     #[serde(alias = "retention_days")]
@@ -109,6 +111,7 @@ impl Default for ServiceConfig {
             drain_interval_ms: 500,
             metrics_interval_secs: 5,
             top_processes: 25,
+            gpu_metrics_enabled: true,
             detail_retention_days: 14,
             purge_interval_minutes: 60,
             max_database_gb: 10,

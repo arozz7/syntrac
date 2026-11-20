@@ -4,12 +4,12 @@ import type { ProgramHistoryView } from '../api/types';
 import { granularityFor } from '../charts/bucketing';
 import { buildBytesChartOption } from '../charts/historyChart';
 import { bucketProgramHours, type ProgramBucket } from '../charts/programBuckets';
-import { buildProgramCpuChartOption } from '../charts/programChart';
+import { buildProgramCpuChartOption, buildProgramGpuChartOption } from '../charts/programChart';
 import { readPalette } from '../charts/readPalette';
 import { Chart } from '../components/Chart';
 import { DataGate } from '../components/DataGate';
 import { IdentityPanel } from '../components/IdentityPanel';
-import { formatBytes, formatDateTime } from '../format';
+import { formatBytes, formatDateTime, formatPercent } from '../format';
 import { usePolled } from '../hooks/usePolled';
 import { ProgramDestinations } from './ProgramDestinations';
 
@@ -42,9 +42,14 @@ function DetailBody({
       ),
     [buckets, granularity, palette],
   );
+  const gpu = useMemo(() => buildProgramGpuChartOption(buckets, granularity, palette), [buckets, granularity, palette]);
   const starts = data.hours.reduce((total, hour) => total + hour.starts, 0);
   const present = data.hours.filter((hour) => hour.present).length;
   const peakMemory = data.hours.reduce((highest, hour) => Math.max(highest, hour.memoryPeakBytes), 0);
+  const peakGpu = data.hours.reduce((highest, hour) => Math.max(highest, hour.gpuPeakPercent), 0);
+  const peakGpuMemory = data.hours.reduce((highest, hour) => Math.max(highest, hour.gpuMemoryPeakBytes), 0);
+  // A program that never used the GPU gets no GPU chart: an empty chart on every program would only be clutter.
+  const usedGpu = peakGpu > 0 || peakGpuMemory > 0;
 
   return (
     <>
@@ -71,9 +76,24 @@ function DetailBody({
           <dt>Memory peak</dt>
           <dd>{formatBytes(peakMemory)}</dd>
         </div>
+        {usedGpu && (
+          <>
+            <div>
+              <dt>GPU peak</dt>
+              <dd title="A share of the program's busiest GPU engine (what Task Manager shows), not of the whole machine.">
+                {formatPercent(peakGpu)}
+              </dd>
+            </div>
+            <div>
+              <dt>GPU memory peak</dt>
+              <dd>{formatBytes(peakGpuMemory)}</dd>
+            </div>
+          </>
+        )}
       </dl>
       <Chart option={cpu} label="Program CPU over time" />
       <Chart option={memory} label="Program memory over time" />
+      {usedGpu && <Chart option={gpu} label="Program GPU over time" />}
       <ProgramDestinations path={data.path} rangeSecs={rangeSecs} onOpenDestination={onOpenDestination} />
       <IdentityPanel
         identity={data.identity}

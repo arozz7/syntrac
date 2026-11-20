@@ -19,6 +19,7 @@ const METRICS: Array<{ id: ProgramMetric; label: string }> = [
   { id: 'memory', label: 'Memory' },
   { id: 'starts', label: 'Starts' },
   { id: 'network', label: 'Network' },
+  { id: 'gpu', label: 'GPU' },
 ];
 
 /** A program whose history can be opened. */
@@ -64,6 +65,8 @@ const SORTABLE: Accessors<ProgramRowView> = {
   cpuAvg: (program) => program.cpuAvgPercent,
   cpuPeak: (program) => program.cpuPeakPercent,
   memory: (program) => program.memoryPeakBytes,
+  gpuPeak: (program) => program.gpuPeakPercent,
+  gpuMemory: (program) => program.gpuMemoryPeakBytes,
   starts: (program) => program.starts,
   received: (program) => program.bytesReceived,
   sent: (program) => program.bytesSent,
@@ -100,6 +103,8 @@ function ProgramsTable({
           <SortHeader sort={sort} column="cpuAvg" label="CPU average" firstDirection="desc" className="num" />
           <SortHeader sort={sort} column="cpuPeak" label="CPU peak" firstDirection="desc" className="num" />
           <SortHeader sort={sort} column="memory" label="Memory peak" firstDirection="desc" className="num" />
+          <SortHeader sort={sort} column="gpuPeak" label="GPU peak" firstDirection="desc" className="num" />
+          <SortHeader sort={sort} column="gpuMemory" label="GPU memory peak" firstDirection="desc" className="num" />
           <SortHeader sort={sort} column="starts" label="Starts" firstDirection="desc" className="num" />
           <SortHeader sort={sort} column="received" label="Received" firstDirection="desc" className="num" />
           <SortHeader sort={sort} column="sent" label="Sent" firstDirection="desc" className="num" />
@@ -122,6 +127,8 @@ function ProgramsTable({
               <td className="num">{formatPercent(program.cpuAvgPercent)}</td>
               <td className="num">{formatPercent(program.cpuPeakPercent)}</td>
               <td className="num">{formatBytes(program.memoryPeakBytes)}</td>
+              <td className="num">{formatPercent(program.gpuPeakPercent)}</td>
+              <td className="num">{formatBytes(program.gpuMemoryPeakBytes)}</td>
               <td className="num">{program.starts}</td>
               <td className="num">{formatBytes(program.bytesReceived)}</td>
               <td className="num">{formatBytes(program.bytesSent)}</td>
@@ -146,7 +153,7 @@ function ProgramsTable({
                   <td>
                     <IdentityCell identity={member.identity} standing={member.standing} />
                   </td>
-                  <td colSpan={8} />
+                  <td colSpan={10} />
                 </tr>
               ))
             : [];
@@ -157,7 +164,7 @@ function ProgramsTable({
   );
 }
 
-/** Programs ranked over days and months by CPU, memory, starts or network traffic, from the hourly summaries. */
+/** Programs ranked over days and months by CPU, memory, starts, network traffic or GPU, from the hourly summaries. */
 export function ProgramsHistory() {
   const api = useApi();
   const [rangeSecs, setRangeSecs] = useState(DEFAULT_HISTORY_RANGE_SECS);
@@ -207,8 +214,18 @@ export function ProgramsHistory() {
             {data.historyStartsMs !== null && data.historyStartsMs > data.fromMs && (
               <p className="muted">History begins {formatDay(data.historyStartsMs)}. Earlier time was not collected.</p>
             )}
+            {metric === 'gpu' && data.programs.length > 0 && (
+              <p className="muted">
+                GPU figures are a share of the program's busiest GPU engine (what Task Manager shows), not of the whole
+                machine.
+              </p>
+            )}
             {data.programs.length === 0 ? (
-              <p className="muted">No programs to rank for this metric in this period.</p>
+              <p className="muted">
+                {metric === 'gpu'
+                  ? 'No program used the GPU in this period (or GPU use was not recorded yet).'
+                  : 'No programs to rank for this metric in this period.'}
+              </p>
             ) : (
               <section className="card card--wide">
                 <ProgramsTable view={data} sort={sort} onSelect={setSelected} />
@@ -228,13 +245,13 @@ export function ProgramsHistory() {
         />
       )}
       <p className="muted">
-        CPU and memory are recorded only while a program is among the 25 busiest processes, so small programs can look
-        absent. The CPU average counts those times as zero. Network excludes traffic to this machine itself, and the
-        unknown-program row holds processes whose program could not be identified. The identity column is evidence read
-        from each program&apos;s file, not a verdict: a signature shows who signed a file, not that it is safe. When
-        grouped, CPU averages, starts and traffic of a product are added up; its peaks are the highest of any one
-        program. Clicking a column heading sorts the programs listed here (the list is the busiest ones for the chosen
-        ranking); a third click returns to that ranking.
+        CPU, memory and GPU are recorded only while a program is among the 25 busiest processes (or among the five
+        busiest on the GPU), so small programs can look absent. The CPU average counts those times as zero. Network
+        excludes traffic to this machine itself, and the unknown-program row holds processes whose program could not be
+        identified. The identity column is evidence read from each program&apos;s file, not a verdict: a signature shows
+        who signed a file, not that it is safe. When grouped, CPU averages, starts and traffic of a product are added
+        up; its peaks are the highest of any one program. Clicking a column heading sorts the programs listed here (the
+        list is the busiest ones for the chosen ranking); a third click returns to that ranking.
       </p>
     </>
   );

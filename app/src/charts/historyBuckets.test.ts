@@ -21,6 +21,8 @@ function hour(startMs: number, overrides: Partial<SystemHourView> = {}): SystemH
     diskReadBytes: 10,
     diskWriteBytes: 20,
     othersCpuAvgPercent: 1,
+    gpuAvgPercent: null,
+    gpuMaxPercent: null,
     ...overrides,
   };
 }
@@ -160,5 +162,34 @@ describe('summarise', () => {
 
   it('has nothing to say about no data', () => {
     expect(summarise([])).toBeNull();
+  });
+});
+
+describe('the GPU of the machine', () => {
+  it('has no GPU figures at all when no hour had a reading (no counters is not an idle GPU)', () => {
+    const buckets = bucketHours([hour(100 * DAY), hour(100 * DAY + HOUR)], 'day', utcMinus5);
+    const day = buckets[0]!;
+    if (day.gap) throw new Error('expected data');
+    expect([day.gpuAvg, day.gpuMax]).toEqual([null, null]);
+    expect(summarise(buckets)).toMatchObject({ gpuAvg: null, gpuMax: null });
+  });
+
+  it('averages over the hours that had a reading, weighted by their samples, and keeps the highest peak', () => {
+    const start = 100 * DAY;
+    const buckets = bucketHours(
+      [
+        hour(start, { samples: 300, gpuAvgPercent: 40, gpuMaxPercent: 70 }),
+        hour(start + HOUR, { samples: 100, gpuAvgPercent: 0, gpuMaxPercent: 10 }),
+        hour(start + 2 * HOUR, { samples: 500 }), // no counters this hour: left out of the average, not counted as zero
+      ],
+      'day',
+      utcMinus5,
+    );
+    const day = buckets[0]!;
+    if (day.gap) throw new Error('expected data');
+    expect(day.gpuAvg).toBeCloseTo(30, 9); // (40*300 + 0*100) / 400
+    expect(day.gpuMax).toBe(70);
+    expect(summarise(buckets)).toMatchObject({ gpuMax: 70 });
+    expect(summarise(buckets)!.gpuAvg).toBeCloseTo(30, 9);
   });
 });
