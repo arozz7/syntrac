@@ -5,8 +5,8 @@ use std::net::IpAddr;
 
 use syntrac_core::{
     CpuBreakdown, CpuContribution, Destination, EventEnvelope, EventPayload, EventQuery, EventRepository, FlowQueries,
-    FlowRow, MetricsRepository, MetricsSample, ProcessFilter, ProcessInstanceId, ProcessQueries, ProcessRecord,
-    ProcessRepository, PurgeCounts, RepoError, Retention, SystemPoint, Timestamp,
+    FlowRow, GpuBreakdown, GpuContribution, MetricsRepository, MetricsSample, ProcessFilter, ProcessInstanceId,
+    ProcessQueries, ProcessRecord, ProcessRepository, PurgeCounts, RepoError, Retention, SystemPoint, Timestamp,
 };
 
 #[derive(Debug, Default)]
@@ -185,6 +185,53 @@ impl MetricsRepository for InMemoryRepository {
             processes,
             others_avg_cpu_percent: others_avg,
             unaccounted_avg_cpu_percent: (system_avg - listed_avg - others_avg).max(0.0),
+        })
+    }
+
+    fn gpu_breakdown(&self, from: Timestamp, to: Timestamp, limit: usize) -> Result<GpuBreakdown, RepoError> {
+        let samples: Vec<&MetricsSample> = self.metrics.iter().filter(|s| s.ts >= from && s.ts <= to).collect();
+        let readings: Vec<f32> = samples.iter().filter_map(|s| s.system.gpu_percent).collect();
+        let reading_samples = readings.len() as u32;
+        let others_peak = samples.iter().map(|s| s.others.gpu_percent).fold(0.0_f32, f32::max);
+        let mut processes: Vec<GpuContribution> = Vec::new();
+        if reading_samples > 0 {
+            // (sum, peak, memory peak) per (instance, pid)
+            let mut totals: HashMap<(Option<ProcessInstanceId>, u32), (f32, f32, u64)> = HashMap::new();
+            for sample in &samples {
+                for process in &sample.processes {
+                    let entry = totals.entry((process.instance, process.pid)).or_insert((0.0, 0.0, 0));
+                    entry.0 += process.gpu_percent;
+                    entry.1 = entry.1.max(process.gpu_percent);
+                    entry.2 = entry.2.max(process.gpu_memory_bytes);
+                }
+            }
+            let divisor = reading_samples as f32;
+            processes = totals
+                .into_iter()
+                .filter(|(_, (sum, _, _))| *sum > 0.0)
+                .map(|((instance, pid), (sum, peak, memory))| GpuContribution {
+                    instance,
+                    pid,
+                    avg_percent: sum / divisor,
+                    peak_percent: peak,
+                    memory_peak_bytes: memory,
+                })
+                .collect();
+            // Heaviest first; ties are broken by pid, as in the SQL.
+            processes.sort_by(|a, b| b.avg_percent.total_cmp(&a.avg_percent).then(a.pid.cmp(&b.pid)));
+            processes.truncate(limit);
+        }
+        Ok(GpuBreakdown {
+            window_samples: samples.len() as u32,
+            reading_samples,
+            system_avg_percent: if readings.is_empty() {
+                0.0
+            } else {
+                readings.iter().sum::<f32>() / readings.len() as f32
+            },
+            system_peak_percent: readings.iter().copied().fold(0.0_f32, f32::max),
+            processes,
+            others_peak_percent: others_peak,
         })
     }
 }

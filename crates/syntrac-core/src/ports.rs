@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::event::{EventCategory, EventEnvelope};
 use crate::flow::{Destination, FlowRow};
 use crate::identity::ProcessInstanceId;
-use crate::metrics::{CpuBreakdown, MetricsSample, PurgeCounts, SystemPoint};
+use crate::metrics::{CpuBreakdown, GpuBreakdown, MetricsSample, PurgeCounts, SystemPoint};
 use crate::time::Timestamp;
 
 #[derive(Debug, thiserror::Error)]
@@ -110,6 +110,9 @@ pub trait MetricsRepository {
 
     /// Which processes used the CPU in the window? Heaviest first, at most `limit` processes.
     fn cpu_breakdown(&self, from: Timestamp, to: Timestamp, limit: usize) -> Result<CpuBreakdown, RepoError>;
+
+    /// Which processes used the GPU in the window? Heaviest first, at most `limit`, only those that used it at all.
+    fn gpu_breakdown(&self, from: Timestamp, to: Timestamp, limit: usize) -> Result<GpuBreakdown, RepoError>;
 }
 
 /// Read-side questions about network flows that must not scan JSON payloads.

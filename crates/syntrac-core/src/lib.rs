@@ -102,8 +102,8 @@ pub use launchers::{
     LauncherWrite, RawEntry, SourceRead,
 };
 pub use metrics::{
-    CpuBreakdown, CpuContribution, MetricsSample, OtherProcesses, ProcessMetric, PurgeCounts, SystemMetrics,
-    SystemPoint,
+    CpuBreakdown, CpuContribution, GpuBreakdown, GpuContribution, MetricsSample, OtherProcesses, ProcessMetric,
+    PurgeCounts, SystemMetrics, SystemPoint,
 };
 pub use new_owner::{
     new_owner_candidates, NewOwnerDetector, NewOwnerFacts, ProgramOwners, ReachedOwner, MAX_NEW_OWNERS_PER_RUN,

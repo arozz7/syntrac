@@ -9,6 +9,7 @@ import type {
   HealthView,
   OverviewView,
   ProcessCpuView,
+  ProcessGpuView,
   ProcessRowView,
   IdentityBadgeView,
   IdentityDetailView,
@@ -77,6 +78,7 @@ export function overview(overrides: Partial<OverviewView> = {}): OverviewView {
         netSentBytes: 512,
         diskReadBytes: 0,
         diskWriteBytes: 2048,
+        gpuPercent: null,
       },
       {
         tsMs: NOW,
@@ -86,6 +88,7 @@ export function overview(overrides: Partial<OverviewView> = {}): OverviewView {
         netSentBytes: 1024,
         diskReadBytes: 0,
         diskWriteBytes: 0,
+        gpuPercent: null,
       },
     ],
     cpu: {
@@ -95,6 +98,8 @@ export function overview(overrides: Partial<OverviewView> = {}): OverviewView {
       unaccountedAvgPercent: 4.9,
       processes: [cpuProcess('chrome.exe', 3.2, 1), cpuProcess('MsMpEng.exe', 1.4, 2)],
     },
+    // No GPU readings by default (a period without GPU counters); the GPU tests give the card its own data.
+    gpu: { readingSamples: 0, systemAvgPercent: 0, systemPeakPercent: 0, othersPeakPercent: 0, processes: [] },
     destinations: [
       {
         remoteAddr: '57.144.180.192',
@@ -662,4 +667,16 @@ export function makeFakeApi(overrides: Partial<Api> = {}): Api & { [K in keyof A
     ),
     ...overrides,
   } as Api & { [K in keyof Api]: ReturnType<typeof vi.fn> };
+}
+
+export function gpuProcess(name: string, avg: number, pid: number, memoryPeakBytes = 0): ProcessGpuView {
+  return {
+    instance: `inst-${pid}`,
+    pid,
+    name,
+    imagePath: `C:\\apps\\${name}`,
+    avgPercent: avg,
+    peakPercent: Math.min(100, avg * 2),
+    memoryPeakBytes,
+  };
 }

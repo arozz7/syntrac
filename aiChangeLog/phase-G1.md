@@ -22,7 +22,7 @@ Slice G1 of `docs/ALERTS-PLAN.md`, requested by the user on 2026-11-20 ("should 
 - Screens and charts: bucketing and chart builders for the program and the system, Programs history, System history.
 
 ## Deviations and notes
-- The plan said the overview shows a system GPU line. The LIVE overview chart comes from the service pipe (`SystemPointView`), which would need a protocol change; the GPU line is in System history (from the hourly rollups) instead. The live overview is unchanged.
+- The plan said the overview shows a system GPU line; it was first built only in System history (from the hourly rollups), on the mistaken belief that the live chart needed a pipe change. It did not: slice L1 (`phase-L1.md`) added the live line and the "Who is using the GPU" card.
 - The top list is the union of the top N by CPU and the top five by GPU (the earlier sketch said "rank by the larger of the two", but the two are not the same unit).
 - The service must be reinstalled and the app rebuilt together (new schema, new fields).
 

@@ -5,6 +5,7 @@ import type { SystemPointView } from '../api/types';
 export interface ChartPalette {
   cpu: string;
   memory: string;
+  gpu: string;
   text: string;
   mutedText: string;
   grid: string;
@@ -12,8 +13,8 @@ export interface ChartPalette {
 }
 
 /**
- * CPU as a filled line and memory as a DASHED line, so the two series differ by line style and not only by
- * colour. Both are percentages of the whole machine, hence the fixed 0-100 axis.
+ * CPU as a filled line, memory as a DASHED line and the GPU (when there are readings) as a DOTTED line, so the series differ by line style and not only by
+ * colour. CPU and memory are shares of the whole machine; the GPU is a share of its busiest engine; all fit the fixed 0-100 axis.
  */
 export function buildCpuChartOption(points: SystemPointView[], palette: ChartPalette): EChartsOption {
   return {
@@ -59,6 +60,20 @@ export function buildCpuChartOption(points: SystemPointView[], palette: ChartPal
         itemStyle: { color: palette.memory },
         data: points.map((p) => [p.tsMs, p.memoryPercent]),
       },
+      // The GPU line only when some point had a reading: no counters is not an idle GPU. A point without one is a break.
+      ...(points.some((p) => p.gpuPercent !== null)
+        ? [
+            {
+              name: 'GPU',
+              type: 'line' as const,
+              showSymbol: false,
+              smooth: false,
+              lineStyle: { color: palette.gpu, width: 2, type: 'dotted' as const },
+              itemStyle: { color: palette.gpu },
+              data: points.map((p) => [p.tsMs, p.gpuPercent]),
+            },
+          ]
+        : []),
     ],
   };
 }

@@ -32,6 +32,8 @@ export interface SystemPointView {
   netSentBytes: number;
   diskReadBytes: number;
   diskWriteBytes: number;
+  /** The busiest GPU engine (a share of ONE engine, not of the machine); null when the GPU counters were not available. */
+  gpuPercent: number | null;
 }
 
 export interface ProcessCpuView {
@@ -53,6 +55,28 @@ export interface CpuView {
   processes: ProcessCpuView[];
 }
 
+export interface ProcessGpuView {
+  instance: string | null;
+  pid: number;
+  name: string;
+  imagePath: string | null;
+  /** A share of the program's busiest GPU engine (not of the machine), averaged over the samples that had a GPU reading. */
+  avgPercent: number;
+  peakPercent: number;
+  memoryPeakBytes: number;
+}
+
+/** Who used the GPU in the period. The shares are of ONE engine, so they do not add up to the system figure. */
+export interface GpuView {
+  /** How many samples of the period had a GPU reading; 0 means the counters were not available (never "idle"). */
+  readingSamples: number;
+  systemAvgPercent: number;
+  systemPeakPercent: number;
+  /** The largest single share of any program that is not listed. */
+  othersPeakPercent: number;
+  processes: ProcessGpuView[];
+}
+
 export interface DestinationView {
   remoteAddr: string;
   remotePort: number;
@@ -67,6 +91,7 @@ export interface OverviewView {
   toMs: number;
   system: SystemPointView[];
   cpu: CpuView;
+  gpu: GpuView;
   destinations: DestinationView[];
 }
 

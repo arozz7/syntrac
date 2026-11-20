@@ -8,8 +8,8 @@ use syntrac_core::{
 };
 
 use crate::fixtures::{
-    at_secs, dns_query, metrics_sample, net_flow, process_exited, process_metric, process_started, running_process,
-    EventFactory, BEACON_TARGET,
+    at_secs, dns_query, gpu_process_metric, metrics_sample, net_flow, process_exited, process_metric, process_started,
+    running_process, with_gpu_reading, EventFactory, BEACON_TARGET,
 };
 
 pub fn process_repository_contract<R: ProcessRepository>(make: impl Fn() -> R) {
@@ -191,6 +191,10 @@ pub fn metrics_repository_contract<R: MetricsRepository>(make: impl Fn() -> R) {
     breakdown_reports_cpu_that_no_process_explains(make());
     the_unaccounted_share_never_goes_negative(make());
     a_sample_without_an_owner_is_kept(make());
+    gpu_breakdown_averages_over_the_samples_that_had_a_reading(make());
+    gpu_breakdown_respects_the_window_ranks_heaviest_first_and_applies_the_limit(make());
+    gpu_breakdown_lists_only_programs_that_used_the_gpu_and_reports_the_tail(make());
+    gpu_breakdown_of_a_window_without_readings_or_samples_is_empty(make());
 }
 
 fn fill_metrics<R: MetricsRepository>(repo: &mut R) -> (ProcessInstanceId, ProcessInstanceId) {
@@ -611,4 +615,94 @@ where
     let destinations = repo.top_destinations(at_secs(0), at_secs(100), 10).unwrap();
     assert_eq!(destinations.len(), 1);
     assert_eq!((destinations[0].bytes_sent, destinations[0].bytes_received, destinations[0].flow_count), (5, 6, 1));
+}
+
+// ---- the GPU (docs/ALERTS-PLAN.md, live views L1)
+
+/// A and B on the GPU. t=10: system 60%, A 50% (1 000 bytes of GPU memory), B 20% (300), C idle. t=20: system 40%, A 30% (4 000).
+/// t=30: the GPU counters were NOT available (no reading; A shows 0). t=40: system 10%, nobody listed, the long tail's largest single
+/// share is 3%.
+fn fill_gpu<R: MetricsRepository>(repo: &mut R) -> (ProcessInstanceId, ProcessInstanceId) {
+    let a = ProcessInstanceId::from_pid_and_creation(1, at_secs(0));
+    let b = ProcessInstanceId::from_pid_and_creation(2, at_secs(0));
+    let c = ProcessInstanceId::from_pid_and_creation(3, at_secs(0));
+    let sample = |at, reading, processes, tail_gpu: f32| {
+        let mut sample = with_gpu_reading(metrics_sample(at, 10.0, processes, 1.0, 5), reading);
+        sample.others.gpu_percent = tail_gpu;
+        sample
+    };
+    repo.append_metrics(&sample(
+        10,
+        Some(60.0),
+        vec![
+            gpu_process_metric(1, Some(a), 1.0, 50.0, 1_000),
+            gpu_process_metric(2, Some(b), 1.0, 20.0, 300),
+            gpu_process_metric(3, Some(c), 1.0, 0.0, 0),
+        ],
+        0.5,
+    ))
+    .unwrap();
+    repo.append_metrics(&sample(20, Some(40.0), vec![gpu_process_metric(1, Some(a), 1.0, 30.0, 4_000)], 0.0)).unwrap();
+    repo.append_metrics(&sample(30, None, vec![gpu_process_metric(1, Some(a), 1.0, 0.0, 0)], 0.0)).unwrap();
+    repo.append_metrics(&sample(40, Some(10.0), vec![], 3.0)).unwrap();
+    (a, b)
+}
+
+fn gpu_breakdown_averages_over_the_samples_that_had_a_reading<R: MetricsRepository>(mut repo: R) {
+    let (a, b) = fill_gpu(&mut repo);
+
+    let breakdown = repo.gpu_breakdown(at_secs(0), at_secs(100), 10).unwrap();
+
+    assert_eq!(
+        (breakdown.window_samples, breakdown.reading_samples),
+        (4, 3),
+        "the sample without counters is not counted"
+    );
+    assert_close(breakdown.system_avg_percent, 110.0 / 3.0);
+    assert_close(breakdown.system_peak_percent, 60.0);
+    let process_a = breakdown.processes.iter().find(|p| p.instance == Some(a)).expect("A present");
+    assert_close(process_a.avg_percent, 80.0 / 3.0);
+    assert_close(process_a.peak_percent, 50.0);
+    assert_eq!(process_a.memory_peak_bytes, 4_000);
+    // B used the GPU in one of the three samples that had a reading: the others count as zero.
+    let process_b = breakdown.processes.iter().find(|p| p.instance == Some(b)).expect("B present");
+    assert_close(process_b.avg_percent, 20.0 / 3.0);
+    assert_close(process_b.peak_percent, 20.0);
+    assert_eq!(process_b.memory_peak_bytes, 300);
+}
+
+fn gpu_breakdown_respects_the_window_ranks_heaviest_first_and_applies_the_limit<R: MetricsRepository>(mut repo: R) {
+    let (a, _) = fill_gpu(&mut repo);
+
+    let first_two = repo.gpu_breakdown(at_secs(10), at_secs(20), 10).unwrap();
+    assert_eq!((first_two.window_samples, first_two.reading_samples), (2, 2));
+    assert_close(first_two.processes[0].avg_percent, 40.0);
+    assert!(first_two.processes[0].avg_percent >= first_two.processes[1].avg_percent, "heaviest first");
+
+    let top_one = repo.gpu_breakdown(at_secs(0), at_secs(100), 1).unwrap();
+    assert_eq!(top_one.processes.len(), 1);
+    assert_eq!(top_one.processes[0].instance, Some(a));
+}
+
+fn gpu_breakdown_lists_only_programs_that_used_the_gpu_and_reports_the_tail<R: MetricsRepository>(mut repo: R) {
+    fill_gpu(&mut repo);
+
+    let breakdown = repo.gpu_breakdown(at_secs(0), at_secs(100), 10).unwrap();
+
+    assert_eq!(breakdown.processes.len(), 2, "C was listed but never used the GPU");
+    // The long tail's largest single share in the window (not an average: shares of different engines cannot be added).
+    assert_close(breakdown.others_peak_percent, 3.0);
+}
+
+fn gpu_breakdown_of_a_window_without_readings_or_samples_is_empty<R: MetricsRepository>(mut repo: R) {
+    let empty = repo.gpu_breakdown(at_secs(0), at_secs(100), 10).unwrap();
+    assert_eq!((empty.window_samples, empty.reading_samples), (0, 0));
+    assert!(empty.processes.is_empty());
+    assert_close(empty.system_avg_percent, 0.0);
+
+    // Samples exist, but the counters were never available: nothing is said about the GPU (not "0% used").
+    repo.append_metrics(&metrics_sample(10, 5.0, vec![process_metric(1, None, 2.0)], 0.0, 0)).unwrap();
+    let none = repo.gpu_breakdown(at_secs(0), at_secs(100), 10).unwrap();
+    assert_eq!((none.window_samples, none.reading_samples), (1, 0));
+    assert!(none.processes.is_empty());
 }

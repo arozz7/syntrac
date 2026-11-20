@@ -98,6 +98,35 @@ pub struct CpuBreakdown {
     pub unaccounted_avg_cpu_percent: f32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct GpuContribution {
+    pub instance: Option<ProcessInstanceId>,
+    pub pid: u32,
+    /// A share of the process's busiest GPU engine (see `gpu`), averaged over the samples that HAD a GPU reading (absent samples
+    /// count as zero).
+    pub avg_percent: f32,
+    pub peak_percent: f32,
+    /// The highest dedicated GPU memory in the window.
+    pub memory_peak_bytes: u64,
+}
+
+/// "What used the GPU between A and B?" The figures are shares of ONE engine, so unlike the CPU they do not add up to the system figure
+/// (different processes may be on different engines): there is no "unaccounted" line, and the tail is reported as its largest single
+/// share, never as a sum.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GpuBreakdown {
+    /// Samples in the window, and how many of them had a GPU reading (the counters may have been unavailable for some).
+    pub window_samples: u32,
+    pub reading_samples: u32,
+    /// The busiest engine of the machine, averaged over the samples that had a reading, and its highest value.
+    pub system_avg_percent: f32,
+    pub system_peak_percent: f32,
+    /// Heaviest first; only processes that used the GPU at all.
+    pub processes: Vec<GpuContribution>,
+    /// The largest single GPU share of any process outside the per-sample list.
+    pub others_peak_percent: f32,
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PurgeCounts {
     pub events: u64,

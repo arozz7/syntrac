@@ -142,11 +142,11 @@ export function buildGpuChartOption(buckets: Bucket[], granularity: Granularity,
     },
     series: [
       {
-        ...line('GPU average', palette.memory, 'solid', 2),
-        areaStyle: { color: palette.memory, opacity: 0.15 },
+        ...line('GPU average', palette.gpu, 'solid', 2),
+        areaStyle: { color: palette.gpu, opacity: 0.15 },
         data: values(buckets, (b) => b.gpuAvg),
       },
-      { ...line('GPU peak', palette.memory, 'dotted', 1), data: values(buckets, (b) => b.gpuMax) },
+      { ...line('GPU peak', palette.gpu, 'dotted', 1), data: values(buckets, (b) => b.gpuMax) },
     ],
   };
 }

@@ -10,6 +10,7 @@ fn point(ts_ms: i64, cpu: f32, mem: f32, rx: u64) -> SystemPointView {
         net_sent_bytes: 0,
         disk_read_bytes: 0,
         disk_write_bytes: 0,
+        gpu_percent: None,
     }
 }
 
@@ -58,4 +59,27 @@ fn the_total_bytes_survive_downsampling() {
 fn an_empty_series_and_a_zero_limit_do_not_panic() {
     assert!(downsample(Vec::new(), 10).is_empty());
     assert!(downsample(vec![point(1, 1.0, 1.0, 1)], 0).len() <= 1);
+}
+
+fn gpu_point(ts_ms: i64, gpu: Option<f32>) -> SystemPointView {
+    SystemPointView { gpu_percent: gpu, ..point(ts_ms, 1.0, 1.0, 1) }
+}
+
+#[test]
+fn the_gpu_is_averaged_over_the_points_that_had_a_reading_and_a_bucket_without_one_keeps_none() {
+    let points = vec![
+        gpu_point(1, Some(20.0)),
+        gpu_point(2, None),
+        gpu_point(3, Some(60.0)),
+        gpu_point(4, None),
+        gpu_point(5, None),
+        gpu_point(6, None),
+    ];
+
+    let reduced = downsample(points, 3);
+
+    assert_eq!(reduced.len(), 3);
+    assert_eq!(reduced[0].gpu_percent, Some(20.0), "one reading and one gap: the gap is not a zero");
+    assert_eq!(reduced[1].gpu_percent, Some(60.0));
+    assert_eq!(reduced[2].gpu_percent, None, "no reading in the bucket, none in the result");
 }

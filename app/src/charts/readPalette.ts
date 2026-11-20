@@ -7,6 +7,7 @@ export function readPalette(): ChartPalette {
   return {
     cpu: token('--chart-1'),
     memory: token('--chart-3'),
+    gpu: token('--chart-4'),
     text: token('--color-text'),
     mutedText: token('--color-text-muted'),
     grid: token('--color-border'),

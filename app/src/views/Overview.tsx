@@ -9,6 +9,7 @@ import { usePolled } from '../hooks/usePolled';
 import { useSort, type SortControl } from '../hooks/useSort';
 import type { Accessors } from '../sorting';
 import { CpuContributors } from './CpuContributors';
+import { GpuContributors } from './GpuContributors';
 import { SystemChart } from './SystemChart';
 
 const REFRESH_MS = 5000;
@@ -77,6 +78,14 @@ function OverviewBody({ data, sort }: { data: OverviewView; sort: SortControl })
                 <dt>Memory now</dt>
                 <dd>{latest ? formatPercent(latest.memoryPercent) : '—'}</dd>
               </div>
+              {latest?.gpuPercent != null && (
+                <div>
+                  <dt>GPU now</dt>
+                  <dd title="A share of the busiest GPU engine, not of the whole machine.">
+                    {formatPercent(latest.gpuPercent)}
+                  </dd>
+                </div>
+              )}
               <div>
                 <dt>Network in</dt>
                 <dd>{formatBytes(sum(data.system.map((p) => p.netReceivedBytes)))}</dd>
@@ -93,6 +102,11 @@ function OverviewBody({ data, sort }: { data: OverviewView; sort: SortControl })
       <section className="card">
         <h2>Who is using the CPU</h2>
         <CpuContributors cpu={data.cpu} />
+      </section>
+
+      <section className="card">
+        <h2>Who is using the GPU</h2>
+        <GpuContributors gpu={data.gpu} />
       </section>
 
       <section className="card">

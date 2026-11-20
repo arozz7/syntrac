@@ -53,6 +53,8 @@ pub struct SystemPointView {
     pub net_sent_bytes: u64,
     pub disk_read_bytes: u64,
     pub disk_write_bytes: u64,
+    /// The busiest GPU engine (a share of ONE engine, not of the machine); `None` when the GPU counters were not available.
+    pub gpu_percent: Option<f32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -78,6 +80,32 @@ pub struct CpuView {
     pub processes: Vec<ProcessCpuView>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessGpuView {
+    pub instance: Option<String>,
+    pub pid: u32,
+    pub name: String,
+    pub image_path: Option<String>,
+    /// A share of the program's busiest GPU engine (not of the machine), averaged over the samples that had a GPU reading.
+    pub avg_percent: f32,
+    pub peak_percent: f32,
+    pub memory_peak_bytes: u64,
+}
+
+/// Who used the GPU in the period. The figures are shares of ONE engine, so they do not add up to the system figure.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GpuView {
+    /// How many samples of the period had a GPU reading; 0 means the counters were not available (say so, never "idle").
+    pub reading_samples: u32,
+    pub system_avg_percent: f32,
+    pub system_peak_percent: f32,
+    /// The largest single share of any program that is not listed.
+    pub others_peak_percent: f32,
+    pub processes: Vec<ProcessGpuView>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DestinationView {
@@ -96,6 +124,7 @@ pub struct OverviewView {
     pub to_ms: i64,
     pub system: Vec<SystemPointView>,
     pub cpu: CpuView,
+    pub gpu: GpuView,
     pub destinations: Vec<DestinationView>,
 }
 
@@ -118,6 +147,7 @@ where
                 net_sent_bytes: point.system.net_sent_bytes,
                 disk_read_bytes: point.system.disk_read_bytes,
                 disk_write_bytes: point.system.disk_write_bytes,
+                gpu_percent: point.system.gpu_percent,
             })
             .collect(),
         MAX_SERIES_POINTS,
@@ -126,11 +156,7 @@ where
     let breakdown = repo.cpu_breakdown(from, now, TOP_PROCESSES)?;
     let mut processes = Vec::with_capacity(breakdown.processes.len());
     for contribution in &breakdown.processes {
-        let record = match contribution.instance {
-            Some(id) => repo.get(id)?,
-            None => None,
-        };
-        let image_path = record.map(|r| r.image_path).filter(|path| !path.is_empty());
+        let image_path = image_path_of(repo, contribution.instance)?;
         processes.push(ProcessCpuView {
             instance: contribution.instance.map(id_text),
             pid: contribution.pid,
@@ -139,6 +165,21 @@ where
             avg_percent: contribution.avg_cpu_percent,
             peak_percent: contribution.peak_cpu_percent,
             samples_present: contribution.samples_present,
+        });
+    }
+
+    let gpu_breakdown = repo.gpu_breakdown(from, now, TOP_PROCESSES)?;
+    let mut gpu_processes = Vec::with_capacity(gpu_breakdown.processes.len());
+    for contribution in &gpu_breakdown.processes {
+        let image_path = image_path_of(repo, contribution.instance)?;
+        gpu_processes.push(ProcessGpuView {
+            instance: contribution.instance.map(id_text),
+            pid: contribution.pid,
+            name: display_name(image_path.as_deref().unwrap_or_default(), contribution.pid),
+            image_path,
+            avg_percent: contribution.avg_percent,
+            peak_percent: contribution.peak_percent,
+            memory_peak_bytes: contribution.memory_peak_bytes,
         });
     }
 
@@ -169,6 +210,13 @@ where
             others_avg_percent: breakdown.others_avg_cpu_percent,
             unaccounted_avg_percent: breakdown.unaccounted_avg_cpu_percent,
             processes,
+        },
+        gpu: GpuView {
+            reading_samples: gpu_breakdown.reading_samples,
+            system_avg_percent: gpu_breakdown.system_avg_percent,
+            system_peak_percent: gpu_breakdown.system_peak_percent,
+            others_peak_percent: gpu_breakdown.others_peak_percent,
+            processes: gpu_processes,
         },
         destinations,
     })
@@ -279,4 +327,16 @@ pub fn connection_list<R: FlowQueries>(
             failed: flow.failed,
         })
         .collect())
+}
+
+/// The path of the program a process instance belongs to, when it is known.
+fn image_path_of<R: ProcessRepository>(
+    repo: &R,
+    instance: Option<ProcessInstanceId>,
+) -> Result<Option<String>, RepoError> {
+    let record = match instance {
+        Some(id) => repo.get(id)?,
+        None => None,
+    };
+    Ok(record.map(|r| r.image_path).filter(|path| !path.is_empty()))
 }

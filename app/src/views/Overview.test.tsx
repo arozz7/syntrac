@@ -3,7 +3,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiProvider } from '../api/ApiContext';
-import { makeFakeApi, overview } from '../test/fakeApi';
+import { gpuProcess, makeFakeApi, overview } from '../test/fakeApi';
 import { Overview } from './Overview';
 
 // jsdom has no canvas; the chart itself is exercised through its pure option builder.
@@ -91,5 +91,58 @@ describe('Overview', () => {
     });
     show(makeFakeApi({ overview: vi.fn(async () => ({ state: 'ok' as const, data: empty })) }));
     expect(await screen.findByText(/No samples in this period/i)).toBeTruthy();
+  });
+});
+
+describe('Overview: the GPU', () => {
+  const gpuOverview = () =>
+    overview({
+      system: overview().system.map((point, index) => ({ ...point, gpuPercent: index === 1 ? 64 : 20 })),
+      gpu: {
+        readingSamples: 170,
+        systemAvgPercent: 31,
+        systemPeakPercent: 97,
+        othersPeakPercent: 2.5,
+        processes: [gpuProcess('toolx.exe', 42, 7, 3 * 1024 ** 3), gpuProcess('chrome.exe', 6, 1, 512 * 1024 ** 2)],
+      },
+    });
+  const showGpu = (data = gpuOverview()) =>
+    show(makeFakeApi({ overview: vi.fn(async () => ({ state: 'ok' as const, data })) }));
+
+  it('names who is using the GPU with each program share, peak and GPU memory', async () => {
+    showGpu();
+    expect(await screen.findByRole('heading', { name: 'Who is using the GPU' })).toBeTruthy();
+    expect(screen.getByText('toolx.exe')).toBeTruthy();
+    expect(screen.getByText('42.0%')).toBeTruthy();
+    expect(screen.getByText('peak 84.0%')).toBeTruthy();
+    expect(screen.getByText(/3\.0 GB GPU memory/)).toBeTruthy();
+  });
+
+  it('says what the figures are a share of, the busiest engine of the machine, and the largest unlisted share', async () => {
+    showGpu();
+    expect(await screen.findByText(/busiest GPU engine/i)).toBeTruthy();
+    expect(screen.getByText(/system average 31\.0%/i)).toBeTruthy();
+    expect(screen.getByText(/peak 97\.0%/i)).toBeTruthy();
+    expect(screen.getByText(/programs not listed used at most 2\.5%/i)).toBeTruthy();
+  });
+
+  it('shows the GPU now next to CPU and memory when the latest point has a reading', async () => {
+    showGpu();
+    expect(await screen.findByText('GPU now')).toBeTruthy();
+    expect(screen.getByText('64.0%')).toBeTruthy();
+  });
+
+  it('says the GPU was not recorded, rather than showing an idle GPU, when no sample had a reading', async () => {
+    show();
+    expect(await screen.findByRole('heading', { name: 'Who is using the GPU' })).toBeTruthy();
+    expect(screen.getByText(/gpu use is not recorded for this period/i)).toBeTruthy();
+    expect(screen.queryByText('GPU now')).toBeNull();
+  });
+
+  it('says so when there were readings but no program used the GPU', async () => {
+    const data = gpuOverview();
+    data.gpu = { ...data.gpu, processes: [], othersPeakPercent: 0 };
+    showGpu(data);
+    expect(await screen.findByText(/no program used the gpu/i)).toBeTruthy();
   });
 });

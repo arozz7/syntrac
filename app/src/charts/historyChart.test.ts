@@ -9,6 +9,7 @@ const utc: DayStart = (ms) => Math.floor(ms / DAY) * DAY;
 const palette: ChartPalette = {
   cpu: '#111',
   memory: '#222',
+  gpu: '#333',
   text: '#000',
   mutedText: '#555',
   grid: '#ccc',

@@ -8,7 +8,8 @@ use syntrac_app_lib::views::{
 };
 use syntrac_core::{EventRepository, MetricsRepository, ProcessInstanceId, ProcessRepository, Timestamp};
 use syntrac_testkit::fixtures::{
-    at_secs, metrics_sample, net_flow, process_metric, running_process, EventFactory, BEACON_TARGET,
+    at_secs, gpu_process_metric, metrics_sample, net_flow, process_metric, running_process, with_gpu_reading,
+    EventFactory, BEACON_TARGET,
 };
 use syntrac_testkit::InMemoryRepository;
 
@@ -205,4 +206,59 @@ fn connections_name_their_process_and_come_newest_first() {
     );
     assert_eq!(rows[1].name, "browser.exe");
     assert_eq!((rows[1].protocol.as_str(), rows[1].remote_port, rows[1].bytes_received), ("tcp", 443, 20));
+}
+
+// ---- the GPU (docs/ALERTS-PLAN.md, live views L1)
+
+#[test]
+fn the_gpu_breakdown_names_each_program_with_its_average_peak_and_memory() {
+    let mut repo = InMemoryRepository::default();
+    let chrome = named(1, 100, r"C:\Program Files\Google\Chrome\chrome.exe");
+    repo.record_start(chrome.clone()).unwrap();
+    for (at, gpu, memory) in [(9_800, 60.0, 2_000), (9_900, 20.0, 8_000)] {
+        repo.append_metrics(&with_gpu_reading(
+            metrics_sample(at, 10.0, vec![gpu_process_metric(1, Some(chrome.id), 1.0, gpu, memory)], 0.0, 0),
+            Some(70.0),
+        ))
+        .unwrap();
+    }
+
+    let view = overview(&repo, now(), 3600).unwrap();
+
+    assert_eq!(view.gpu.reading_samples, 2);
+    let top = &view.gpu.processes[0];
+    assert_eq!((top.name.as_str(), top.pid), ("chrome.exe", 1));
+    assert!((top.avg_percent - 40.0).abs() < 1e-3 && (top.peak_percent - 60.0).abs() < 1e-3);
+    assert_eq!(top.memory_peak_bytes, 8_000);
+    assert_eq!(top.instance.as_deref(), Some(chrome.id.as_uuid().to_string().as_str()));
+    assert!((view.gpu.system_avg_percent - 70.0).abs() < 1e-3 && (view.gpu.system_peak_percent - 70.0).abs() < 1e-3);
+}
+
+#[test]
+fn a_period_without_gpu_readings_says_so_instead_of_showing_an_idle_gpu() {
+    let mut repo = InMemoryRepository::default();
+    repo.append_metrics(&metrics_sample(9_900, 10.0, vec![process_metric(555, None, 5.0)], 0.0, 0)).unwrap();
+
+    let view = overview(&repo, now(), 3600).unwrap();
+
+    assert_eq!(view.gpu.reading_samples, 0);
+    assert!(view.gpu.processes.is_empty());
+    assert_eq!(view.system[0].gpu_percent, None, "no reading is not 0%");
+}
+
+#[test]
+fn the_series_carries_the_gpu_and_the_downsampling_does_not_dilute_it_with_samples_that_had_no_reading() {
+    let mut repo = InMemoryRepository::default();
+    for i in 0..1000 {
+        // The first 200 samples have no GPU counters; after that every other sample has a reading of 40%.
+        let reading = (i >= 200 && i % 2 == 0).then_some(40.0);
+        repo.append_metrics(&with_gpu_reading(metrics_sample(9_000 + i, 10.0, vec![], 0.0, 0), reading)).unwrap();
+    }
+
+    let view = overview(&repo, now(), 7200).unwrap();
+
+    assert!(view.system.len() <= 240);
+    assert_eq!(view.system[0].gpu_percent, None, "a point made only of samples without a reading has none");
+    let last = view.system.last().unwrap().gpu_percent.expect("a reading at the end");
+    assert!((last - 40.0).abs() < 1e-3, "40% of the samples that had a reading, not 20% of all of them: {last}");
 }

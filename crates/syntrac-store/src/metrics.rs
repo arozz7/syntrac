@@ -2,8 +2,8 @@
 
 use rusqlite::{params, OptionalExtension};
 use syntrac_core::{
-    CpuBreakdown, CpuContribution, MetricsRepository, MetricsSample, OtherProcesses, PurgeCounts, RepoError, Retention,
-    SystemMetrics, SystemPoint, Timestamp,
+    CpuBreakdown, CpuContribution, GpuBreakdown, GpuContribution, MetricsRepository, MetricsSample, OtherProcesses,
+    PurgeCounts, RepoError, Retention, SystemMetrics, SystemPoint, Timestamp,
 };
 
 use crate::codec::{instance_from_blob, instance_to_blob, to_i64, to_u64, IdBytes};
@@ -159,6 +159,65 @@ impl MetricsRepository for SqliteStore {
             processes,
             others_avg_cpu_percent: others_avg as f32,
             unaccounted_avg_cpu_percent: (system_avg - listed_avg - others_avg).max(0.0) as f32,
+        })
+    }
+
+    fn gpu_breakdown(&self, from: Timestamp, to: Timestamp, limit: usize) -> Result<GpuBreakdown, RepoError> {
+        // `COUNT(gpu_percent)` counts only the samples that HAD a reading (NULL = the counters were not available).
+        let (window_samples, reading_samples, system_avg, system_peak, others_peak): (
+            u32,
+            u32,
+            Option<f64>,
+            Option<f64>,
+            Option<f64>,
+        ) = self
+            .conn
+            .query_row(
+                "SELECT COUNT(*), COUNT(gpu_percent), AVG(gpu_percent), MAX(gpu_percent), MAX(others_gpu_percent)
+                 FROM system_metrics WHERE ts >= ?1 AND ts <= ?2",
+                params![from.as_micros(), to.as_micros()],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            )
+            .map_err(backend)?;
+
+        let mut processes = Vec::new();
+        if reading_samples > 0 {
+            let divisor = f64::from(reading_samples);
+            // Only processes that used the GPU at all; ties are broken by pid so the order never depends on the engine.
+            let mut statement = self
+                .conn
+                .prepare(
+                    "SELECT instance, pid, SUM(gpu_percent), MAX(gpu_percent), MAX(gpu_memory)
+                     FROM process_metrics WHERE ts >= ?1 AND ts <= ?2
+                     GROUP BY instance, pid
+                     HAVING SUM(gpu_percent) > 0
+                     ORDER BY SUM(gpu_percent) DESC, pid ASC
+                     LIMIT ?3",
+                )
+                .map_err(backend)?;
+            let mut rows = statement
+                .query(params![from.as_micros(), to.as_micros(), i64::try_from(limit).unwrap_or(i64::MAX)])
+                .map_err(backend)?;
+            while let Some(row) = rows.next().map_err(backend)? {
+                let instance: Option<IdBytes> = row.get(0).map_err(backend)?;
+                let sum: f64 = row.get(2).map_err(backend)?;
+                let peak: f64 = row.get(3).map_err(backend)?;
+                processes.push(GpuContribution {
+                    instance: instance.map(instance_from_blob),
+                    pid: row.get(1).map_err(backend)?,
+                    avg_percent: (sum / divisor) as f32,
+                    peak_percent: peak as f32,
+                    memory_peak_bytes: to_u64(row.get(4).map_err(backend)?),
+                });
+            }
+        }
+        Ok(GpuBreakdown {
+            window_samples,
+            reading_samples,
+            system_avg_percent: system_avg.unwrap_or(0.0) as f32,
+            system_peak_percent: system_peak.unwrap_or(0.0) as f32,
+            processes,
+            others_peak_percent: others_peak.unwrap_or(0.0) as f32,
         })
     }
 }
