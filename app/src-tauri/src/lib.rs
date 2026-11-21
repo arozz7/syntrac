@@ -12,6 +12,7 @@ pub mod history_findings;
 pub mod history_network;
 pub mod history_programs;
 pub mod identity_view;
+pub mod investigate_evidence;
 pub mod known_view;
 pub mod names;
 pub mod owner_data_view;

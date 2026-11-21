@@ -18,6 +18,7 @@ pub mod gpu;
 pub mod identity;
 pub mod identity_run;
 pub mod install_records;
+pub mod investigate;
 pub mod known;
 pub mod launch_run;
 pub mod launch_target;

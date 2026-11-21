@@ -40,8 +40,9 @@ the model, so a stopped or slow model cannot blind anything.
 | | `summary` (local, default) | `full` (local, deliberate) | `external` (copy for an outside model) |
 |---|---|---|---|
 | Your user name in paths | replaced by `<user>` | replaced by `<user>` | replaced by `<user>` |
-| Program: file name, folder class, signer, maker, version | yes | yes | yes (the folder reduced to its kind, for example "a user profile folder") |
-| Destinations | the network owner and the name asked for | plus addresses and ports | the **kind** of network only ("a cloud storage network"), no names or addresses |
+| Program: file name, folder, product, description, version | yes | yes | **no**: only the kind of place it runs from (for example `user_profile`), the signature state and the publisher |
+| Destinations | the network owner and the name asked for | plus addresses (ports are not stored per program) | counts only (how many, how many on the Internet), the bytes, no owner, name or address |
+| Finding text (title, reason, evidence lines) | yes, addresses removed | yes | **no**: only the kind of finding, its tier and how often it was found |
 | File hashes | no | yes | no |
 | Account a program runs as | the kind (SYSTEM, a service, a user) | plus the name | the kind only |
 | Counts and hourly numbers | yes | yes | yes |

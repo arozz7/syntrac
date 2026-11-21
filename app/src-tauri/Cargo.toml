@@ -27,6 +27,7 @@ windows = { version = "0.57", features = ["Win32_Foundation", "Win32_System_Regi
 
 [dev-dependencies]
 syntrac-testkit = { path = "../../crates/syntrac-testkit" }
+syntrac-demo = { path = "../../crates/syntrac-demo" }
 tempfile = "3"
 rusqlite = { version = "0.40", features = ["bundled"] }
 
