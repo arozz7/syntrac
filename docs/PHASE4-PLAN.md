@@ -63,7 +63,7 @@ a fixed set of bounded readers.
 - **L4a: the client.** Settings (in the per-user settings file), the loopback guard, readiness check, and a streaming chat client, tested against a
   fake server on loopback. New dependency: a small blocking HTTP client (`ureq`, TLS off: it only talks to loopback).
 - **L4b: the evidence.** The bounded readers, the three detail levels and the prompt builder, pure and tested (including against the demo data).
-- **L4c: the launcher.** Start, stop and state of the server process behind a trait with a fake; the status UI.
+- **L4c: the launcher.** Start, stop and state of the server process behind a trait with a fake, a real Windows adapter (job object, so Stop also ends what the server started), and the commands the page calls. The screen that shows the status comes with the settings section in L4d.
 - **L4d: Investigate.** The button on findings and programs, the streaming panel, cancel, the error states, the *copy a prompt* box with its preview,
   the settings section, the user guide.
 - **L4e (later, optional).** A free-form question box with read-only tools.

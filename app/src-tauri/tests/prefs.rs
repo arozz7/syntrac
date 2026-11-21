@@ -90,6 +90,7 @@ fn the_ai_settings_are_kept_with_the_other_settings_and_written_on_every_change(
         endpoint: "http://127.0.0.1:1234/v1".into(),
         model: "some-model".into(),
         detail_level: DetailLevel::Full,
+        ..AiSettings::default()
     };
 
     handle.set_ai_settings(settings.clone());

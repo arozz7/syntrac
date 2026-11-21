@@ -7,6 +7,8 @@ use std::net::Ipv4Addr;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::server_launch::{LaunchCommand, LaunchProblem};
+
 /// How much detail goes into what is asked of a model server on this machine (docs/PHASE4-PLAN.md, "What is sent").
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -29,6 +31,12 @@ pub struct AiSettings {
     /// Sent to the server exactly as typed: some servers switch models when the name changes, so it is never chosen for the user.
     pub model: String,
     pub detail_level: DetailLevel,
+    /// Optional: how to start the model server from the app. Empty means the app does not manage the server.
+    pub launch: Option<LaunchCommand>,
+    /// Start the server when Investigate is pressed and nothing answers (otherwise the button says the server is not running).
+    pub start_on_investigate: bool,
+    /// Stop a server this app started when the app quits.
+    pub stop_on_quit: bool,
 }
 
 impl AiSettings {
@@ -41,6 +49,13 @@ impl AiSettings {
             return Err(SettingsProblem::NoModel);
         }
         LoopbackEndpoint::parse(&self.endpoint).map_err(SettingsProblem::Endpoint)
+    }
+
+    /// The launch command, when one is set and passes the rules.
+    pub fn launch_command(&self) -> Result<&LaunchCommand, LaunchProblem> {
+        let command = self.launch.as_ref().ok_or(LaunchProblem::NoProgram)?;
+        command.check()?;
+        Ok(command)
     }
 }
 

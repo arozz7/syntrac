@@ -41,6 +41,8 @@ pub mod review;
 pub mod rollup;
 pub mod rollup_ledger;
 pub mod rollup_run;
+pub mod server_launch;
+pub mod server_manager;
 pub mod silence;
 pub mod spawns;
 pub mod storage_guard;

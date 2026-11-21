@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use syntrac_core::llm::{ChatRequest, Flow, LlmError, LlmService, ServerState, StreamEvent};
 
 pub struct MockLlm {
-    state: ServerState,
+    state: Mutex<ServerState>,
     outcome: Result<Vec<StreamEvent>, LlmError>,
     asked: Mutex<Vec<ChatRequest>>,
 }
@@ -15,12 +15,17 @@ impl MockLlm {
     /// A server that is ready and streams these answer pieces.
     pub fn answering(pieces: &[&str]) -> Self {
         let events = pieces.iter().map(|piece| StreamEvent::Answer((*piece).to_owned())).collect();
-        Self { state: ServerState::Ready, outcome: Ok(events), asked: Mutex::new(Vec::new()) }
+        Self { state: Mutex::new(ServerState::Ready), outcome: Ok(events), asked: Mutex::new(Vec::new()) }
     }
 
     /// A server that is in this state and fails every chat request with this error.
     pub fn failing(state: ServerState, error: LlmError) -> Self {
-        Self { state, outcome: Err(error), asked: Mutex::new(Vec::new()) }
+        Self { state: Mutex::new(state), outcome: Err(error), asked: Mutex::new(Vec::new()) }
+    }
+
+    /// Changes what the server reports from now on (it was loading, now it is ready).
+    pub fn set_state(&self, state: ServerState) {
+        *self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = state;
     }
 
     /// Every request received so far, oldest first.
@@ -31,7 +36,7 @@ impl MockLlm {
 
 impl LlmService for MockLlm {
     fn state(&self) -> ServerState {
-        self.state.clone()
+        self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone()
     }
 
     fn stream_chat(

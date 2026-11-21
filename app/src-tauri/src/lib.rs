@@ -1,6 +1,8 @@
 //! SYNTRAC desktop app (unelevated). It never collects anything: it reads the collector's database read-only and
 //! asks the collector's pipe how it is doing.
 
+pub mod ai_commands;
+pub mod ai_control;
 pub mod autostart;
 pub mod autostart_registry;
 pub mod backend;
@@ -18,6 +20,7 @@ pub mod names;
 pub mod owner_data_view;
 pub mod prefs;
 pub mod series;
+pub mod server_process;
 pub mod settings;
 pub mod toast_watch;
 pub mod tray;
@@ -28,6 +31,7 @@ use std::sync::Arc;
 
 use syntrac_core::SystemClock;
 
+use crate::ai_control::{AiControl, ServiceFactory};
 use crate::autostart::StartMode;
 use crate::backend::Backend;
 use crate::prefs::{prefs_path, Prefs, PrefsHandle};
@@ -44,6 +48,12 @@ fn load_prefs() -> PrefsHandle {
 pub fn run() {
     let backend: commands::SharedBackend = Arc::new(Backend::new(AppSettings::from_env(), SystemClock));
     let prefs = load_prefs();
+    // The optional AI help: nothing contacts a model server until the page asks, and nothing starts one until a button is pressed.
+    let service: ServiceFactory =
+        Arc::new(|endpoint| Box::new(syntrac_llm::HttpLlm::new(endpoint, syntrac_llm::HttpLimits::default())));
+    let ai: ai_commands::SharedAi =
+        Arc::new(AiControl::new(prefs.clone(), Box::new(server_process::WindowsSpawner), service));
+    let exit_ai = Arc::clone(&ai);
     let (watch_backend, watch_prefs) = (Arc::clone(&backend), prefs.clone());
     let app = tauri::Builder::default()
         // Only one copy runs: starting SYNTRAC again opens the window of the one that is running (it may be in the tray).
@@ -52,6 +62,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(backend)
         .manage(prefs.clone())
+        .manage(ai)
         .setup(move |app| {
             tray::install(app.handle(), &prefs)?;
             tray::start_watcher(app.handle().clone(), watch_backend, watch_prefs);
@@ -65,6 +76,11 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_notifications_on,
             commands::set_notifications_on,
+            ai_commands::get_ai_settings,
+            ai_commands::set_ai_settings,
+            ai_commands::get_ai_status,
+            ai_commands::start_ai_server,
+            ai_commands::stop_ai_server,
             commands::get_health,
             commands::get_overview,
             commands::list_processes,
@@ -91,13 +107,16 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("failed to build the SYNTRAC application");
-    app.run(|_app, event| {
+    app.run(move |_app, event| {
         // Closing the last window is not the end: the program stays in the tray and goes on watching. Only Quit (an exit with a
         // code) ends it.
         if let tauri::RunEvent::ExitRequested { code, api, .. } = event {
             if code.is_none() {
                 api.prevent_exit();
             }
+        } else if let tauri::RunEvent::Exit = event {
+            // The program is ending for good: stop the model server it started, if the user chose that.
+            exit_ai.shutdown();
         }
     });
 }
