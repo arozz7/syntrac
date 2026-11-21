@@ -251,6 +251,7 @@ decides what they mean (using values captured from real traces).
 | `snapshot` (processes via Toolhelp, TCP table via IP Helper) | `snapshot_map` | Stamped with the time the snapshot BEGAN; `ProcessObserved`, not `ProcessStarted` |
 | `sysmetrics` (`sysinfo`) | `metrics_build` | One CPU unit: share of the WHOLE machine |
 | tray icon and alerts (`tray.rs`, Tauri, Windows notifications) | `toast_watch` (`plan_toasts`, `Watcher`), `tray_text`, `prefs` | One program with or without a window: closing the window keeps it in the tray; one sender of toasts (a Rust thread, every 30 s); "new" = an id above the last announced, kept in `%LOCALAPPDATA%Syntracpp.json`; a settings file that cannot be written never repeats a toast |
+| start with Windows (`autostart_registry.rs`, the user's own Run key) | `autostart` (`StartMode`, `autostart_command`, `set_enabled`, `repair`) | One value `SYNTRAC` = quoted program + `--tray`; off until ticked in the tray menu; a path with a quote is refused; repaired only when the program it names is gone |
 | `gpu_counters` (the Windows GPU performance counters, through PDH) | `syntrac_core::gpu` (`parse_engine_instance`, `gpu_figures`), `metrics_build` | One GPU unit: share of the busiest ENGINE (not of the machine); no counters = "not available", never zero; read-only, about 2 ms per sample on the test machine |
 | `volumes` (`QueryDosDevice`) | `paths::NtPathConverter` | Injected volume map |
 

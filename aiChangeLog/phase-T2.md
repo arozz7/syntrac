@@ -1,47 +1,23 @@
-# Phase T2: programs (second slice of the trend views)
+# Phase T2: start with Windows (no schema change; app rebuild only)
 
-Implements T2 of `docs/TRENDS-PLAN.md`. Network ranking by program was added at the user's request (2026-11-13: "are we planning
-to give like top 10 process (app) usage of different resources").
+Slice T2 of `docs/ALERTS-PLAN.md` (slice T), started on 2026-11-20 after the user had tried T1 ("T1 looks fine .. work on T2").
 
 ## What changed
-
-**Core** (`crates/syntrac-core/src/trend.rs`, pure): `TrendRepository` (read side, three methods that only group and sum:
-`system_sample_total`, `process_totals`, `traffic_totals` without loopback), `merge_programs` (one summary per executable; the CPU
-average is the weighted sum divided by the samples of the whole range), `rank_programs` (highest first, programs with nothing for
-the metric left out, ties by path, unattributed last), `collect_totals`, `rank_totals`, `top_programs`. `ProgramMetric`: CPU
-average, memory peak, starts, network bytes.
-
-**Stores**: in-memory (`memory_rollup.rs`) and SQLite (`syntrac-store/src/trends.rs`: one `GROUP BY` per table, loopback is
-`127.%` and `::1`, the same set as `IpAddr::is_loopback`). Contract suite `trend_contract.rs` run against both, plus a parity test
-(`rollup_parity.rs`, floats to 1e-9).
-
-**App backend** (`app/src-tauri`): `history_programs.rs` (`range_totals`, `rank_range`, `program_ranking`, `program_history`), the
-`Backend` keeps each range's sums until the rollup watermark changes, commands `get_top_programs` and `get_program_history`.
-Program names come from the image path; the unattributed bucket is "Unknown program" and has no drill-down.
-
-**Frontend** (`app/src`): Programs tab (range picker, "Rank by" CPU / Memory / Starts / Network, a table with CPU average and
-peak, memory peak, starts, received, sent, "recorded in N of M h", last seen), `ProgramDetail` (first and last seen, starts,
-CPU chart with average solid and peak dotted, memory-peak bars). `charts/bucketing.ts` is the generic hour-to-bucket grouping
-(extracted from `historyBuckets.ts`, which now uses it; its tests did not change), `programBuckets.ts`, `programChart.ts`;
-`historyChart.ts` builders are generic over the bucket type. Shared ranges in `components/historyRanges.ts`.
+- **A "Start with Windows" item in the tray menu**, a check mark, OFF until the user switches it on. Switching it on writes ONE value, `SYNTRAC`, in the signed-in user's own Run key (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`): `"<this program>" --tray`. No administrator rights, nothing for other users, no service, no scheduled task. Switching it off deletes that value. The check mark always shows what the registry says (a refusal leaves it as it was).
+- **`--tray` starts with no window.** `tauri.conf.json` no longer lists a window; the program builds the main window itself (`tray::open_main_window`, the same size and title as before), and only when it was NOT started with `--tray`. So a program started by Windows holds no web view in memory until you open it. Starting SYNTRAC again (single instance, T1) opens the window of the running copy.
+- **Repair after a move** (`autostart::repair`, run at every start): when the entry is on but the program it names no longer exists, it is pointed at the program that is running now, so autostart keeps working after a rebuild elsewhere. It never switches anything on, and never touches an entry naming another copy that still exists (a copy the user chose).
+- **Safe by construction**: a path containing a quote character gets no command at all (nothing is written); the value is read with a size cap and only as text; the real store is a thin adapter over a trait (`AutostartStore`), so the rules are tested with a fake.
+- New module files: `autostart.rs` (pure rules), `autostart_registry.rs` (the registry, through the `windows` crate that the project already uses; no new package). The app crate gains `windows` as a direct dependency (features `Win32_Foundation`, `Win32_System_Registry`).
 
 ## Tests (written first)
-Core `tests/trend.rs` (8); contract `trend_contract.rs` (7 scenarios, both stores); parity (1); app `tests/history_programs.rs`
-(9, including the cache being invalidated by a newly rolled-up hour); frontend `programBuckets.test.ts` (4),
-`programChart.test.ts` (2), `ProgramsHistory.test.tsx` (11).
+- `tests/autostart.rs` (11): the start mode, the exact command, an unsafe path, reading the program back out of a command, off by default and off again, replacing a stale entry, a failed write changing nothing, the repair (rewritten only when the named program is gone), and a REAL round trip on a throwaway key `HKCU\Software\Syntrac\AutostartTest-<pid>-<time>` (removed afterwards; a helper that only accepts such keys). The test never writes the real Run key.
+- **Smoke run** of a debug copy built with a different app identifier (so it could not touch the user's running copy), with its own temporary per-user folder: `--tray` runs with no window; a second launch exits at once and opens the window of the first; closing the window leaves the program running; a normal start shows the window. After the run no test key was left in the registry and the real Run key had no `SYNTRAC` value.
 
-## Rehearsal (read-only on the live database; a one-year copy on O:)
-- Live database (about 20 hours of rollups): a ranking takes about 8 ms in a debug build. Top by CPU average: WmiPrvSE.exe
-  0.36%, MsMpEng.exe 0.28%, unknown program 0.23%, chrome.exe 0.20%; by network: acmetransmit64.exe (20.3 GB sent), music-player.exe,
-  chrome.exe, remote-desktop-updater.exe, assistant-client.exe.
-- A copy inflated to one year (`examples/inflate_rollups.rs`, `<scratch folder>\trend-year.db`, to be deleted by the user):
-  summing the range takes 2.3 s in a release build; ranking the sums, under 1 ms. That is why the backend keeps the sums.
-- Query plans: the process query uses the primary-key range on `(hour_start, exe_id)` and primary-key lookups for the joins.
+## By-hand checklist (the menu click cannot be automated)
+1. Tray menu: "Start with Windows" is unticked. Tick it: Task Manager's Startup apps tab lists SYNTRAC, and `Get-ItemProperty HKCU:\Software\Microsoft\Windows\CurrentVersion\Run` shows the value `"...\syntrac-app.exe" --tray`.
+2. Sign out and in (or restart): the tray icon appears and no window opens.
+3. Untick it: the value is gone.
 
-## Observations from the live data (not changes)
-- "Unknown program" has the third-highest CPU average and the second-highest memory peak: 6.9 GB in one hour. These are processes
-  whose image path could not be resolved when they were sampled; worth a look in Phase 2.
-- `acmetransmit64.exe` sent 20.3 GB in about 20 hours: the largest network sender by a wide margin.
-
-## Not in T2
-Network destinations (T3); program network per destination; any per-program disk figure (not collected).
+## Notes
+- Task Manager's Startup tab can disable an entry without deleting it (Windows keeps that elsewhere); this program does not read that switch, so the check mark means "the entry exists".
+- Not built: a switch in the page's sidebar (the tray is the one place), a machine-wide start for all users, a scheduled task.

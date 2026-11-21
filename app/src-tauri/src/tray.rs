@@ -11,6 +11,8 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{AppHandle, Manager, Wry};
 use tauri_plugin_notification::NotificationExt;
 
+use crate::autostart::{is_enabled, repair, set_enabled};
+use crate::autostart_registry::RegistryAutostart;
 use crate::commands::SharedBackend;
 use crate::health::HealthState;
 use crate::prefs::PrefsHandle;
@@ -29,6 +31,7 @@ const MAIN_WINDOW: &str = "main";
 pub struct TrayItems {
     findings: MenuItem<Wry>,
     notifications: CheckMenuItem<Wry>,
+    autostart: CheckMenuItem<Wry>,
 }
 
 /// Shows the main window, creating it again when it was closed.
@@ -39,12 +42,13 @@ pub fn open_main_window(app: &AppHandle) {
         let _ = window.set_focus();
         return;
     }
-    if let Some(config) = app.config().app.windows.first() {
-        if let Ok(builder) = tauri::WebviewWindowBuilder::from_config(app, config) {
-            if let Ok(window) = builder.build() {
-                let _ = window.set_focus();
-            }
-        }
+    // The window is built here, not from the configuration, so that starting with --tray creates none at all (no web view in memory).
+    let builder = tauri::WebviewWindowBuilder::new(app, MAIN_WINDOW, tauri::WebviewUrl::App("index.html".into()))
+        .title("SYNTRAC")
+        .inner_size(1280.0, 800.0)
+        .min_inner_size(960.0, 600.0);
+    if let Ok(window) = builder.build() {
+        let _ = window.set_focus();
     }
 }
 
@@ -54,9 +58,17 @@ pub fn install(app: &AppHandle, prefs: &PrefsHandle) -> tauri::Result<()> {
     let findings = MenuItem::with_id(app, "findings", findings_item_label(None), true, None::<&str>)?;
     let notifications =
         CheckMenuItem::with_id(app, "notifications", "Notifications", true, prefs.notifications_on(), None::<&str>)?;
+    let autostart = CheckMenuItem::with_id(
+        app,
+        "autostart",
+        "Start with Windows",
+        true,
+        is_enabled(&RegistryAutostart::new()),
+        None::<&str>,
+    )?;
     let separator = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open, &findings, &notifications, &separator, &quit])?;
+    let menu = Menu::with_items(app, &[&open, &findings, &notifications, &autostart, &separator, &quit])?;
 
     let menu_prefs = prefs.clone();
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
@@ -69,6 +81,7 @@ pub fn install(app: &AppHandle, prefs: &PrefsHandle) -> tauri::Result<()> {
                 menu_prefs.set_notifications_on(!menu_prefs.notifications_on());
                 refresh_notifications_item(app, menu_prefs.notifications_on());
             }
+            "autostart" => toggle_autostart(app),
             "quit" => app.exit(0),
             _ => {}
         })
@@ -81,8 +94,26 @@ pub fn install(app: &AppHandle, prefs: &PrefsHandle) -> tauri::Result<()> {
         builder = builder.icon(icon.clone());
     }
     builder.build(app)?;
-    app.manage(TrayItems { findings, notifications });
+    app.manage(TrayItems { findings, notifications, autostart });
     Ok(())
+}
+
+/// Switches start with Windows on or off for THIS program, then shows what the registry says (a refusal leaves the check mark as it was).
+fn toggle_autostart(app: &AppHandle) {
+    let store = RegistryAutostart::new();
+    if let Ok(exe) = std::env::current_exe() {
+        let _ = set_enabled(&store, &exe, !is_enabled(&store));
+    }
+    if let Some(items) = app.try_state::<TrayItems>() {
+        let _ = items.autostart.set_checked(is_enabled(&store));
+    }
+}
+
+/// When start with Windows is on but the program it names is gone (moved or rebuilt elsewhere), points it at this one.
+pub fn repair_autostart() {
+    if let Ok(exe) = std::env::current_exe() {
+        repair(&RegistryAutostart::new(), &exe, |path| path.exists());
+    }
 }
 
 /// Makes the menu's check mark say what the settings say (it changes from the sidebar too).

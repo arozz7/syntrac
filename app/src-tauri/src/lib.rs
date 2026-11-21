@@ -1,6 +1,8 @@
 //! SYNTRAC desktop app (unelevated). It never collects anything: it reads the collector's database read-only and
 //! asks the collector's pipe how it is doing.
 
+pub mod autostart;
+pub mod autostart_registry;
 pub mod backend;
 pub mod commands;
 pub mod db_location;
@@ -25,6 +27,7 @@ use std::sync::Arc;
 
 use syntrac_core::SystemClock;
 
+use crate::autostart::StartMode;
 use crate::backend::Backend;
 use crate::prefs::{prefs_path, Prefs, PrefsHandle};
 use crate::settings::AppSettings;
@@ -51,6 +54,11 @@ pub fn run() {
         .setup(move |app| {
             tray::install(app.handle(), &prefs)?;
             tray::start_watcher(app.handle().clone(), watch_backend, watch_prefs);
+            tray::repair_autostart();
+            // Started by Windows at sign-in (`--tray`): only the tray icon, no window and no web view in memory.
+            if StartMode::from_args(std::env::args()) == StartMode::Window {
+                tray::open_main_window(app.handle());
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
