@@ -218,6 +218,9 @@ pub fn chat_body(request: &ChatRequest) -> serde_json::Value {
 pub enum StreamEvent {
     Answer(String),
     Reasoning(String),
+    /// The server stopped because the answer reached the length limit: what arrived is cut off, not finished. (A model that thinks first
+    /// can spend much of the limit on thinking.)
+    CutOff,
 }
 
 /// What one line of a streamed (server-sent events) response means.
@@ -255,6 +258,14 @@ pub fn parse_stream_line(line: &str) -> StreamLine {
     }
     if let Some(text) = text_of("content") {
         events.push(StreamEvent::Answer(text));
+    }
+    let finish = value
+        .get("choices")
+        .and_then(|choices| choices.get(0))
+        .and_then(|choice| choice.get("finish_reason"))
+        .and_then(|reason| reason.as_str());
+    if finish == Some("length") {
+        events.push(StreamEvent::CutOff);
     }
     StreamLine::Events(events)
 }

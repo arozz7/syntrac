@@ -130,3 +130,37 @@ describe('InvestigateButton', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('Could not copy');
   });
 });
+
+describe('InvestigateButton: a model that thinks first, and an answer that is cut off', () => {
+  it('says the model is thinking, and how much, while it has not yet produced any answer', async () => {
+    show({
+      pollInvestigation: vi.fn(async () =>
+        investigation({ id: 1, phase: 'running', answer: '', reasoningChars: 1234 }),
+      ),
+    });
+    await open();
+    await userEvent.click(screen.getByRole('button', { name: 'Investigate with my model' }));
+    expect(await screen.findByText(/The model is thinking/)).toBeTruthy();
+    expect(screen.getByText(/1234 characters/)).toBeTruthy();
+    expect(screen.getByText(/minute or two before its first words/)).toBeTruthy();
+  });
+
+  it('does not call an answer finished when the model stopped at its length limit', async () => {
+    show({
+      pollInvestigation: vi.fn(async () => investigation({ phase: 'done', answer: 'The program is', truncated: true })),
+    });
+    await open();
+    await userEvent.click(screen.getByRole('button', { name: 'Investigate with my model' }));
+    expect(await screen.findByText('Finished, but cut off.')).toBeTruthy();
+    expect(screen.getByText(/reached its length limit/)).toBeTruthy();
+    expect(screen.queryByText('Finished.')).toBeNull();
+  });
+
+  it('says nothing about a cut-off for an answer that finished normally', async () => {
+    show();
+    await open();
+    await userEvent.click(screen.getByRole('button', { name: 'Investigate with my model' }));
+    expect(await screen.findByText('Finished.')).toBeTruthy();
+    expect(screen.queryByText(/length limit/)).toBeNull();
+  });
+});

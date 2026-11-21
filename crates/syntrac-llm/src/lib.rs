@@ -162,6 +162,7 @@ fn read_stream(
 fn text_of(event: &StreamEvent) -> &str {
     match event {
         StreamEvent::Answer(text) | StreamEvent::Reasoning(text) => text,
+        StreamEvent::CutOff => "",
     }
 }
 

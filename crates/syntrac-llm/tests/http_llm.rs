@@ -197,3 +197,17 @@ fn a_stream_that_ends_without_the_end_marker_still_ends_cleanly_when_it_gave_tex
     assert_eq!(result, Ok(()));
     assert_eq!(events, vec![StreamEvent::Answer("partial".into())]);
 }
+
+#[test]
+fn an_answer_cut_off_by_the_length_limit_is_reported_after_the_text_that_arrived() {
+    let server = FakeServer::start(|_| {
+        sse(&[
+            r#"data: {"choices":[{"delta":{"content":"partial"}}]}"#,
+            r#"data: {"choices":[{"delta":{},"finish_reason":"length"}]}"#,
+            "data: [DONE]",
+        ])
+    });
+    let (events, result) = collect(&client(&server.endpoint()));
+    assert_eq!(result, Ok(()));
+    assert_eq!(events, vec![StreamEvent::Answer("partial".into()), StreamEvent::CutOff]);
+}

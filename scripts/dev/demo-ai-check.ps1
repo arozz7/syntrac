@@ -133,7 +133,7 @@ function Test-DemoAiLive([int]$Port, [string]$OutputFolder, [int]$WaitSeconds = 
     while (((Get-Date) - $started).TotalSeconds -lt $WaitSeconds) {
         Start-Sleep -Seconds 2
         $length = [int](Get-PageString $socket "String(document.querySelector('[aria-label=Answer]')?.textContent.length ?? 0)")
-        $phase = Get-PageString $socket "(document.querySelector('.ai-panel')?.innerText.match(/(Finished\.|Stopped\.|It could not finish\.|The model is answering|Waiting for the model server)/) ?? [''])[0]"
+        $phase = Get-PageString $socket "(document.querySelector('.ai-panel')?.innerText.match(/(Finished, but cut off\.|Finished\.|Stopped\.|It could not finish\.|The model is answering|The model is thinking|Waiting for the model server)/) ?? [''])[0]"
         if ($length -gt 0 -and $null -eq $firstWords) {
             $firstWords = ((Get-Date) - $started).TotalSeconds
             Write-Host ("  first words after {0:N0} s" -f $firstWords)
@@ -141,6 +141,7 @@ function Test-DemoAiLive([int]$Port, [string]$OutputFolder, [int]$WaitSeconds = 
         $problem = Get-PageString $socket "document.querySelector('.ai-panel [role=alert]')?.textContent ?? ''"
         if ($problem) { $outcome = "problem: $problem"; break }
         if ($phase -eq 'Finished.') { $outcome = 'finished'; break }
+        if ($phase -eq 'Finished, but cut off.') { $outcome = 'finished, but the answer was cut off at the length limit'; break }
         Write-Host ("  {0,4:N0} s  {1}  ({2} characters so far)" -f ((Get-Date) - $started).TotalSeconds, $phase, $length)
     }
     $seconds = ((Get-Date) - $started).TotalSeconds

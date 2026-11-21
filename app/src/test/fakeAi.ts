@@ -40,6 +40,7 @@ export function investigation(patch: Partial<Investigation> = {}): Investigation
     phase: 'done',
     answer: 'It looks like a sync tool.',
     reasoningChars: 0,
+    truncated: false,
     error: null,
     sent: '<evidence>\n{ "detail_level": "summary" }\n</evidence>',
     level: 'summary',

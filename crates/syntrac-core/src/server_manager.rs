@@ -99,12 +99,14 @@ impl ServerManager {
     /// answers (a second one would fight over the same port and memory).
     pub fn start(&self, command: &LaunchCommand, server: &dyn LlmService, now: Instant) -> Result<(), LaunchError> {
         command.check().map_err(LaunchError::Refused)?;
+        // The probe is a network call that can be slow: it is made before the lock is taken, so a Start or a Stop never waits behind it.
+        let answering = matches!(server.state(), ServerState::Ready | ServerState::Loading);
         let mut inner = self.lock();
         refresh(&mut inner);
         if inner.child.is_some() {
             return Err(LaunchError::AlreadyStarted);
         }
-        if matches!(server.state(), ServerState::Ready | ServerState::Loading) {
+        if answering {
             return Err(LaunchError::AlreadyRunning);
         }
         let handle = self.spawner.spawn(command)?;
@@ -114,9 +116,10 @@ impl ServerManager {
     }
 
     pub fn status(&self, server: &dyn LlmService, now: Instant) -> ServerStatus {
+        // Probed before the lock is taken (see `start`).
+        let probe = server.state();
         let mut inner = self.lock();
         refresh(&mut inner);
-        let probe = server.state();
         if let Some(owned) = &inner.child {
             let seconds = now.saturating_duration_since(owned.started).as_secs();
             return match probe {

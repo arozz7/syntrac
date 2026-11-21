@@ -19,7 +19,8 @@ use crate::prefs::PrefsHandle;
 const KEPT_JOBS: usize = 8;
 /// How long a server that is starting may take before the investigation gives up waiting.
 const SERVER_WAIT: Duration = Duration::from_secs(15 * 60);
-const MAX_ANSWER_TOKENS: u32 = 1200;
+/// The longest answer asked for. A model that thinks first spends part of this on its thinking, so it is generous; Stop ends it sooner.
+const MAX_ANSWER_TOKENS: u32 = 3000;
 const TEMPERATURE: f64 = 0.2;
 
 /// What an investigation is about, as the page names it.
@@ -56,6 +57,8 @@ pub struct InvestigationView {
     pub answer: String,
     /// How much reasoning the model has produced (it is not shown, only counted).
     pub reasoning_chars: usize,
+    /// The answer stopped at the length limit and is cut off, not finished.
+    pub truncated: bool,
     pub error: Option<String>,
     /// The evidence block that was sent, so the answer can be checked against it.
     pub sent: String,
@@ -87,6 +90,8 @@ struct JobState {
     phase: Phase,
     answer: String,
     reasoning_chars: usize,
+    /// The server stopped at the length limit: the answer is cut off.
+    truncated: bool,
     error: Option<String>,
 }
 
@@ -206,6 +211,7 @@ impl Investigator {
                 phase: if must_wait { Phase::Waiting } else { Phase::Running },
                 answer: String::new(),
                 reasoning_chars: 0,
+                truncated: false,
                 error: None,
             }),
         });
@@ -230,6 +236,7 @@ impl Investigator {
             phase: state.phase.name().to_owned(),
             answer: state.answer.clone(),
             reasoning_chars: state.reasoning_chars,
+            truncated: state.truncated,
             error: state.error.clone(),
             sent: job.sent.clone(),
             level: job.level.to_owned(),
@@ -292,6 +299,7 @@ fn run(
         match event {
             StreamEvent::Answer(text) => state.answer.push_str(&text),
             StreamEvent::Reasoning(text) => state.reasoning_chars += text.chars().count(),
+            StreamEvent::CutOff => state.truncated = true,
         }
         Flow::Continue
     });

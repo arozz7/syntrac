@@ -18,6 +18,11 @@ impl MockLlm {
         Self { state: Mutex::new(ServerState::Ready), outcome: Ok(events), asked: Mutex::new(Vec::new()) }
     }
 
+    /// A server that is ready and plays exactly these events (reasoning, answer pieces, a cut-off).
+    pub fn playing(events: Vec<StreamEvent>) -> Self {
+        Self { state: Mutex::new(ServerState::Ready), outcome: Ok(events), asked: Mutex::new(Vec::new()) }
+    }
+
     /// A server that is in this state and fails every chat request with this error.
     pub fn failing(state: ServerState, error: LlmError) -> Self {
         Self { state: Mutex::new(state), outcome: Err(error), asked: Mutex::new(Vec::new()) }

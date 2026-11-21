@@ -283,3 +283,29 @@ fn only_the_latest_few_investigations_are_kept_and_an_unknown_one_is_nothing() {
     assert!(rig.investigator.poll(ids[9]).is_some());
     assert!(rig.investigator.poll(9999).is_none());
 }
+
+#[test]
+fn an_answer_cut_off_by_the_length_limit_is_marked_so_it_does_not_look_finished() {
+    let rig = rig(MockLlm::playing(vec![
+        StreamEvent::Reasoning("thinking it over".into()),
+        StreamEvent::Answer("The program is".into()),
+        StreamEvent::CutOff,
+    ]));
+    let id = rig.investigator.start(&finding()).unwrap();
+
+    let view = wait_for(&rig, id, |phase| phase == "done");
+
+    assert_eq!(view.answer, "The program is");
+    assert!(view.truncated, "the page must be able to say the answer is cut off");
+    assert_eq!(view.reasoning_chars, "thinking it over".chars().count());
+}
+
+#[test]
+fn a_finished_answer_is_not_marked_cut_off_and_the_limit_leaves_room_for_thinking() {
+    let rig = rig(MockLlm::answering(&["Complete."]));
+    let id = rig.investigator.start(&finding()).unwrap();
+    let view = wait_for(&rig, id, |phase| phase == "done");
+    assert!(!view.truncated);
+    // A model that thinks first spends part of the limit on it, so the limit is generous.
+    assert_eq!(rig.server.requests()[0].max_tokens, Some(3000));
+}

@@ -56,6 +56,17 @@ const PHASE_TEXT: Record<string, string> = {
   cancelled: 'Stopped.',
 };
 
+/** One line for where the investigation is. A reasoning model thinks for a while before its first words, so that is said, with how much. */
+function phaseText(investigation: Investigation): string {
+  if (investigation.phase === 'done' && investigation.truncated) {
+    return 'Finished, but cut off.';
+  }
+  if (investigation.phase === 'running' && investigation.answer === '' && investigation.reasoningChars > 0) {
+    return `The model is thinking… (${investigation.reasoningChars} characters of thinking so far). A model that thinks first can take a minute or two before its first words.`;
+  }
+  return PHASE_TEXT[investigation.phase] ?? '';
+}
+
 function LocalAnswer({ subject }: { subject: InvestigateSubject }) {
   const api = useApi();
   const [id, setId] = useState<number | null>(null);
@@ -97,7 +108,7 @@ function LocalAnswer({ subject }: { subject: InvestigateSubject }) {
             Stop
           </button>
         )}
-        {investigation !== null && <span className="muted">{PHASE_TEXT[investigation.phase]}</span>}
+        {investigation !== null && <span className="muted">{phaseText(investigation)}</span>}
       </div>
       {problem !== null && <p role="alert">{problem}</p>}
       {investigation?.error != null && <p role="alert">{investigation.error}</p>}
@@ -106,6 +117,12 @@ function LocalAnswer({ subject }: { subject: InvestigateSubject }) {
           <div className="ai-answer" aria-live="polite" aria-label="Answer">
             {investigation.answer}
           </div>
+          {investigation.truncated && (
+            <p role="status">
+              The model stopped because it reached its length limit, so this answer is cut off. A model that thinks
+              first can use much of the limit on its thinking. You can ask again.
+            </p>
+          )}
           <p className="muted">
             An answer from a language model can be wrong or incomplete. It is an explanation to help you look, not a
             decision, and it changed nothing.

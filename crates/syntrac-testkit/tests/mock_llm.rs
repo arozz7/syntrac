@@ -41,3 +41,20 @@ fn it_stops_when_asked_and_can_be_made_to_fail() {
     assert_eq!(down.state(), ServerState::NotRunning);
     assert_eq!(down.stream_chat(&request(), &mut |_| Flow::Continue), Err(LlmError::NotRunning));
 }
+
+#[test]
+fn it_can_play_any_sequence_of_events() {
+    let mock = MockLlm::playing(vec![
+        StreamEvent::Reasoning("hm".into()),
+        StreamEvent::Answer("a".into()),
+        StreamEvent::CutOff,
+    ]);
+    let mut seen = Vec::new();
+    mock.stream_chat(&request(), &mut |event| {
+        seen.push(event);
+        Flow::Continue
+    })
+    .unwrap();
+    assert_eq!(seen.len(), 3);
+    assert_eq!(seen[2], StreamEvent::CutOff);
+}

@@ -162,3 +162,56 @@ fn at_the_end_of_the_program_the_server_is_stopped_only_when_the_setting_says_so
     manager.shutdown(true);
     assert!(spawner.last().lock().unwrap().killed, "stopped");
 }
+
+/// A server whose state probe waits until the test lets it go, like a probe that is slow to be answered.
+struct SlowProbe {
+    entered: std::sync::Mutex<std::sync::mpsc::Sender<()>>,
+    release: std::sync::Mutex<std::sync::mpsc::Receiver<()>>,
+}
+
+impl syntrac_core::llm::LlmService for SlowProbe {
+    fn state(&self) -> ServerState {
+        self.entered.lock().unwrap().send(()).unwrap();
+        let _ = self.release.lock().unwrap().recv_timeout(Duration::from_secs(5));
+        ServerState::NotRunning
+    }
+
+    fn stream_chat(
+        &self,
+        _request: &syntrac_core::llm::ChatRequest,
+        _on_event: &mut dyn FnMut(syntrac_core::llm::StreamEvent) -> syntrac_core::llm::Flow,
+    ) -> Result<(), LlmError> {
+        Err(LlmError::NotRunning)
+    }
+}
+
+#[test]
+fn a_slow_status_probe_does_not_make_a_start_or_a_stop_wait() {
+    let (manager, spawner) = manager();
+    let manager = Arc::new(manager);
+    let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    let slow = SlowProbe { entered: std::sync::Mutex::new(entered_tx), release: std::sync::Mutex::new(release_rx) };
+    let status_call = {
+        let manager = Arc::clone(&manager);
+        std::thread::spawn(move || manager.status(&slow, Instant::now()))
+    };
+    entered_rx.recv_timeout(Duration::from_secs(2)).expect("the status call is inside its probe");
+
+    // While that probe waits, a start must go through at once (it is a different, quick server).
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
+    let starter = {
+        let manager = Arc::clone(&manager);
+        std::thread::spawn(move || {
+            let result = manager.start(&command(), &down(), Instant::now());
+            done_tx.send(result).unwrap();
+        })
+    };
+    let started = done_rx.recv_timeout(Duration::from_millis(1500));
+    release_tx.send(()).unwrap();
+    status_call.join().unwrap();
+    starter.join().unwrap();
+
+    assert_eq!(started.expect("the start was not held up by the slow probe"), Ok(()));
+    assert_eq!(spawner.count(), 1);
+}

@@ -148,3 +148,63 @@ describe('AiHelp: why a server did not start', () => {
     expect(screen.getByText(/model-server\.log/)).toBeTruthy();
   });
 });
+
+describe('AiHelp: the Start button answers at once', () => {
+  it('says it is starting the moment it is pressed, before the server has answered anything', async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const api = show({
+      aiStatus: vi.fn(async () => aiStatus({ canStart: true, command: '"C:\\Tools\\srv.exe" serve' })),
+      startAiServer: vi.fn(async () => {
+        await held;
+        return { ok: true as const, value: null };
+      }),
+    });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Start the model server' }));
+
+    // Nothing has come back from the program yet, and the page already says so.
+    expect(await screen.findByText(/Starting the model server/)).toBeTruthy();
+    expect(screen.getByText(/can take several minutes/)).toBeTruthy();
+    const busy = screen.getByRole('button', { name: 'Starting…' }) as HTMLButtonElement;
+    expect(busy.disabled).toBe(true);
+    expect(api.startAiServer).toHaveBeenCalledTimes(1);
+    release();
+  });
+
+  it('goes back to the normal state and says why when the start is refused', async () => {
+    show({
+      aiStatus: vi.fn(async () => aiStatus({ canStart: true, command: '"C:\\Tools\\srv.exe" serve' })),
+      startAiServer: vi.fn(async () => ({ ok: false as const, message: 'The program file was not found.' })),
+    });
+    await userEvent.click(await screen.findByRole('button', { name: 'Start the model server' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('not found');
+    expect(screen.queryByText(/Starting the model server/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Start the model server' })).toBeTruthy();
+  });
+
+  it('stops showing "starting" once the program reports that the server is starting', async () => {
+    let started = false;
+    show({
+      aiStatus: vi.fn(async () =>
+        started
+          ? aiStatus({
+              state: 'starting',
+              message: 'Starting. A large model can take several minutes to load.',
+              canStop: true,
+              startedByThisApp: true,
+            })
+          : aiStatus({ canStart: true, command: '"C:\\Tools\\srv.exe" serve' }),
+      ),
+      startAiServer: vi.fn(async () => {
+        started = true;
+        return { ok: true as const, value: null };
+      }),
+    });
+    await userEvent.click(await screen.findByRole('button', { name: 'Start the model server' }));
+    expect(await screen.findByRole('button', { name: 'Stop the model server' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Starting…' })).toBeNull();
+  });
+});

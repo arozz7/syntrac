@@ -185,3 +185,23 @@ fn a_streamed_error_and_a_broken_line_are_reported_not_ignored() {
     );
     assert!(matches!(parse_stream_line("data: {not json"), StreamLine::Failed(_)));
 }
+
+#[test]
+fn a_stream_that_ends_because_of_the_length_limit_says_so() {
+    // A reasoning model can spend the limit on thinking; the answer is then cut off and must not look finished.
+    let cut = r#"data: {"choices":[{"delta":{},"finish_reason":"length"}]}"#;
+    assert_eq!(parse_stream_line(cut), StreamLine::Events(vec![StreamEvent::CutOff]));
+    let with_text = r#"data: {"choices":[{"delta":{"content":"end"},"finish_reason":"length"}]}"#;
+    assert_eq!(
+        parse_stream_line(with_text),
+        StreamLine::Events(vec![StreamEvent::Answer("end".into()), StreamEvent::CutOff])
+    );
+}
+
+#[test]
+fn the_other_reasons_for_ending_are_not_a_cut_off() {
+    for reason in [r#""stop""#, "null", r#""tool_calls""#] {
+        let line = format!(r#"data: {{"choices":[{{"delta":{{}},"finish_reason":{reason}}}]}}"#);
+        assert_eq!(parse_stream_line(&line), StreamLine::Events(vec![]), "{reason}");
+    }
+}

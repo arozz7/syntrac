@@ -5,6 +5,9 @@ import { useAiEnabled } from '../components/AiEnabled';
 import { usePolled } from '../hooks/usePolled';
 
 const STATUS_REFRESH_MS = 3000;
+/** How often the status is read while a press of Start or Stop is waiting to show its effect, and how long it waits at most. */
+const PENDING_REFRESH_MS = 1000;
+const PENDING_LIMIT_MS = 20_000;
 
 function argsToText(args: string[]): string {
   return args.join('\n');
@@ -17,18 +20,47 @@ function textToArgs(text: string): string[] {
     .filter((line) => line.trim() !== '');
 }
 
+/** A press of Start or Stop that the program has not yet reported back on. */
+type Pending = 'start' | 'stop' | null;
+
+/** States in which a server is up or on its way, so a pending Start has shown its effect. */
+const SERVER_UP = ['starting', 'slow_to_start', 'loading', 'ready'];
+
 function ServerStatus({ version, onChanged }: { version: number; onChanged: () => void }) {
   const api = useApi();
   const [problem, setProblem] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const status = usePolled(() => api.aiStatus(), STATUS_REFRESH_MS, `ai-status-${version}`);
+  const [pending, setPending] = useState<Pending>(null);
+  // While something was just pressed the program is asked every second, so the change shows quickly.
+  const status = usePolled(
+    () => api.aiStatus(),
+    pending === null ? STATUS_REFRESH_MS : PENDING_REFRESH_MS,
+    `ai-status-${version}`,
+  );
 
-  const act = async (action: () => Promise<{ ok: boolean; message?: string }>) => {
-    setBusy(true);
+  // Once the program reports the effect, the pending note is no longer needed.
+  if (status !== undefined && status !== null) {
+    if (pending === 'start' && SERVER_UP.includes(status.state)) {
+      setPending(null);
+    } else if (pending === 'stop' && !status.canStop) {
+      setPending(null);
+    }
+  }
+  // A note that is never answered (a server that ended at once, say) does not stay for ever.
+  useEffect(() => {
+    if (pending === null) {
+      return undefined;
+    }
+    const timer = setTimeout(() => setPending(null), PENDING_LIMIT_MS);
+    return () => clearTimeout(timer);
+  }, [pending]);
+
+  const act = async (kind: 'start' | 'stop', action: () => Promise<{ ok: boolean; message?: string }>) => {
+    // The page answers at once; the program may take a moment to start the server.
+    setPending(kind);
     setProblem(null);
     const result = await action();
-    setBusy(false);
     if (!result.ok) {
+      setPending(null);
       setProblem(result.message ?? 'That did not work.');
     }
     onChanged();
@@ -39,10 +71,17 @@ function ServerStatus({ version, onChanged }: { version: number; onChanged: () =
   }
   return (
     <div aria-label="Model server status">
-      <p>
-        <strong>{status.message}</strong>
-        {status.seconds !== null && <span className="muted"> ({status.seconds} s)</span>}
-      </p>
+      {pending !== null ? (
+        <p role="status">
+          <strong>{pending === 'start' ? 'Starting the model server…' : 'Stopping the model server…'}</strong>
+          {pending === 'start' && <span className="muted"> A large model can take several minutes to load.</span>}
+        </p>
+      ) : (
+        <p>
+          <strong>{status.message}</strong>
+          {status.seconds !== null && <span className="muted"> ({status.seconds} s)</span>}
+        </p>
+      )}
       {status.command !== null && (
         <p className="muted">
           The command <em>Start</em> runs, exactly: <code>{status.command}</code>
@@ -74,24 +113,26 @@ function ServerStatus({ version, onChanged }: { version: number; onChanged: () =
       )}
       {problem !== null && <p role="alert">{problem}</p>}
       <div className="finding__actions">
-        {status.canStart && (
+        {(status.canStart || pending === 'start') && (
           <button
             type="button"
             className="range__button"
-            disabled={busy}
-            onClick={() => void act(() => api.startAiServer())}
+            disabled={pending !== null}
+            aria-busy={pending === 'start'}
+            onClick={() => void act('start', () => api.startAiServer())}
           >
-            Start the model server
+            {pending === 'start' ? 'Starting…' : 'Start the model server'}
           </button>
         )}
-        {status.canStop && (
+        {(status.canStop || pending === 'stop') && (
           <button
             type="button"
             className="range__button"
-            disabled={busy}
-            onClick={() => void act(() => api.stopAiServer())}
+            disabled={pending !== null}
+            aria-busy={pending === 'stop'}
+            onClick={() => void act('stop', () => api.stopAiServer())}
           >
-            Stop the model server
+            {pending === 'stop' ? 'Stopping…' : 'Stop the model server'}
           </button>
         )}
       </div>

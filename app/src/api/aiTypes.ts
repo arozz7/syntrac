@@ -57,6 +57,8 @@ export interface Investigation {
   /** The answer so far, as plain text. */
   answer: string;
   reasoningChars: number;
+  /** The answer stopped at the length limit and is cut off, not finished. */
+  truncated: boolean;
   error: string | null;
   /** The evidence block that was sent, so the answer can be checked against it. */
   sent: string;
