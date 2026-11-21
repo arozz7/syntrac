@@ -241,6 +241,13 @@ Investigate*). Only a full local path to an `.exe` is accepted (no scripts, no n
 stops a server **it started itself**, and only when you press Stop (or tick *Stop ... when SYNTRAC quits*). Leave the launch command empty if
 you start the server yourself.
 
+**If the server will not start or ends.** Set the **working folder** to the folder the server expects to run in: many servers read their
+settings file (for example `config.toml`) from the folder they run in, and without it they fall back to built-in defaults and fail. The tab
+shows the folder the command runs in (or says there is none). Whatever the server prints is saved in `model-server.log` next to
+`app.json` (a new file at each start), and when the server ends the tab shows its last lines, so you can see why. A large model can take
+minutes to load, and some servers give up waiting for their model after a fixed time (a setting of that server): if it ends with
+"did not become ready" in those last lines, raise that time in the server's own settings.
+
 ## Your data and your privacy
 
 - **Everything stays on your machine.** SYNTRAC has no account, no cloud and no telemetry. The optional AI help talks only to a model server on this machine, and only after you turn it on. There is one exception, and it only happens

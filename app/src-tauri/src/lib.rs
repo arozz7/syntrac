@@ -52,8 +52,14 @@ pub fn run() {
     // The optional AI help: nothing contacts a model server until the page asks, and nothing starts one until a button is pressed.
     let service: ServiceFactory =
         Arc::new(|endpoint| Box::new(syntrac_llm::HttpLlm::new(endpoint, syntrac_llm::HttpLimits::default())));
-    let ai: ai_commands::SharedAi =
-        Arc::new(AiControl::new(prefs.clone(), Box::new(server_process::WindowsSpawner), Arc::clone(&service)));
+    // What a model server started by the app prints is saved next to the settings file, so a server that ends can be explained.
+    let server_log = prefs_path(|key| std::env::var(key).ok()).map(|file| file.with_file_name("model-server.log"));
+    let spawner = server_process::WindowsSpawner::with_optional_log(server_log.clone());
+    let mut control = AiControl::new(prefs.clone(), Box::new(spawner), Arc::clone(&service));
+    if let Some(log) = server_log {
+        control = control.with_server_log(log);
+    }
+    let ai: ai_commands::SharedAi = Arc::new(control);
     let evidence_backend = Arc::clone(&backend);
     let evidence: ai_investigate::EvidenceProvider =
         Arc::new(move |subject| evidence_backend.investigation_evidence(subject));

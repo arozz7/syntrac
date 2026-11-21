@@ -190,3 +190,77 @@ fn at_quit_the_server_is_stopped_only_when_the_user_chose_that() {
     rig.control.shutdown();
     assert!(rig.spawner.last().lock().unwrap().killed);
 }
+
+fn rig_with_log(log: std::path::PathBuf) -> Rig {
+    let prefs = PrefsHandle::in_memory(syntrac_app_lib::prefs::Prefs::default());
+    let server = Arc::new(MockLlm::failing(ServerState::NotRunning, LlmError::NotRunning));
+    let spawner = Arc::new(FakeSpawner::default());
+    let server_lookups = Arc::new(AtomicUsize::new(0));
+    let shared = Arc::clone(&server);
+    let service: ServiceFactory = Arc::new(move |_endpoint| Box::new(SharedLlm(Arc::clone(&shared))));
+    let control =
+        AiControl::new(prefs.clone(), Box::new(SharedSpawner(Arc::clone(&spawner))), service).with_server_log(log);
+    control.save(configured()).unwrap();
+    Rig { control, server, spawner, prefs, server_lookups }
+}
+
+#[test]
+fn when_the_server_ends_the_status_shows_the_last_lines_it_printed_and_where_the_log_is() {
+    let dir = tempfile::tempdir().unwrap();
+    let log = dir.path().join("model-server.log");
+    std::fs::write(&log, "starting\nwarn: config file not found\n\nError: failed to start llama-server\n").unwrap();
+    let rig = rig_with_log(log.clone());
+    rig.control.start().unwrap();
+    rig.spawner.last().lock().unwrap().exit_code = Some(1);
+
+    let status = rig.control.status();
+
+    assert_eq!(status.state, "exited");
+    assert_eq!(status.log_tail, vec!["starting", "warn: config file not found", "Error: failed to start llama-server"]);
+    assert_eq!(status.log_path.as_deref(), Some(log.to_string_lossy().as_ref()));
+}
+
+#[test]
+fn the_log_lines_are_cleaned_and_limited() {
+    let dir = tempfile::tempdir().unwrap();
+    let log = dir.path().join("model-server.log");
+    let mut text = String::new();
+    for n in 0..40 {
+        text.push_str(&format!("line {n}\n"));
+    }
+    text.push_str(&format!("{}\u{202E}\u{7}end\n", "x".repeat(500)));
+    std::fs::write(&log, text).unwrap();
+    let rig = rig_with_log(log);
+    rig.control.start().unwrap();
+    rig.spawner.last().lock().unwrap().exit_code = Some(1);
+
+    let tail = rig.control.status().log_tail;
+
+    assert_eq!(tail.len(), 8, "only the last few lines");
+    let last = tail.last().unwrap();
+    assert!(last.chars().count() <= 200 && !last.contains('\u{202E}') && !last.contains('\u{7}'), "{last:?}");
+}
+
+#[test]
+fn a_running_server_shows_no_log_lines_and_a_missing_log_is_not_an_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let rig = rig_with_log(dir.path().join("none.log"));
+    rig.control.start().unwrap();
+    assert!(rig.control.status().log_tail.is_empty());
+    rig.spawner.last().lock().unwrap().exit_code = Some(1);
+    let status = rig.control.status();
+    assert_eq!(status.state, "exited");
+    assert!(status.log_tail.is_empty());
+}
+
+#[test]
+fn the_working_folder_is_shown_with_the_command_or_its_absence_is_said() {
+    let rig = set_up();
+    assert_eq!(
+        rig.control.status().working_folder,
+        None,
+        "none set: the page says the program runs in SYNTRAC's own folder"
+    );
+    rig.control.save(AiSettingsDto { launch_working_dir: r"C:\Tools".into(), ..configured() }).unwrap();
+    assert_eq!(rig.control.status().working_folder.as_deref(), Some(r"C:\Tools"));
+}

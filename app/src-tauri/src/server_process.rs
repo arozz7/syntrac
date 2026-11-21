@@ -8,7 +8,7 @@
 
 use std::os::windows::io::AsRawHandle;
 use std::os::windows::process::CommandExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
 use syntrac_core::server_launch::LaunchCommand;
@@ -21,10 +21,38 @@ use windows::Win32::System::JobObjects::{
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
+/// Starts programs. With a log file, what the program prints (output and errors) is saved there, the file starting fresh at each start; without
+/// one, the output is discarded.
 #[derive(Default)]
-pub struct WindowsSpawner;
+pub struct WindowsSpawner {
+    log: Option<PathBuf>,
+}
 
 impl WindowsSpawner {
+    pub fn with_log(log: PathBuf) -> Self {
+        Self { log: Some(log) }
+    }
+
+    /// With a log when the folder for it is known, without one (output discarded) when it is not.
+    pub fn with_optional_log(log: Option<PathBuf>) -> Self {
+        Self { log }
+    }
+
+    /// The two ends of the program's output: both into the log file when there is one.
+    fn output_streams(&self) -> (Stdio, Stdio) {
+        let Some(path) = &self.log else { return (Stdio::null(), Stdio::null()) };
+        let opened = path
+            .parent()
+            .map_or(Ok(()), std::fs::create_dir_all)
+            .and_then(|()| std::fs::File::create(path))
+            .and_then(|file| file.try_clone().map(|second| (file, second)));
+        match opened {
+            Ok((out, err)) => (Stdio::from(out), Stdio::from(err)),
+            // A log that cannot be written must not stop the server from starting.
+            Err(_) => (Stdio::null(), Stdio::null()),
+        }
+    }
+
     /// Starts the command and returns the concrete handle (the trait method boxes it).
     pub fn spawn_job(&self, command: &LaunchCommand) -> Result<JobChild, LaunchError> {
         command.check().map_err(LaunchError::Refused)?;
@@ -36,13 +64,9 @@ impl WindowsSpawner {
         if folder.is_some_and(|folder| !Path::new(folder).is_dir()) {
             return Err(LaunchError::FolderMissing);
         }
+        let (out, err) = self.output_streams();
         let mut process = Command::new(program);
-        process
-            .args(&command.args)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .creation_flags(CREATE_NO_WINDOW);
+        process.args(&command.args).stdin(Stdio::null()).stdout(out).stderr(err).creation_flags(CREATE_NO_WINDOW);
         if let Some(folder) = folder {
             process.current_dir(folder);
         }

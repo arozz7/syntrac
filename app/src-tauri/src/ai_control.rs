@@ -2,10 +2,12 @@
 //! model server, and start or stop the one this app started. Nothing here talks to a server unless the page asks for the status or presses
 //! Start, and nothing happens at all while the help is turned off.
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
+use syntrac_core::clean_text::clean_text;
 use syntrac_core::llm::{AiSettings, DetailLevel, LlmService, LoopbackEndpoint, SettingsProblem};
 use syntrac_core::server_launch::LaunchCommand;
 use syntrac_core::server_manager::{LaunchError, ProcessSpawner, ServerManager, ServerStatus};
@@ -14,6 +16,10 @@ use crate::prefs::PrefsHandle;
 
 /// How long a started server may take to answer before the status says it is slow (a large model reads from disk first).
 const STARTUP_LIMIT: Duration = Duration::from_secs(15 * 60);
+/// How much of the end of the log is read, how many lines are shown, and how long each may be.
+const LOG_READ_BYTES: usize = 32 * 1024;
+const LOG_TAIL_LINES: usize = 8;
+const LOG_LINE_CHARS: usize = 200;
 
 /// How the program reaches the model server at an address already proven to be on this machine.
 pub type ServiceFactory = Arc<dyn Fn(LoopbackEndpoint) -> Box<dyn LlmService> + Send + Sync>;
@@ -101,17 +107,31 @@ pub struct AiStatusView {
     pub can_stop: bool,
     /// The exact command a Start would run, when one is set and allowed.
     pub command: Option<String>,
+    /// The folder the command runs in; `None` when none is set (the program then runs in SYNTRAC's own folder).
+    pub working_folder: Option<String>,
+    /// Where what the server prints is saved, when this app started one.
+    pub log_path: Option<String>,
+    /// The last lines the server printed, when it ended or is not answering.
+    pub log_tail: Vec<String>,
 }
 
 pub struct AiControl {
     prefs: PrefsHandle,
     manager: ServerManager,
     service: ServiceFactory,
+    server_log: Option<PathBuf>,
 }
 
 impl AiControl {
     pub fn new(prefs: PrefsHandle, spawner: Box<dyn ProcessSpawner>, service: ServiceFactory) -> Self {
-        Self { prefs, manager: ServerManager::new(spawner, STARTUP_LIMIT), service }
+        Self { prefs, manager: ServerManager::new(spawner, STARTUP_LIMIT), service, server_log: None }
+    }
+
+    /// Where the spawner saves what the server prints; the status shows the last lines of it when the server ends.
+    #[must_use]
+    pub fn with_server_log(mut self, path: PathBuf) -> Self {
+        self.server_log = Some(path);
+        self
     }
 
     pub fn settings(&self) -> AiSettingsDto {
@@ -139,7 +159,21 @@ impl AiControl {
         };
         let server = (self.service)(endpoint);
         let status = self.manager.status(server.as_ref(), Instant::now());
-        view_of(&status, &settings)
+        let mut view = view_of(&status, &settings);
+        self.add_server_log(&mut view, &status);
+        view
+    }
+
+    /// The log of the server this app started: its path, and its last lines when the server ended or does not answer.
+    fn add_server_log(&self, view: &mut AiStatusView, status: &ServerStatus) {
+        let Some(path) = &self.server_log else { return };
+        let ours = view.started_by_this_app || matches!(status, ServerStatus::Exited { .. });
+        if ours {
+            view.log_path = Some(path.to_string_lossy().into_owned());
+        }
+        if matches!(status, ServerStatus::Exited { .. } | ServerStatus::SlowToStart { .. }) {
+            view.log_tail = read_log_tail(path);
+        }
     }
 
     /// Starts the server from the launch command, after the same checks as the status. Only a button calls this.
@@ -194,6 +228,9 @@ fn plain(state: &str, message: &str, settings: &AiSettings) -> AiStatusView {
         can_start: false,
         can_stop: false,
         command: settings.launch_command().ok().map(LaunchCommand::display),
+        working_folder: working_folder_of(settings),
+        log_path: None,
+        log_tail: Vec::new(),
     }
 }
 
@@ -247,7 +284,24 @@ fn view_of(status: &ServerStatus, settings: &AiSettings) -> AiStatusView {
         can_start,
         can_stop,
         command: command.map(LaunchCommand::display),
+        working_folder: working_folder_of(settings),
+        log_path: None,
+        log_tail: Vec::new(),
     }
+}
+
+fn working_folder_of(settings: &AiSettings) -> Option<String> {
+    let command = settings.launch_command().ok()?;
+    command.working_folder().map(str::to_owned)
+}
+
+/// The last few lines of a log, cleaned and cut. A log that cannot be read gives none.
+fn read_log_tail(path: &Path) -> Vec<String> {
+    let Ok(bytes) = std::fs::read(path) else { return Vec::new() };
+    let recent = &bytes[bytes.len().saturating_sub(LOG_READ_BYTES)..];
+    let lines: Vec<String> =
+        String::from_utf8_lossy(recent).lines().filter_map(|line| clean_text(line, LOG_LINE_CHARS)).collect();
+    lines[lines.len().saturating_sub(LOG_TAIL_LINES)..].to_vec()
 }
 
 fn describe_launch_error(error: LaunchError) -> String {

@@ -46,6 +46,30 @@ function ServerStatus({ version, onChanged }: { version: number; onChanged: () =
       {status.command !== null && (
         <p className="muted">
           The command <em>Start</em> runs, exactly: <code>{status.command}</code>
+          <br />
+          {status.workingFolder !== null ? (
+            <>
+              In the folder: <code>{status.workingFolder}</code>
+            </>
+          ) : (
+            <>
+              No working folder is set, so it runs in SYNTRAC&apos;s own folder. A server that reads its settings from
+              its own folder will not find them.
+            </>
+          )}
+        </p>
+      )}
+      {status.logTail.length > 0 && (
+        <>
+          <p className="muted">What the server printed last:</p>
+          <pre className="ai-sent" aria-label="What the server printed">
+            {status.logTail.join('\n')}
+          </pre>
+        </>
+      )}
+      {status.logPath !== null && (
+        <p className="muted">
+          Everything it prints is saved in <code>{status.logPath}</code> (a new file at each start).
         </p>
       )}
       {problem !== null && <p role="alert">{problem}</p>}

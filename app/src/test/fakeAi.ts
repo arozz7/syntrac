@@ -27,6 +27,9 @@ export function aiStatus(patch: Partial<AiStatus> = {}): AiStatus {
     canStart: false,
     canStop: false,
     command: null,
+    workingFolder: null,
+    logPath: null,
+    logTail: [],
     ...patch,
   };
 }

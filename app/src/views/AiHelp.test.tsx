@@ -109,3 +109,42 @@ describe('AiHelp', () => {
     expect(screen.getByText(/only stops a server it started itself/i)).toBeTruthy();
   });
 });
+
+describe('AiHelp: why a server did not start', () => {
+  it('shows the working folder the command runs in, or says there is none', async () => {
+    show({
+      aiStatus: vi.fn(async () =>
+        aiStatus({ canStart: true, command: '"C:\\Tools\\srv.exe" serve', workingFolder: 'C:\\Tools' }),
+      ),
+    });
+    expect(await screen.findByText('C:\\Tools')).toBeTruthy();
+    expect(screen.queryByText(/No working folder is set/)).toBeNull();
+    cleanup();
+
+    show({
+      aiStatus: vi.fn(async () =>
+        aiStatus({ canStart: true, command: '"C:\\Tools\\srv.exe" serve', workingFolder: null }),
+      ),
+    });
+    expect(await screen.findByText(/No working folder is set/)).toBeTruthy();
+  });
+
+  it('shows what the server printed last, as plain text, and where the log is, when it has ended', async () => {
+    show({
+      aiStatus: vi.fn(async () =>
+        aiStatus({
+          state: 'exited',
+          message: 'The server this app started has ended with code 1.',
+          canStart: true,
+          command: '"C:\\Tools\\srv.exe" serve',
+          logTail: ['starting', 'Error: <b>failed</b> to start'],
+          logPath: 'C:\\Users\\x\\AppData\\Local\\Syntrac\\model-server.log',
+        }),
+      ),
+    });
+    const printed = await screen.findByLabelText('What the server printed');
+    expect(printed.textContent).toBe('starting\nError: <b>failed</b> to start');
+    expect(printed.querySelector('b')).toBeNull();
+    expect(screen.getByText(/model-server\.log/)).toBeTruthy();
+  });
+});

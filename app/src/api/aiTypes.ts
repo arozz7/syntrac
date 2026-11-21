@@ -29,6 +29,12 @@ export interface AiStatus {
   canStop: boolean;
   /** The exact command a Start would run, when one is set and allowed. */
   command: string | null;
+  /** The folder the command runs in; null when none is set (the program then runs in SYNTRAC's own folder). */
+  workingFolder: string | null;
+  /** Where what the server prints is saved, when this app started one. */
+  logPath: string | null;
+  /** The last lines the server printed, when it ended or is not answering. */
+  logTail: string[];
 }
 
 /** What an investigation is about. */
