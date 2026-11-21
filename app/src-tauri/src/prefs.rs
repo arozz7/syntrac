@@ -28,7 +28,11 @@ impl Default for Prefs {
 impl Prefs {
     /// The saved settings, or the defaults when the file is missing or cannot be understood.
     pub fn load(path: &Path) -> Self {
-        std::fs::read_to_string(path).ok().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default()
+        // A byte-order mark (written by Notepad and some scripts) is not part of the JSON and must not reset every setting.
+        std::fs::read_to_string(path)
+            .ok()
+            .and_then(|text| serde_json::from_str(text.trim_start_matches('\u{feff}')).ok())
+            .unwrap_or_default()
     }
 
     /// Writes the settings (creating the folder), through a temporary file so a crash never leaves half a file.

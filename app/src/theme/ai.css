@@ -87,3 +87,14 @@
   align-items: flex-start;
   gap: 0.5rem;
 }
+
+/* Room between a section's heading, text, buttons and what it shows. */
+.ai-panel section {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.ai-panel section > p,
+.ai-panel section > h4 {
+  margin: 0;
+}

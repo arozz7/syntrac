@@ -101,3 +101,15 @@ fn the_ai_settings_are_kept_with_the_other_settings_and_written_on_every_change(
     assert_eq!(saved.ai, settings);
     assert!(!saved.notifications, "a later change to another setting does not lose the AI settings");
 }
+
+#[test]
+fn a_file_saved_with_a_byte_order_mark_is_still_read() {
+    // Notepad and some scripts write a UTF-8 byte-order mark; that must not silently reset every setting.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("app.json");
+    std::fs::write(&path, "\u{feff}{\"notifications\": false, \"ai\": {\"enabled\": true, \"model\": \"m\"}}").unwrap();
+    let prefs = Prefs::load(&path);
+    assert!(!prefs.notifications);
+    assert!(prefs.ai.enabled);
+    assert_eq!(prefs.ai.model, "m");
+}

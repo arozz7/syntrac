@@ -71,6 +71,12 @@ opens the app on it. It uses its own app identity and its own per-user folder, s
 it makes is in one new folder under `%TEMP%`. The pictures in this repository's README were taken this way
 (`scripts/dev/run-demo.ps1 -Capture docs/images`).
 
+To try the [AI help](#ai-help-optional) on the demo, add `-WithModel`: the script also starts a **stand-in model server** (it answers with a
+canned text that says it is not a language model) and turns the AI help on, pointed at it, in the demo's own settings file. You can also
+point the demo at your own model server on the AI help tab: the demo data is invented, so nothing real is sent. `-CheckAi <folder>` drives
+the AI help through the real app and writes a report and pictures to that folder; it also reads the stand-in's request log to check what a
+model server would have received (no user name in a path, no addresses at the summary level).
+
 ## The screens
 
 ![Overview](images/overview.png)

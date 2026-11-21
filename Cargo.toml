@@ -25,3 +25,8 @@ unsafe_op_in_unsafe_fn = "deny"
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
 
+# Debug builds keep file and line information for backtraces but not full variable debug info. Full debug info made target\debug grow to
+# 86 GB (every test binary carries its own copy) and filled the drive. Use a local override for an interactive debugger session.
+[profile.dev]
+debug = "line-tables-only"
+
