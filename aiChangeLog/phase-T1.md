@@ -24,7 +24,7 @@ Slice T1 of `docs/ALERTS-PLAN.md` (slice T), approved by the user on 2026-11-20 
 6. Quit from the tray menu: the program exits.
 
 ## Deleted afterwards (the user said yes)
-- `app/src/toasts.ts`, `app/src/toasts.test.ts`, `app/src/hooks/useToasts.ts` and `useToasts.test.tsx` were unused once the page stopped sending toasts, and were deleted with the user's approval (their rules live on in `toast_watch.rs`). Also deleted: the rehearsal copy `<scratch folder>` and the smoke-test folder in `%TEMP%`.
+- `app/src/toasts.ts`, `app/src/toasts.test.ts`, `app/src/hooks/useToasts.ts` and `useToasts.test.tsx` were unused once the page stopped sending toasts, and were deleted with the user's approval (their rules live on in `toast_watch.rs`). Also deleted: the rehearsal copy `<scratch folder>gpu-g2` and the smoke-test folder in `%TEMP%`.
 
 ## Not built (by plan)
 - Start with Windows (slice T2), toast buttons, sound, opening the app from a toast click (the plugin has no click action on Windows), a tray program that outlives the app.

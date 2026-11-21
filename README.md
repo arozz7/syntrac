@@ -1,91 +1,148 @@
 # SYNTRAC
 
-**System intelligence and activity tracking** for Windows: a personal workstation intelligence platform that answers
+**System intelligence and activity tracking for Windows.** A personal workstation watcher that answers three questions:
 
-1. **What is happening?** Processes, network connections, configuration changes.
-2. **What is normal?** Learned baselines and per-application profiles.
-3. **What is unusual?** Explainable detections. An anomaly is not a threat.
+1. **What is happening?** Which programs run, what they use, who they talk to, how they start.
+2. **What is normal?** Every program is compared with its *own* history, not with a generic rule.
+3. **What is unusual?** Explainable findings: what was seen, what it was compared with, the numbers, and what could be harmless.
+   An anomaly is not a threat, and SYNTRAC never calls anything malicious.
 
-Local-first. Nothing leaves your machine, with one exception that only happens when you press its button: **Download owner data**
-fetches one public-domain file (which network owns each range of internet addresses) from iptoasn.com, and sends no address of
-yours (the lookups happen locally). It can be switched off for good with `owner_data_allowed = false` in
-`config/service.toml`. AI features (Phase 4) use your own local llama-server.
+**Local-first.** Everything stays on your machine. There is no account, no cloud and no telemetry. The one exception only happens when
+you press its button: *Download owner data* fetches a single public-domain file that says which network owns each range of internet
+addresses, and sends none of your addresses. It can be switched off for good with `owner_data_allowed = false`.
+
+<p align="center">
+  <img src="docs/images/overview.png" alt="The Overview: system chart with CPU, memory and GPU, and who is using the CPU and the GPU" width="900">
+</p>
+
+<sub>Every screenshot here is made from an invented machine (fictional programs, makers and addresses), not from real data; see
+[the demo](#try-it-in-two-minutes).</sub>
+
+## What it does
+
+- **Sees everything that runs.** Processes, network connections, DNS answers, CPU, memory, **GPU** and traffic per program, collected
+  by a Windows service through ETW and the performance counters. Its own CPU use is logged, and in testing it stayed well under one
+  percent of a core.
+- **Keeps a history that outlives the detail.** Detailed rows are kept for two weeks by default; hourly summaries are kept for good,
+  so you can look back months, with a storage guard that keeps it from filling your drive.
+- **Knows who made a program.** Signature, maker, version, hash, where it runs from, how it starts (services, scheduled tasks, Run
+  keys, Startup files), and which account it runs as. Evidence, never a verdict.
+- **Raises findings you can act on.** A new program, a new way to start with Windows, a changed file, a program that suddenly uses far more
+  than it ever has, or one of a short list of well-known patterns (each tied to a public ATT&CK technique name and a plain statement of
+  what is probably harmless). You decide: expected this time, always expected, raise the limit, snooze.
+- **Tells you without getting in the way.** A tray icon, Windows toasts for new suspicious findings (with or without the window open),
+  and an optional start with Windows.
+
+<p align="center">
+  <img src="docs/images/findings.png" alt="Findings: an unsigned program in a user folder that keeps the GPU busy, and a program that uploaded far more than usual" width="900">
+</p>
+
+## Try it in two minutes
+
+You can run the real app on a **fictional** machine, with nothing installed and nothing real read or written:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/dev/run-demo.ps1
+```
+
+It generates a demo database (sixteen days of invented history, run through the real rollups and the real detection rules), starts a
+stand-in for the service, and opens the app. Requirements: Windows 11, Rust (MSVC), Node.js 22+ and pnpm.
+
+## Screens
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/history-system.png" alt="History: system, CPU, memory and GPU over a week"><br><sub><b>History, System.</b> A week of CPU, memory and GPU, kept as hourly summaries.</sub></td>
+    <td width="50%"><img src="docs/images/history-programs-gpu.png" alt="History: programs ranked by GPU use"><br><sub><b>History, Programs.</b> Ranked by CPU, memory, starts, network or GPU, with who made each one.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/history-program-detail.png" alt="One program's history, with CPU, memory and GPU charts"><br><sub><b>One program.</b> Its own history hour by hour, its identity and what it connected to.</sub></td>
+    <td width="50%"><img src="docs/images/history-network.png" alt="History: network destinations with the network that owns each address"><br><sub><b>History, Network.</b> Destinations, the names programs asked for, and the network that owns each.</sub></td>
+  </tr>
+</table>
+
+## Quick start (installing for real)
+
+SYNTRAC is two parts: an elevated Windows **service** that collects the data into a local SQLite database, and an unelevated
+**Tauri 2 + React app** that reads it. There is no installer yet; both are built from this repository.
+
+```powershell
+# build and check everything (format, lint, build, tests, file sizes)
+powershell -ExecutionPolicy Bypass -File scripts/dev/verify.ps1
+
+# the service: build, then install from an ADMINISTRATOR PowerShell (your own account id comes from a normal one)
+cargo build --release -p syntrac-service
+[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+powershell -ExecutionPolicy Bypass -File scripts/deploy/install-service.ps1 -UserSid <your id>
+
+# the app
+cd app; pnpm install; pnpm tauri build --no-bundle
+..\target\release\syntrac-app.exe
+```
+
+The [user guide](docs/USER-GUIDE.md) covers installing, every screen, what findings mean and what you can do about them, the tray,
+settings, where your data lives, troubleshooting, and what SYNTRAC cannot tell you.
+
+## Documentation
+
+| | |
+|---|---|
+| [User guide](docs/USER-GUIDE.md) | Installing, the screens, findings, the tray, settings, privacy, troubleshooting |
+| [Architecture](docs/ARCHITECTURE.md) | How the pieces fit: service, app, store, pure core and its interfaces |
+| [Threat model](docs/THREAT-MODEL.md) | What each part trusts, what it protects, and what is accepted |
+| [Schema](docs/SCHEMA.md) | The database, migration by migration |
+| [Known patterns](docs/PATTERNS.md) | The pattern pack: every rule, its technique label, its harmless explanation |
+| [Plans](docs/PLAN.md) | The project plan and the slice plans behind each feature ([alerts](docs/ALERTS-PLAN.md), [identity](docs/IDENTITY-PLAN.md), [storage](docs/STORAGE-PLAN.md), [network](docs/NETWORK-PLAN.md), ...) |
+| [Change logs](aiChangeLog/) | One file per slice: what changed, what was measured, what was left out and why |
+| [Third-party material](THIRD-PARTY.md) | ATT&CK labels, the owner data source and dependency licences |
+
+## How it works
+
+```
+Windows ETW (processes, network, DNS) + performance counters (CPU, memory, GPU)
+        |
+        v
+  syntrac-service  (elevated, runs as the "Syntrac" Windows service)
+   sources -> correlate -> SQLite (raw detail, 14 days) -> hourly rollups + permanent ledgers
+   workers: file identity, account and service context, launch entries, findings
+        |  named pipe: status and the few write requests (decide a finding, mark a program known)
+        v
+  syntrac-app  (your account, read-only on the database)
+   Overview, Processes, Connections, Findings, History  +  tray icon, toasts
+```
+
+Pure logic lives in `syntrac-core` behind interfaces, so the whole pipeline runs offline against mocks. The same repository contract
+tests run against an in-memory store and the SQLite store, so they cannot drift apart.
 
 ## Status
 
-Phase 0 (Foundations) in progress. See [docs/PLAN.md](docs/PLAN.md) for the full plan and
-[aiChangeLog/](aiChangeLog/) for per-phase change logs.
+Built: collection (ETW, snapshots, metrics, GPU), storage with rollups and a storage guard, program identity and
+how programs start, the network and owner views, findings (new things, usage, known patterns), live and historical GPU views, the tray
+icon with toasts and start with Windows, and the demo. Not built: the local-AI "investigate" feature (planned to use your own
+llama-server on loopback only), a process tree and connection map, and an installer. [docs/PLAN.md](docs/PLAN.md) has the full plan.
 
-## Architecture in one paragraph
+## Development
 
-An elevated Windows **service** collects telemetry (ETW) and writes it to SQLite. An unelevated **Tauri 2 + React**
-app reads the data and shows it. Pure logic lives in `syntrac-core` behind interfaces, so the whole pipeline runs
-offline against mocks. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-## Requirements
-
-- Windows 11 x64
-- Rust (stable, MSVC toolchain) and the Visual Studio C++ Build Tools
-- Node.js 22+ and pnpm
-- WebView2 runtime (ships with Windows 11)
-
-## Everyday commands (PowerShell)
-
-```powershell
-# Full local gate: format, lint (warnings are errors), build, tests, file-size check
-powershell -ExecutionPolicy Bypass -File scripts/dev/verify.ps1
-
-# Run the desktop app in dev mode
-cd app; pnpm tauri dev
-
-# Run the collector in an elevated window (UAC prompt); summary goes to aiChangeLog/console-run-*.txt
-powershell -ExecutionPolicy Bypass -File scripts/dev/run-console.ps1 -Seconds 60
-# Install as a Windows service and check it end to end as an ordinary user (one UAC prompt)
-powershell -ExecutionPolicy Bypass -File scripts/deploy/smoke-test-service.ps1
-# Ask a running collector (service, or console with --pipe syntrac-console) how it is doing
-target/release/syntrac-service.exe --status
-# Where the data lives: wherever the installed config points (default C:\ProgramData\Syntrac). To move it to another
-# fixed internal drive (USB, network and nearly full drives are refused), run elevated; -DryRun only checks and plans:
-#   [Security.Principal.WindowsIdentity]::GetCurrent().User.Value        (your SID, from a normal PowerShell)
-powershell -ExecutionPolicy Bypass -File scripts/deploy/move-data.ps1 -UserSid <sid> -NewDataDir D:\Syntrac -DryRun
-powershell -ExecutionPolicy Bypass -File scripts/deploy/move-data.ps1 -UserSid <sid> -NewDataDir D:\Syntrac
-# How long detail is kept, and how full the data drive may get, are in service.toml (the installer keeps your edits):
-#   detail_retention_days = 14   max_database_gb = 10   min_free_space_gb = 20   hard_floor_free_gb = 5
-# Detail is deleted only once it is rolled up into the permanent hourly summaries; --status shows size and free space.
-# Check any database file (read-only): schema, integrity, rows per table
-target/release/syntrac-service.exe --check-db D:\Syntrac\data\syntrac.db
-# Uninstall (keeps your data unless you pass -RemoveData)
-powershell -ExecutionPolicy Bypass -File scripts/deploy/uninstall-service.ps1   # run elevated
-
-# ...then review a console run's database (read-only):
-python -I scripts/dev/inspect-run.py data/syntrac-<stamp>.db
-
-# Collector without ETW (no elevation): startup snapshot, metrics, storage
-target/debug/syntrac-service.exe --no-etw --seconds 20 --db data/try.db
-
-```
-
-There is deliberately **no hosted CI**. `verify.ps1` is the gate; run it before every push.
-
-## Repository layout
+There is deliberately **no hosted CI**: `scripts/dev/verify.ps1` is the gate (formatting, lint with warnings as errors, build, tests, and a
+file-size check), and it is run before every push. Frontend tests run with `pnpm test` in `app/`.
 
 | Path | Purpose |
 |---|---|
-| `crates/syntrac-core` | Domain types, interfaces, pure logic (correlator, ingest) |
+| `crates/syntrac-core` | Domain types, interfaces and pure logic (correlator, rollups, detection rules, patterns) |
 | `crates/syntrac-store` | SQLite repositories and migrations |
-| `crates/syntrac-collector` | Telemetry sources (ETW) and enrichers; contains the Phase 0 spike |
-| `crates/syntrac-service` | Windows service host (placeholder until Phase 1) |
-| `crates/syntrac-testkit` | Mocks, in-memory repository, fixtures, repository contract suites |
-| `app/` | Tauri 2 shell and React/TypeScript UI |
-| `config/` | Rules, thresholds, prompts, llama-server endpoint (later phases) |
-| `docs/` | Plan, architecture, schema, threat model |
-| `aiChangeLog/` | One file per phase |
-| `scripts/` | `dev/` verification, `release/` and `deploy/` (later) |
+| `crates/syntrac-collector` | Telemetry sources (ETW, snapshots, metrics, GPU counters) and enrichers |
+| `crates/syntrac-service` | The Windows service host and its workers |
+| `crates/syntrac-ipc` | The named-pipe protocol and server |
+| `crates/syntrac-testkit` | Mocks, an in-memory repository, fixtures and the repository contract suites |
+| `crates/syntrac-demo` | The fictional machine and its data generator, for screenshots and trying the app |
+| `app/` | The Tauri 2 shell and the React/TypeScript screens |
+| `config/` | The service settings and the pattern pack |
+| `docs/` | Plans, architecture, schema, threat model, user guide |
+| `scripts/` | `dev/` (verify, demo), `deploy/` (install, move data, uninstall, smoke test) |
 
-## Theme
+The look is a light cream-and-sand theme from the SYNTRAC brand kit in `docs/branding/`; colours live only in
+`app/src/theme/tokens.css` and are checked against WCAG AA by a test.
 
-Light canvas (cream and sand) built on the SYNTRAC Brand Kit in `docs/branding/SYNTRAC_Brand_Kit/` (forest green,
-sage, clay). Colours live only in `app/src/theme/tokens.css` and are verified against WCAG AA by an automated test.
+## Licence
 
-
-
+[MIT](LICENSE). See [THIRD-PARTY.md](THIRD-PARTY.md) for the material SYNTRAC builds on.

@@ -152,10 +152,7 @@ describe('group by product', () => {
     await userEvent.click(screen.getByRole('button', { name: 'acmeserv.exe' }));
 
     await waitFor(() =>
-      expect(api.programHistory).toHaveBeenLastCalledWith(
-        7 * 24 * 3600,
-        'C:\\Program Files (x86)\\Acme\\acmeserv.exe',
-      ),
+      expect(api.programHistory).toHaveBeenLastCalledWith(7 * 24 * 3600, 'C:\\Program Files (x86)\\Acme\\acmeserv.exe'),
     );
     expect(await screen.findByRole('heading', { name: 'acmeserv.exe' })).toBeTruthy();
   });

@@ -3863,6 +3863,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "syntrac-demo"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "syntrac-core",
+ "syntrac-ipc",
+ "syntrac-service",
+ "syntrac-store",
+ "syntrac-testkit",
+ "tempfile",
+]
+
+[[package]]
 name = "syntrac-ipc"
 version = "0.1.0"
 dependencies = [

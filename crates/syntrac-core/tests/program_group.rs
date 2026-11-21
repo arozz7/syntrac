@@ -35,10 +35,7 @@ fn product(root: &str) -> Option<ProductKey> {
 
 /// Acme programs share a product; everything else has no product key.
 fn by_folder(exe: &Executable) -> Option<ProductKey> {
-    exe.key
-        .starts_with(r"c:\program files (x86)\acme")
-        .then(|| product(r"c:\program files (x86)\acme"))
-        .flatten()
+    exe.key.starts_with(r"c:\program files (x86)\acme").then(|| product(r"c:\program files (x86)\acme")).flatten()
 }
 
 fn acme() -> Vec<ProgramSummary> {

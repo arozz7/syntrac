@@ -136,8 +136,7 @@ const BB: &str = r"C:\Program Files (x86)\Acme\acmeserv.exe";
 fn a_program_matches_the_record_whose_folder_holds_it_in_any_spelling() {
     let installs = vec![record_with_folder("Acme", r"C:\Program Files (x86)\Acme")];
 
-    for path in
-        [BB, r"c:\program files (x86)\acme\acmeserv.exe", r"C:\Program Files (x86)\Acme\x64\acmetransmit64.exe"]
+    for path in [BB, r"c:\program files (x86)\acme\acmeserv.exe", r"C:\Program Files (x86)\Acme\x64\acmetransmit64.exe"]
     {
         assert_eq!(registered_for(&installs, path).len(), 1, "{path}");
     }

@@ -184,11 +184,7 @@ fn grouped_by_product_the_acme_programs_are_one_row_with_their_members() {
     let view = ranking(Grouping::ByProduct);
 
     let names: Vec<_> = view.programs.iter().map(|p| p.name.as_str()).collect();
-    assert_eq!(
-        names,
-        ["chrome.exe", "Acme Backup", "tool.exe"],
-        "Acme: 1% + 2% = 3%, ahead of the 0.5% tool"
-    );
+    assert_eq!(names, ["chrome.exe", "Acme Backup", "tool.exe"], "Acme: 1% + 2% = 3%, ahead of the 0.5% tool");
     let acme = &view.programs[1];
     assert_eq!(acme.path, None, "a product row has no single executable to drill into");
     assert!((acme.cpu_avg_percent - 0.75).abs() < 1e-9, "(1% + 2%) over the 4 samples of the range");

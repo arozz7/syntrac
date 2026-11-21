@@ -1,0 +1,30 @@
+[package]
+name = "syntrac-demo"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+description = "Synthetic demo data: a fictional machine for screenshots, and a way to try the app without the service"
+
+[dependencies]
+syntrac-core = { version = "0.1.0", path = "../syntrac-core" }
+syntrac-store = { version = "0.1.0", path = "../syntrac-store" }
+syntrac-ipc = { version = "0.1.0", path = "../syntrac-ipc" }
+syntrac-service = { version = "0.1.0", path = "../syntrac-service" }
+syntrac-testkit = { version = "0.1.0", path = "../syntrac-testkit" }
+
+[dev-dependencies]
+tempfile = "3"
+rusqlite = { version = "0.40", features = ["bundled"] }
+
+[[bin]]
+name = "make-demo-db"
+path = "src/bin/make_demo_db.rs"
+
+[[bin]]
+name = "demo-collector"
+path = "src/bin/demo_collector.rs"
+
+[lints]
+workspace = true
