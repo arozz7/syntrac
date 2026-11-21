@@ -84,3 +84,31 @@ describe('App', () => {
     expect(screen.getByRole('status').getAttribute('data-state')).toBe('offline');
   });
 });
+
+describe('App: the notifications switch', () => {
+  it('says what the program says: on by default, off when the program has them off', async () => {
+    show();
+    expect(await screen.findByRole('button', { name: 'Toasts: on' })).toBeTruthy();
+    cleanup();
+
+    show(makeFakeApi({ notificationsOn: vi.fn(async () => false) }));
+    expect(await screen.findByRole('button', { name: 'Toasts: off' })).toBeTruthy();
+  });
+
+  it('asks the program to switch them, and shows the new state at once', async () => {
+    const api = show();
+    await userEvent.click(await screen.findByRole('button', { name: 'Toasts: on' }));
+
+    expect(api.setNotificationsOn).toHaveBeenCalledWith(false);
+    expect(await screen.findByRole('button', { name: 'Toasts: off' })).toBeTruthy();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Toasts: off' }));
+    expect(api.setNotificationsOn).toHaveBeenLastCalledWith(true);
+  });
+
+  it('no longer sends toasts itself: the program does, with or without a window', async () => {
+    const api = show();
+    await screen.findByText('chrome.exe');
+    expect(api).not.toHaveProperty('notify');
+  });
+});

@@ -19,6 +19,7 @@ use crate::history_network::{
 use crate::history_programs::{Grouping, ProgramHistoryView, ProgramMetricParam, ProgramsView};
 use crate::known_view::KnownProgramsView;
 use crate::owner_data_view::OwnerDataStateView;
+use crate::prefs::PrefsHandle;
 use crate::views::{ConnectionRowView, OverviewView, ProcessListParams, ProcessRowView};
 
 pub type SharedBackend = Arc<Backend<SystemClock>>;
@@ -291,4 +292,17 @@ pub async fn list_connections(
 ) -> Result<Data<Vec<ConnectionRowView>>, ()> {
     let backend = Arc::clone(&backend);
     Ok(blocking(move || backend.connections(range_secs, limit)).await.unwrap_or_else(internal))
+}
+
+/// Whether Windows notifications for new suspicious findings are on (a setting of the program, not of the page).
+#[tauri::command]
+pub fn get_notifications_on(prefs: State<'_, PrefsHandle>) -> bool {
+    prefs.notifications_on()
+}
+
+/// Switches the notifications and keeps the tray menu's check mark in step.
+#[tauri::command]
+pub fn set_notifications_on(app: tauri::AppHandle, prefs: State<'_, PrefsHandle>, on: bool) {
+    prefs.set_notifications_on(on);
+    crate::tray::refresh_notifications_item(&app, on);
 }

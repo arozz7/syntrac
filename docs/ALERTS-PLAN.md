@@ -137,6 +137,26 @@ Tests first: the protection rule on a table of paths, creation refused, matching
 
 **Limits.** In-browser mining (WebGL or WebGPU) is attributed to the browser, so it shows as "the browser used the GPU more than usual". A GPU in a mode the counters do not cover shows nothing. Per-adapter temperature, power and clock speed are out of scope. Utilisation is what the driver reports for each engine; a very short burst between two samples can be missed.
 
+
+## Slice T: tray helper (approved 2026-11-20 with the single-instance plugin; T1 BUILT, see aiChangeLog/phase-T1.md; T2 not built yet)
+**Today.** Toasts are planned in the web page (`planToasts`, `useToasts`, fed by the findings poll in `App.tsx`) and the on/off switch lives in `localStorage`. Closing the window ends the process, so alerts stop with it. A second launch opens a second app.
+
+**Options.** (A) Keep the window hidden and let the page keep polling: smallest, but a whole web view stays resident (a hundred MB or more) and alerts depend on a hidden page's timers. (B) The SAME program keeps running with NO window, and a small background watcher in Rust sends the toasts. (C) A separate helper program: a second thing to install, update and keep in step. (D) The service sends the toasts: impossible, a SYSTEM service has no desktop to show them on. **Recommendation: B**, in two slices.
+
+### T1: tray, close-to-tray, alerts without a window
+- A tray icon (Tauri's `tray-icon` feature; its packages are already in the lock file, a lock diff will confirm there is nothing new). Menu: Open SYNTRAC, Findings (N open), Notifications on/off, Quit. Left click opens the window. Tooltip: "SYNTRAC: N open findings" or "SYNTRAC: the collector is not running".
+- Closing the window DESTROYS it (the web view's memory is freed) and the program keeps running in the tray; Open creates it again. Only Quit ends the program.
+- **A watcher in Rust** reads the open findings from the database every 30 seconds (the same view the Findings tab uses) and sends the toasts through the notification plugin's Rust side. `planToasts` is ported to Rust with the same rules and the same tests (one toast for each new suspicious finding, at most three; unusual ones as one summary; the digest never). The page stops sending toasts, so there is exactly one sender.
+- **Findings raised while the program was not running** are announced once at the next start, as a summary: the last announced finding id is kept in a small settings file, so a 3 a.m. finding is not lost. The very first run ever announces nothing (what is open is not news).
+- The Notifications switch moves from `localStorage` to that settings file (`%APPDATA%\SYNTRAC\app.json`; a missing or damaged file means the defaults), and the sidebar button and the tray item both use it.
+- **One instance only**: a second launch opens the window of the running one. Recommended with the official `tauri-plugin-single-instance` (small); the alternative is a named mutex written by hand.
+- Tests first: the toast plan (the existing cases), the watcher's decision (first run, announce only ids above the last announced, off switch, a cap), the tray menu and tooltip text, the settings file (round trip, damaged file). The window and tray glue is checked by hand with a short checklist in the change log.
+
+### T2: start with Windows (a separate slice because it changes the machine)
+- A "Start with Windows" item in the tray menu, OFF until you turn it on. It writes one value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (no administrator rights) that starts the program with `--tray` (no window); turning it off deletes that value. Written through a small trait with a fake for tests (the real one is a few lines over the registry).
+
+**Limits.** A toast from a program that is not installed through an installer may show under another name, and clicking it may not open SYNTRAC (the notification plugin offers no click action on Windows): the tray icon is the way in. If the program is killed or the PC is off, nothing is announced until the next start (then the summary above). Toasts say "unusual" and "suspicious", never "malicious".
+**Out of scope.** Toast buttons, sound, a tray program that outlives the app, mail or phone delivery.
 ## Backtest before anything is switched on (applies to F2, F3, F4 and F5)
 `crates/syntrac-store/examples/rehearse_detect.rs`: on a COPY of the real database, replays the last 30 days hour by hour through the same pure rules and prints how many findings each rule would have raised, the noisiest programs, and a sample of the sentences. Thresholds are tuned from this before the detect worker is enabled by default (`detect_enabled = false` until the user has read the backtest).
 
@@ -161,3 +181,4 @@ S1 (small) -> N1, N2 (small each) -> F1 (largest: schema, ports, pipe, tab) -> F
 7. Slice G (GPU use per program) approved 2026-11-20 as written: G1 and G2 both built now, even though there is no GPU history yet; the figure is the busiest engine across all adapters; capture on by default (`gpu_metrics_enabled`).
 8. Tray helper: the user wants one at some point (2026-11-20): close the main window, keep a quick way to open it, and still get the alert popups. This reverses decision 3 (toasts while the app runs) for the FUTURE; it is NOT part of slice G and needs its own plan (a small always-running helper, a service-or-app choice, autostart, and what happens to toasts when the window is closed).
 9. Slice L1 (live GPU views) approved 2026-11-20 and built: a GPU line on the Overview chart (only when there are readings), a "GPU now" fact, and a "Who is using the GPU" card from the new `gpu_breakdown` query; see `aiChangeLog/phase-L1.md`. App rebuild only (no schema change, no reinstall). The Processes screen is unchanged (it has no live numbers at all).
+10. Slice T (tray helper): T1 approved 2026-11-20 with the official `tauri-plugin-single-instance`; built the same day (`aiChangeLog/phase-T1.md`). T2 (start with Windows, off until switched on) follows after the user has used T1.

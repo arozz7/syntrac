@@ -3,7 +3,6 @@ import { useApi } from './api/ApiContext';
 import markUrl from './assets/brand/syntrac-mark.svg';
 import { StatusBanner } from './components/StatusBanner';
 import { usePolled } from './hooks/usePolled';
-import { useToasts } from './hooks/useToasts';
 import { Connections } from './views/Connections';
 import { Findings } from './views/Findings';
 import { History } from './views/History';
@@ -20,27 +19,9 @@ const VIEWS: Array<{ id: ViewId; nav: string; title: string }> = [
   { id: 'history', nav: 'History', title: 'History' },
 ];
 
-const TOASTS_KEY = 'syntrac.toasts';
-
-/** Whether toasts are on (the default). A per-viewer convenience: the browser may refuse storage, and nothing depends on it. */
-function readToastsOn(): boolean {
-  try {
-    return window.localStorage.getItem(TOASTS_KEY) !== 'off';
-  } catch {
-    return true;
-  }
-}
-
-function writeToastsOn(on: boolean) {
-  try {
-    window.localStorage.setItem(TOASTS_KEY, on ? 'on' : 'off');
-  } catch {
-    // Nothing depends on it.
-  }
-}
-
 const HEALTH_REFRESH_MS = 5000;
 const FINDINGS_REFRESH_MS = 30_000;
+const NOTIFICATIONS_REFRESH_MS = 5000;
 
 function CurrentView({ view }: { view: ViewId }) {
   switch (view) {
@@ -69,9 +50,17 @@ export function App() {
   // How many findings are open, for the badge beside Findings; nothing is shown while it cannot be read.
   const findings = usePolled(() => api.findings('open'), FINDINGS_REFRESH_MS, 'open-findings');
   const openFindings = findings?.state === 'ok' ? findings.data.counts.open : 0;
-  const [toastsOn, setToastsOn] = useState(readToastsOn);
-  const openList = findings?.state === 'ok' ? findings.data.findings : undefined;
-  useToasts(openList, toastsOn, api.notify);
+  // The program sends the toasts (with or without a window); this is only its switch, which the tray menu can change too.
+  const [toastsOn, setToastsOn] = useState(true);
+  const toastsSetting = usePolled(() => api.notificationsOn(), NOTIFICATIONS_REFRESH_MS, 'notifications');
+  // What the program says wins whenever it changes (for example from the tray menu); a click shows its result at once.
+  const [lastSetting, setLastSetting] = useState<boolean | undefined>(undefined);
+  if (toastsSetting !== lastSetting) {
+    setLastSetting(toastsSetting);
+    if (toastsSetting !== undefined) {
+      setToastsOn(toastsSetting);
+    }
+  }
   const current = VIEWS.find((v) => v.id === view) ?? VIEWS[0];
 
   return (
@@ -105,7 +94,7 @@ export function App() {
           aria-pressed={toastsOn}
           onClick={() => {
             setToastsOn(!toastsOn);
-            writeToastsOn(!toastsOn);
+            void api.setNotificationsOn(!toastsOn);
           }}
         >
           Toasts: {toastsOn ? 'on' : 'off'}

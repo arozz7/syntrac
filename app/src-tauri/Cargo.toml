@@ -14,18 +14,19 @@ path = "src/lib.rs"
 tauri-build = { version = "2.6.3", features = [] }
 
 [dependencies]
-tauri = { version = "2.11.6", features = [] }
+tauri = { version = "2.11.6", features = ["tray-icon"] }
 serde = { version = "1", features = ["derive"] }
 syntrac-core = { path = "../../crates/syntrac-core" }
 syntrac-store = { path = "../../crates/syntrac-store" }
 syntrac-ipc = { path = "../../crates/syntrac-ipc" }
 tauri-plugin-notification = "2.4.0"
+tauri-plugin-single-instance = "2"
+serde_json = "1"
 
 [dev-dependencies]
 syntrac-testkit = { path = "../../crates/syntrac-testkit" }
 tempfile = "3"
 rusqlite = { version = "0.40", features = ["bundled"] }
-serde_json = "1"
 
 [lints]
 workspace = true

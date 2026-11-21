@@ -1,12 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Minimum permissions for the main window. Widen deliberately, per feature.",
+  "description": "Minimum permissions for the main window. Widen deliberately, per feature. The page no longer sends notifications (the program does, from Rust), so it has no notification permission.",
   "windows": ["main"],
-  "permissions": [
-    "core:default",
-    "notification:allow-is-permission-granted",
-    "notification:allow-request-permission",
-    "notification:allow-notify"
-  ]
+  "permissions": ["core:default"]
 }

@@ -1,49 +1,30 @@
-# Phase T1: system history (first slice of the trend views)
+# Phase T1: tray icon, close-to-tray and alerts without a window (no schema change; app rebuild only)
 
-Implements T1 of `docs/TRENDS-PLAN.md`, approved by the user on 2026-11-13 (all three slices in order, local-time days, one
-"History" entry with tabs).
+Slice T1 of `docs/ALERTS-PLAN.md` (slice T), approved by the user on 2026-11-20 together with the official single-instance plugin.
 
 ## What changed
-
-**App backend** (`app/src-tauri`):
-- `src/history.rs`: `system_history(repo, now, range_secs)` builds `SystemHistoryView` (the stored UTC hours in the range, oldest
-  first, as percentages and millisecond times, plus `historyStartsMs`, the oldest rollup, whatever range was asked for). The
-  range is clamped from 1 hour to 10 years; "all" is simply longer than the history. A zero memory total gives 0%, not a
-  division by zero. Missing hours are not invented.
-- `backend.rs` (`system_history`, opened read-only like every view), `commands.rs` (`get_system_history`), `lib.rs` (module and
-  handler).
-- `examples/history_probe.rs`: reads the view models from a real database, read-only, with timings.
-
-**Frontend** (`app/src`):
-- `charts/historyBuckets.ts` (pure): hours into buckets by hour (up to 7 days) or LOCAL day (beyond), averages weighted by the
-  samples behind each hour, gaps between buckets with data (never before the first or after the last), `summarise`. The time zone
-  is injected (`DayStart`), so 23- and 25-hour days are tested without depending on the test machine. A day-start rule that does
-  not advance cannot hang the loop.
-- `charts/historyChart.ts` (pure): option builders for the load chart (CPU average solid and filled, CPU peak dotted, memory
-  dashed, fixed 0-100% axis) and the bytes charts (grouped bars). Category axis, so a gap is an explicit null and spacing is even.
-- `charts/readPalette.ts`: the palette reader extracted from `SystemChart` (DRY), used by both.
-- `views/SystemHistory.tsx`, `views/History.tsx` (tab control, System only for now), nav entry in `App.tsx`, `RangePicker` takes
-  optional `options` (24 hours, 7 days, 30 days, 90 days, 1 year, All), `Chart` registers bar charts, `format.ts` `formatDay`.
-- Notes in the screen: "History begins <date>" when the range reaches further back than the data; only completed hours are shown
-  (the latest appears about 5 minutes after the hour ends); a break in a line is time with no data, not zero.
-
-## Deviations from the plan (also recorded in `docs/TRENDS-PLAN.md`)
-- Bucketing lives in the UI rather than a core `trend.rs` (the UI knows the time zone and daylight saving).
-- `TrendRepository` is not introduced in T1 (nothing new to read); it arrives with T2.
+- **One program, with or without a window.** Closing the window destroys it (the web view's memory is freed) and the program keeps running in the tray (`RunEvent::ExitRequested` without a code is refused; Quit exits with a code). The tray icon is the window's icon; left click or Open (re)creates the window from the configured one. Menu: Open SYNTRAC, Findings (N open), Notifications (check mark), Quit. The tooltip says how many findings are open, or that the collector is not running.
+- **Alerts come from the program, not the page** (`toast_watch.rs`, `tray.rs`): a thread looks at the open findings every 30 seconds (the same view the Findings tab uses, up to 500) and sends the toasts through the official notification plugin's Rust side. The rules of `toasts.ts` are ported with the same tests: one toast for each new suspicious or confirmed finding (at most three, then "N more suspicious findings"), unusual ones as one summary, long text cut to 200 characters. The page no longer sends any toast, so there is exactly one sender.
+- **What counts as new changed on purpose.** It is "an id above the last one announced", kept in a settings file, instead of a set of ids seen in this session. So a finding raised while the program was NOT running is announced at the next start (under the same caps), and the very first run ever announces nothing. A finding that is seen while notifications are off counts as seen. If the settings file cannot be written, the value stays in memory, so a finding is never repeated every 30 seconds. A snoozed finding that comes back keeps its id and is not announced again (before, it was).
+- **Settings file** (`prefs.rs`): `%LOCALAPPDATA%\Syntrac\app.json` (the plan said `%APPDATA%`; this is next to the other per-user file, `database-path.txt`). A missing or damaged file means the defaults (notifications on); written through a temporary file. The notifications switch moved here from the page's `localStorage` (so the first run after this update has toasts ON, whatever the old switch said). The sidebar button and the tray menu item both use it; the sidebar reads it every 5 seconds, so a change from the tray shows there too.
+- **One instance only**: the official `tauri-plugin-single-instance` (the only new package in the lock file; the `tray-icon` feature added none). Starting SYNTRAC again opens the window of the one that is running.
+- **Tighter page permissions**: the page no longer has the notification permissions (`capabilities/default.json` is `core:default` only) and the JS package `@tauri-apps/plugin-notification` is removed (`pnpm-lock.yaml` shrinks by 10 lines). `Api.notify` is replaced by `notificationsOn` / `setNotificationsOn`.
 
 ## Tests (written first)
-Rust `app/src-tauri/tests/history.rs` (8: conversion, range, history start, empty, gap, zero total, clamp, real database and a
-missing one); frontend `historyBuckets.test.ts` (13: hour/day, gaps, local midnight, 23- and 25-hour days, non-advancing rule,
-summary), `historyChart.test.ts` (6), `SystemHistory.test.tsx` (10), `App.test.tsx` (+1).
+- `tests/toast_watch.rs` (13): the plan (first run, new suspicious and confirmed, the unusual summary, ids above the last, the cap of three and the singular, the cut, the id never going backwards) and the watcher with fakes (first tick, once only, notifications off, unreadable findings, the report for the tray, findings raised while the program was not running, a settings file that cannot be written).
+- `tests/prefs.rs` (6), `tests/tray_text.rs` (4); `App.test.tsx` (+3: the switch says what the program says, a click asks the program, the page sends no toast).
+- **Smoke run** of the built program with its own temporary `LOCALAPPDATA`: it started with its window, and after the window was closed the process was still running (the tray). Left in `%TEMP%`: `syntrac-smoke-*` (a web-view profile).
 
-## Rehearsal on the live database (read-only, `history_probe`)
-19 completed hours of system history (the first at 2026-11-12 ~22:00 UTC); each range query takes under 1 ms. Longer ranges
-will not look different until more days have been rolled up: today only about a day exists, and the screen says so.
+## By-hand checklist (the tray and window glue cannot be unit-tested)
+1. Start the app: a tray icon appears; hovering shows "SYNTRAC: N open findings" (or "the collector is not running").
+2. Close the window: the icon stays; Task Manager shows the program still running with little memory.
+3. Left click the icon, or Open SYNTRAC: the window comes back. Start SYNTRAC a second time: no second icon, the window opens.
+4. Notifications: untick it in the tray menu: the sidebar button says "Toasts: off" within a few seconds; click the sidebar button: the tray check mark follows.
+5. With the window closed, a new suspicious finding raises a toast within about 30 seconds.
+6. Quit from the tray menu: the program exits.
 
-## Not in T1
-Programs (T2) and Network (T3); anything that ranks or lists executables or destinations.
+## Left for the user
+- `app/src/toasts.ts`, `app/src/toasts.test.ts`, `app/src/hooks/useToasts.ts` and `useToasts.test.tsx` are now unused (the page sends no toasts). They are NOT deleted: say the word and they go.
 
-## Follow-up: the disk numbers were checked (2026-11-13)
-The user asked whether the disk figures can be trusted and split by drive. They are the sum of every live process's read and
-write transfer counters, not physical disk traffic (details and measurements in `docs/TRENDS-PLAN.md`, "Known limits"). The
-History card is now titled "Program file I/O" and says so. No per-drive data exists; that needs a separate, approved plan.
+## Not built (by plan)
+- Start with Windows (slice T2), toast buttons, sound, opening the app from a toast click (the plugin has no click action on Windows), a tray program that outlives the app.

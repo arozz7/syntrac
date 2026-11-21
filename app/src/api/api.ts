@@ -1,5 +1,4 @@
 import { invoke } from '@tauri-apps/api/core';
-import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 import type {
   ConnectionRowView,
   Data,
@@ -64,8 +63,10 @@ export interface Api {
   confirmReview(root: string): Promise<WriteOutcome>;
   /** Asks the service to expect the programs of one review group, one by one (never the folder). Never throws. */
   confirmReviewPrograms(root: string, publisher: string | null): Promise<WriteOutcome>;
-  /** Shows a Windows toast. Never throws: if the system refuses, nothing is shown. */
-  notify(title: string, body: string): Promise<void>;
+  /** Whether Windows notifications for new suspicious findings are on. The PROGRAM sends them (with or without a window); this is its switch. */
+  notificationsOn(): Promise<boolean>;
+  /** Switches the notifications (and the tray menu's check mark). Never throws. */
+  setNotificationsOn(on: boolean): Promise<void>;
   /** Asks the service to remove something the user said is expected. Never throws. */
   removeExpectation(id: number): Promise<WriteOutcome>;
   /** Where one program connected over the range, biggest first. `path` is the program's image path. */
@@ -156,14 +157,19 @@ export const tauriApi: Api = {
   confirmReview: (root) => write('confirm_review', { root }),
   confirmReviewPrograms: (root, publisher) => write('confirm_review_programs', { root, publisher }),
   removeExpectation: (id) => write('remove_expectation', { id }),
-  notify: async (title, body) => {
+  // On when the program cannot be asked: the default, and the safe side (a missed alert is worse than an extra one).
+  notificationsOn: async () => {
     try {
-      if (!(await isPermissionGranted()) && (await requestPermission()) !== 'granted') {
-        return;
-      }
-      sendNotification({ title, body });
+      return await invoke<boolean>('get_notifications_on');
     } catch {
-      // A toast is a convenience: nothing depends on it.
+      return true;
+    }
+  },
+  setNotificationsOn: async (on) => {
+    try {
+      await invoke('set_notifications_on', { on });
+    } catch {
+      // A switch that cannot be written stays as it was; the next read shows the truth.
     }
   },
   programDestinations: (rangeSecs, path, limit, allAddresses) =>
