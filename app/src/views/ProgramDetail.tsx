@@ -9,6 +9,7 @@ import { readPalette } from '../charts/readPalette';
 import { Chart } from '../components/Chart';
 import { DataGate } from '../components/DataGate';
 import { IdentityPanel } from '../components/IdentityPanel';
+import { InvestigateButton } from '../components/InvestigatePanel';
 import { formatBytes, formatDateTime, formatPercent } from '../format';
 import { usePolled } from '../hooks/usePolled';
 import { ProgramDestinations } from './ProgramDestinations';
@@ -173,6 +174,7 @@ export function ProgramDetail({
           Close
         </button>
       </div>
+      <InvestigateButton subject={{ kind: 'program', path }} />
       <ProgramDetailBody name={name} path={path} rangeSecs={rangeSecs} onChanged={onChanged} version={version} />
     </section>
   );

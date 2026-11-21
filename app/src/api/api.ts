@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import type { AiResult, AiSettings, AiStatus, InvestigateSubject, Investigation, PromptPreview } from './aiTypes';
 import type {
   ConnectionRowView,
   Data,
@@ -89,6 +90,22 @@ export interface Api {
   ownerDataStatus(): Promise<OwnerDataOutcome>;
   /** Asks the service to download the owner data (the only thing SYNTRAC ever downloads). Call only after the user agreed. Never throws. */
   refreshOwnerData(): Promise<OwnerDataOutcome>;
+  /** The optional AI help: the settings (off by default). Never throws; the safe answer is "off". */
+  aiSettings(): Promise<AiSettings>;
+  /** Checks and keeps the settings; a refusal says why and keeps nothing. */
+  saveAiSettings(settings: AiSettings): Promise<AiResult<AiSettings>>;
+  /** The state of the model server (asks it only when the help is on and set up). */
+  aiStatus(): Promise<AiStatus | null>;
+  /** Starts the model server from the user's launch command. Only a button calls this. */
+  startAiServer(): Promise<AiResult<null>>;
+  /** Stops the model server this app started (never one that was already running). */
+  stopAiServer(): Promise<AiResult<null>>;
+  /** The prompt as it would be sent, or (external) as it would be copied for an outside assistant. Asks no server. */
+  previewPrompt(subject: InvestigateSubject, external: boolean): Promise<AiResult<PromptPreview>>;
+  /** Starts an investigation and returns its number; poll it for the answer. */
+  startInvestigation(subject: InvestigateSubject): Promise<AiResult<number>>;
+  pollInvestigation(id: number): Promise<Investigation | null>;
+  cancelInvestigation(id: number): Promise<void>;
   processes(params: ProcessListParams): Promise<Data<ProcessRowView[]>>;
   connections(rangeSecs: number, limit?: number): Promise<Data<ConnectionRowView[]>>;
 }
@@ -123,6 +140,27 @@ async function ownerData(command: string): Promise<OwnerDataOutcome> {
     return { ok: false, state: null, message: failure(error) };
   }
 }
+
+/** A command that returns Result<_, String> rejects with the message; that becomes an explicit result. */
+async function attempt<T>(command: string, args?: Record<string, unknown>): Promise<AiResult<T>> {
+  try {
+    return { ok: true, value: await invoke<T>(command, args) };
+  } catch (error) {
+    return { ok: false, message: typeof error === 'string' ? error : failure(error) };
+  }
+}
+
+const AI_OFF: AiSettings = {
+  enabled: false,
+  endpoint: '',
+  model: '',
+  detailLevel: 'summary',
+  launchProgram: '',
+  launchArgs: [],
+  launchWorkingDir: '',
+  startOnInvestigate: false,
+  stopOnQuit: false,
+};
 
 export const tauriApi: Api = {
   async health() {
@@ -184,4 +222,37 @@ export const tauriApi: Api = {
   refreshOwnerData: () => ownerData('refresh_owner_data'),
   processes: (params) => data<ProcessRowView[]>('list_processes', { params }),
   connections: (rangeSecs, limit) => data<ConnectionRowView[]>('list_connections', { rangeSecs, limit }),
+  aiSettings: async () => {
+    try {
+      return await invoke<AiSettings>('get_ai_settings');
+    } catch {
+      return AI_OFF;
+    }
+  },
+  saveAiSettings: (settings) => attempt<AiSettings>('set_ai_settings', { settings }),
+  aiStatus: async () => {
+    try {
+      return await invoke<AiStatus>('get_ai_status');
+    } catch {
+      return null;
+    }
+  },
+  startAiServer: () => attempt<null>('start_ai_server'),
+  stopAiServer: () => attempt<null>('stop_ai_server'),
+  previewPrompt: (subject, external) => attempt<PromptPreview>('ai_preview_prompt', { subject, external }),
+  startInvestigation: (subject) => attempt<number>('ai_start_investigation', { subject }),
+  pollInvestigation: async (id) => {
+    try {
+      return await invoke<Investigation | null>('ai_poll_investigation', { id });
+    } catch {
+      return null;
+    }
+  },
+  cancelInvestigation: async (id) => {
+    try {
+      await invoke('ai_cancel_investigation', { id });
+    } catch {
+      // Nothing to cancel if the program cannot be reached.
+    }
+  },
 };

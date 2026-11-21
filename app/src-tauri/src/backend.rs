@@ -395,6 +395,20 @@ impl<C: Clock + Send + Sync> Backend<C> {
     }
 
     /// Never fails: every problem is a state.
+    /// The facts for the AI help about a finding or a program, read from the database (the user name is only used to be left out).
+    pub fn investigation_evidence(
+        &self,
+        subject: &crate::ai_investigate::SubjectRef,
+    ) -> Result<syntrac_core::investigate::Evidence, String> {
+        let user = std::env::var("USERNAME").ok().filter(|name| !name.trim().is_empty());
+        match self
+            .with_store(|store, now| Ok(crate::investigate_evidence::evidence_for_subject(store, now, subject, user)))
+        {
+            Data::Ok { data } => data,
+            Data::NoDatabase { message } | Data::SchemaMismatch { message } | Data::Error { message } => Err(message),
+        }
+    }
+
     pub fn health(&self) -> HealthView {
         let now = self.clock.now();
         let pipe = self.ask_collector();

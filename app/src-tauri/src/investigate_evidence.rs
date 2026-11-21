@@ -5,10 +5,12 @@ use std::net::IpAddr;
 
 use syntrac_core::investigate::{AccountFact, DestinationFact, Evidence, FindingFacts, HistoryFacts, ProgramFacts};
 use syntrac_core::{
-    classify_addr, ContextRepository, DestinationTrendRepository, Finding, IdentityRepository, InstallRepository,
-    KnownProductRepository, LauncherRepository, OwnerRepository, RepoError, RollupRepository, Timestamp,
+    classify_addr, ContextRepository, DestinationTrendRepository, Finding, FindingRepository, IdentityRepository,
+    InstallRepository, KnownProductRepository, LauncherRepository, OwnerRepository, RepoError, RollupRepository,
+    Timestamp,
 };
 
+use crate::ai_investigate::SubjectRef;
 use crate::history_programs::{program_history, ProgramHistoryView};
 
 /// The range every investigation looks at.
@@ -205,4 +207,26 @@ fn owner_and_name<R: EvidenceSource>(
     let owner = if internet { repo.lookup_owner(addr)?.map(|owner| owner.org) } else { None };
     let name = repo.address_names(addr)?.into_iter().next().map(|asked| asked.name);
     Ok((owner, name))
+}
+
+/// The evidence for what the page named: a finding by its number (with its program, when its subject names one) or a program by its path.
+pub fn evidence_for_subject<R: EvidenceSource + FindingRepository>(
+    repo: &R,
+    now: Timestamp,
+    subject: &SubjectRef,
+    user_name: Option<String>,
+) -> Result<Evidence, String> {
+    match subject {
+        SubjectRef::Finding { id } => {
+            let finding = repo
+                .finding(*id)
+                .map_err(|error| format!("Could not read the finding: {error}"))?
+                .ok_or_else(|| "The finding no longer exists.".to_owned())?;
+            finding_evidence(repo, now, &finding, user_name)
+                .map_err(|error| format!("Could not read the data: {error}"))
+        }
+        SubjectRef::Program { path } => {
+            program_evidence(repo, now, path, user_name).map_err(|error| format!("Could not read the data: {error}"))
+        }
+    }
 }

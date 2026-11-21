@@ -207,9 +207,37 @@ setting is explained in the file; an unknown key is rejected rather than ignored
 | `owner_data_allowed` | true | Set to `false` to make the service refuse to download anything, ever |
 | `launch_enabled`, `context_enabled` | true | How programs start (services, tasks, Run keys), and which account each program runs as |
 
+## AI help (optional)
+
+An **Investigate** button on findings and programs can ask a language model to explain the evidence in plain words: what the program
+probably is, why it was flagged, what could be harmless, and what to check next. It is **off until you turn it on** (the **AI help** tab),
+detection never uses it, and it never changes anything or decides anything. Treat an answer as an explanation to help you look, not as a
+verdict: a model can be wrong.
+
+**Two ways to use it, both optional:**
+
+1. **A model server on this machine.** Any server that speaks the common chat API works (LM Studio, `llama-server` and others). Enter its
+   address (only `127.0.0.1`, `localhost` or `[::1]` is accepted, so nothing is ever sent to the Internet by SYNTRAC) and the model name
+   exactly as the server knows it. Press **Investigate with my model**; the answer streams in, and **Stop** ends it. *What was sent* shows the
+   evidence block the answer was based on.
+2. **Copy a prompt for an outside assistant.** *Show the text to copy* builds a much more reduced text: no file names, folders, product names,
+   network owners, host names, addresses or finding sentences, only the kind of finding, the signature state, the publisher, the kind of
+   place the program runs from, and numbers. You can edit it, then **Copy to clipboard**. SYNTRAC sends nothing: pasting it into a hosted
+   assistant is your own action and shares it with that service.
+
+**How much your own server is told** (the setting *How much is sent*): *Summary* (the default) gives names, networks and numbers without
+addresses, hashes or account names; *Full* adds addresses, file hashes and account names. Your Windows user name is always replaced by
+`<user>`. Some model servers keep a log of every prompt in plain text: check yours.
+
+**Starting the server from SYNTRAC (optional).** If you give a full path to the server's `.exe` (and its arguments), the AI help tab shows
+the exact command and a **Start the model server** button; nothing starts until you press it (or tick *Start the server when I press
+Investigate*). Only a full local path to an `.exe` is accepted (no scripts, no network, temporary or download folders). SYNTRAC only ever
+stops a server **it started itself**, and only when you press Stop (or tick *Stop ... when SYNTRAC quits*). Leave the launch command empty if
+you start the server yourself.
+
 ## Your data and your privacy
 
-- **Everything stays on your machine.** SYNTRAC has no account, no cloud and no telemetry. There is one exception, and it only happens
+- **Everything stays on your machine.** SYNTRAC has no account, no cloud and no telemetry. The optional AI help talks only to a model server on this machine, and only after you turn it on. There is one exception, and it only happens
   when you press its button: **Download owner data** (History, Network) fetches one public-domain file from `iptoasn.com` that says which
   network owns each range of internet addresses. It sends none of your addresses (the lookups happen locally), and
   `owner_data_allowed = false` switches it off for good. Without it, destinations are still shown, just without the network's name.
@@ -224,6 +252,7 @@ setting is explained in the file; an unknown key is rejected rather than ignored
   running as you could read it too; this is accepted for a personal tool, and [docs/THREAT-MODEL.md](THREAT-MODEL.md) says so.
 - **Checking a database:** `target\release\syntrac-service.exe --check-db <path>` reports the schema, integrity and rows per table,
   read-only.
+- **AI help:** off by default. What it sends to your own server is limited by the detail setting, and the text for an outside assistant is reduced further and shown to you before anything is copied.
 - **Sharing screenshots:** the app shows program names, paths, and your user name in paths. Look before you post one.
 
 ## Troubleshooting

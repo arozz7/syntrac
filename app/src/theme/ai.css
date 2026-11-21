@@ -1,0 +1,89 @@
+/* The optional AI help (docs/PHASE4-PLAN.md): the Investigate panel and the settings form. Tokens only, no colours of its own. */
+
+.ai-investigate {
+  margin-top: 0.6rem;
+}
+
+.ai-panel {
+  display: grid;
+  gap: 1rem;
+  margin-top: 0.6rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+}
+
+.ai-panel h4 {
+  margin: 0 0 0.3rem;
+}
+
+/* The answer is plain text: line breaks are kept, nothing is interpreted. */
+.ai-answer {
+  margin-top: 0.6rem;
+  padding: 0.7rem 0.9rem;
+  border-left: 3px solid var(--color-primary);
+  background: var(--color-bg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ai-answer:empty {
+  display: none;
+}
+
+.ai-sent {
+  max-height: 16rem;
+  overflow: auto;
+  padding: 0.6rem 0.8rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ai-form {
+  display: grid;
+  gap: 1rem;
+  max-width: 46rem;
+}
+
+.ai-field {
+  display: grid;
+  gap: 0.25rem;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.ai-field legend {
+  padding: 0;
+  font-weight: 600;
+}
+
+.ai-field input[type='text'],
+.ai-field textarea,
+.ai-copy {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.ai-copy {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+}
+
+.ai-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}

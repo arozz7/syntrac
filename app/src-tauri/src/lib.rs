@@ -3,6 +3,7 @@
 
 pub mod ai_commands;
 pub mod ai_control;
+pub mod ai_investigate;
 pub mod autostart;
 pub mod autostart_registry;
 pub mod backend;
@@ -52,7 +53,17 @@ pub fn run() {
     let service: ServiceFactory =
         Arc::new(|endpoint| Box::new(syntrac_llm::HttpLlm::new(endpoint, syntrac_llm::HttpLimits::default())));
     let ai: ai_commands::SharedAi =
-        Arc::new(AiControl::new(prefs.clone(), Box::new(server_process::WindowsSpawner), service));
+        Arc::new(AiControl::new(prefs.clone(), Box::new(server_process::WindowsSpawner), Arc::clone(&service)));
+    let evidence_backend = Arc::clone(&backend);
+    let evidence: ai_investigate::EvidenceProvider =
+        Arc::new(move |subject| evidence_backend.investigation_evidence(subject));
+    let investigator: ai_commands::SharedInvestigator = Arc::new(ai_investigate::Investigator::new(
+        prefs.clone(),
+        Arc::clone(&ai),
+        service,
+        evidence,
+        syntrac_core::investigate::PromptConfig::builtin(),
+    ));
     let exit_ai = Arc::clone(&ai);
     let (watch_backend, watch_prefs) = (Arc::clone(&backend), prefs.clone());
     let app = tauri::Builder::default()
@@ -63,6 +74,7 @@ pub fn run() {
         .manage(backend)
         .manage(prefs.clone())
         .manage(ai)
+        .manage(investigator)
         .setup(move |app| {
             tray::install(app.handle(), &prefs)?;
             tray::start_watcher(app.handle().clone(), watch_backend, watch_prefs);
@@ -81,6 +93,10 @@ pub fn run() {
             ai_commands::get_ai_status,
             ai_commands::start_ai_server,
             ai_commands::stop_ai_server,
+            ai_commands::ai_preview_prompt,
+            ai_commands::ai_start_investigation,
+            ai_commands::ai_poll_investigation,
+            ai_commands::ai_cancel_investigation,
             commands::get_health,
             commands::get_overview,
             commands::list_processes,

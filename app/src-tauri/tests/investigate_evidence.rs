@@ -166,3 +166,31 @@ fn every_finding_of_the_demo_machine_gives_a_prompt_that_keeps_its_promises() {
         }
     }
 }
+
+#[test]
+fn the_page_names_a_finding_by_number_or_a_program_by_path_and_an_unknown_number_is_reported() {
+    use syntrac_app_lib::ai_investigate::SubjectRef;
+    use syntrac_app_lib::investigate_evidence::evidence_for_subject;
+    use syntrac_core::FindingRepository;
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("demo.db");
+    syntrac_demo::generate(&path, DEMO_NOW).unwrap();
+    let store = syntrac_store::SqliteStore::open(&path).unwrap();
+    let findings = store.findings(None, 500).unwrap();
+    let with_program = findings.iter().find(|f| f.kind.starts_with("pattern")).expect("a pattern finding");
+
+    let by_number =
+        evidence_for_subject(&store, at_secs(DEMO_NOW), &SubjectRef::Finding { id: with_program.id }, None).unwrap();
+    assert_eq!(by_number.finding.as_ref().unwrap().kind, with_program.kind);
+    assert!(by_number.program.is_some(), "the program the finding names comes along");
+
+    let program_path =
+        by_number.program.as_ref().map(|_| with_program.subject.split('|').next().unwrap().to_owned()).unwrap();
+    let by_path =
+        evidence_for_subject(&store, at_secs(DEMO_NOW), &SubjectRef::Program { path: program_path }, None).unwrap();
+    assert!(by_path.finding.is_none() && by_path.program.is_some());
+
+    let missing = evidence_for_subject(&store, at_secs(DEMO_NOW), &SubjectRef::Finding { id: 987_654 }, None);
+    assert_eq!(missing.unwrap_err(), "The finding no longer exists.");
+}

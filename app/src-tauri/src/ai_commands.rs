@@ -6,6 +6,7 @@ use std::sync::Arc;
 use tauri::State;
 
 use crate::ai_control::{AiControl, AiSettingsDto, AiStatusView};
+use crate::ai_investigate::{InvestigationView, Investigator, PromptPreview, SubjectRef};
 
 pub type SharedAi = Arc<AiControl>;
 
@@ -41,4 +42,37 @@ pub async fn start_ai_server(ai: State<'_, SharedAi>) -> Result<(), String> {
 pub async fn stop_ai_server(ai: State<'_, SharedAi>) -> Result<(), String> {
     let ai = Arc::clone(&ai);
     off_the_ui_thread(move || ai.stop()).await?
+}
+
+pub type SharedInvestigator = Arc<Investigator>;
+
+/// The prompt as it would be sent (`external` false) or as it would be copied for an outside model (`external` true). Asks no server.
+#[tauri::command]
+pub async fn ai_preview_prompt(
+    investigator: State<'_, SharedInvestigator>,
+    subject: SubjectRef,
+    external: bool,
+) -> Result<PromptPreview, String> {
+    let investigator = Arc::clone(&investigator);
+    off_the_ui_thread(move || investigator.preview(&subject, external)).await?
+}
+
+/// Starts an investigation and returns its number; the page then polls for the answer.
+#[tauri::command]
+pub async fn ai_start_investigation(
+    investigator: State<'_, SharedInvestigator>,
+    subject: SubjectRef,
+) -> Result<u64, String> {
+    let investigator = Arc::clone(&investigator);
+    off_the_ui_thread(move || investigator.start(&subject)).await?
+}
+
+#[tauri::command]
+pub fn ai_poll_investigation(investigator: State<'_, SharedInvestigator>, id: u64) -> Option<InvestigationView> {
+    investigator.poll(id)
+}
+
+#[tauri::command]
+pub fn ai_cancel_investigation(investigator: State<'_, SharedInvestigator>, id: u64) {
+    investigator.cancel(id);
 }

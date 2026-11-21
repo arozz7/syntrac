@@ -40,9 +40,12 @@ fn a_program_that_ends_by_itself_reports_its_exit_code() {
 
 #[test]
 fn stopping_ends_the_program_and_the_program_it_started() {
-    // cmd.exe starts ping.exe, which runs for about a minute: two programs in the job.
+    // cmd.exe starts ping.exe, which runs for about a minute: both are in the job.
     let mut child = WindowsSpawner.spawn_job(&cmd(&["/c", "ping", "-n", "60", "127.0.0.1"])).unwrap();
-    wait_until("both programs to be running", || child.active_processes() == Some(2));
+    // Windows may add a hidden console host to the job as well, so "at least those two".
+    wait_until("the program and what it started to be running", || {
+        child.active_processes().is_some_and(|count| count >= 2)
+    });
     assert_eq!(child.try_exit().unwrap(), None, "it keeps running");
 
     child.kill().unwrap();

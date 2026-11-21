@@ -1,0 +1,111 @@
+// @vitest-environment jsdom
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ApiProvider } from '../api/ApiContext';
+import type { Api } from '../api/api';
+import { AiEnabledProvider } from '../components/AiEnabled';
+import { aiSettings, aiStatus } from '../test/fakeAi';
+import { makeFakeApi } from '../test/fakeApi';
+import { AiHelp } from './AiHelp';
+
+afterEach(cleanup);
+
+function show(overrides: Partial<Api> = {}) {
+  const api = makeFakeApi(overrides);
+  render(
+    <ApiProvider api={api}>
+      <AiEnabledProvider>
+        <AiHelp />
+      </AiEnabledProvider>
+    </ApiProvider>,
+  );
+  return api;
+}
+
+describe('AiHelp', () => {
+  it('starts off, says it is optional and local, and shows nothing running', async () => {
+    show();
+    expect(await screen.findByLabelText('Turn on AI help')).toBeTruthy();
+    expect((screen.getByLabelText('Turn on AI help') as HTMLInputElement).checked).toBe(false);
+    expect(screen.getByText(/never to the Internet/i)).toBeTruthy();
+    expect(await screen.findByText('The model server is not running.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Start the model server' })).toBeNull();
+  });
+
+  it('saves what was typed, with the arguments one per line', async () => {
+    const api = show();
+    await userEvent.click(await screen.findByLabelText('Turn on AI help'));
+    await userEvent.type(screen.getByLabelText(/Model server address/), 'http://127.0.0.1:1234/v1');
+    await userEvent.type(screen.getByLabelText(/^Model name/), 'some-model');
+    await userEvent.type(screen.getByLabelText(/Program \(a full path/), 'C:\\Tools\\srv.exe');
+    await userEvent.type(screen.getByLabelText(/Arguments/), 'serve{Enter}--port 1234');
+    await userEvent.click(screen.getByLabelText(/Full: also addresses/));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(api.saveAiSettings).toHaveBeenCalledWith(
+      aiSettings({
+        enabled: true,
+        endpoint: 'http://127.0.0.1:1234/v1',
+        model: 'some-model',
+        detailLevel: 'full',
+        launchProgram: 'C:\\Tools\\srv.exe',
+        launchArgs: ['serve', '--port 1234'],
+      }),
+    );
+    expect(await screen.findByText('Saved.')).toBeTruthy();
+  });
+
+  it('shows the reason when the settings are refused', async () => {
+    show({
+      saveAiSettings: vi.fn(async () => ({
+        ok: false as const,
+        message: 'the address is not this machine (use 127.0.0.1, localhost or [::1])',
+      })),
+    });
+    await userEvent.type(await screen.findByLabelText(/Model server address/), 'http://example.com/v1');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('not this machine');
+  });
+
+  it('shows the exact command and starts the server only when the button is pressed', async () => {
+    const api = show({
+      aiSettings: vi.fn(async () => aiSettings({ enabled: true, launchProgram: 'C:\\Tools\\srv.exe' })),
+      aiStatus: vi.fn(async () =>
+        aiStatus({
+          canStart: true,
+          command: '"C:\\Tools\\srv.exe" serve',
+          message: 'The model server is not running.',
+        }),
+      ),
+    });
+    expect(await screen.findByText('"C:\\Tools\\srv.exe" serve')).toBeTruthy();
+    expect(api.startAiServer).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Start the model server' }));
+
+    expect(api.startAiServer).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers Stop only for a server the program started and says why a start failed', async () => {
+    const api = show({
+      aiStatus: vi.fn(async () =>
+        aiStatus({
+          state: 'ready',
+          message: 'The model server is ready (started by this app).',
+          canStop: true,
+          startedByThisApp: true,
+        }),
+      ),
+      stopAiServer: vi.fn(async () => ({
+        ok: false as const,
+        message: 'The server could not be stopped: access denied.',
+      })),
+    });
+    await userEvent.click(await screen.findByRole('button', { name: 'Stop the model server' }));
+    await waitFor(() => expect(api.stopAiServer).toHaveBeenCalled());
+    expect((await screen.findByRole('alert')).textContent).toContain('access denied');
+    expect(screen.getByText(/only stops a server it started itself/i)).toBeTruthy();
+  });
+});

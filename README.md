@@ -32,6 +32,7 @@ addresses, and sends none of your addresses. It can be switched off for good wit
   what is probably harmless). You decide: expected this time, always expected, raise the limit, snooze.
 - **Tells you without getting in the way.** A tray icon, Windows toasts for new suspicious findings (with or without the window open),
   and an optional start with Windows.
+- **Optionally explains in plain words.** An off-by-default Investigate button asks a model on your own machine (LM Studio, llama-server or similar; loopback only), or prepares a reduced text you can copy to an outside assistant yourself.
 
 <p align="center">
   <img src="docs/images/findings.png" alt="Findings: an unsigned program in a user folder that keeps the GPU busy, and a program that uploaded far more than usual" width="900">
@@ -118,8 +119,7 @@ tests run against an in-memory store and the SQLite store, so they cannot drift 
 
 Built: collection (ETW, snapshots, metrics, GPU), storage with rollups and a storage guard, program identity and
 how programs start, the network and owner views, findings (new things, usage, known patterns), live and historical GPU views, the tray
-icon with toasts and start with Windows, and the demo. Not built: the local-AI "investigate" feature (planned to use your own
-llama-server on loopback only), a process tree and connection map, and an installer. [docs/PLAN.md](docs/PLAN.md) has the full plan.
+icon with toasts and start with Windows, and the demo. An optional, off-by-default **AI help** (an Investigate button that asks a model server on this machine, or prepares a reduced text to copy for an outside assistant) is built. Not built: a process tree and connection map, and an installer. [docs/PLAN.md](docs/PLAN.md) has the full plan.
 
 ## Development
 

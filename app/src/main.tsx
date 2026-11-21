@@ -6,6 +6,7 @@ import { ApiProvider } from './api/ApiContext';
 import './theme/tokens.css';
 import './theme/global.css';
 import './theme/app.css';
+import './theme/ai.css';
 
 const container = document.getElementById('root');
 if (!container) {

@@ -144,12 +144,29 @@ impl AiControl {
 
     /// Starts the server from the launch command, after the same checks as the status. Only a button calls this.
     pub fn start(&self) -> Result<(), String> {
+        self.begin().map_err(|failure| match failure {
+            Failure::Setup(message) => message,
+            Failure::Launch(error) => describe_launch_error(error),
+        })
+    }
+
+    /// Like `start`, but a server that is already answering or already started by this app is not a failure: it is what was wanted.
+    pub fn ensure_started(&self) -> Result<(), String> {
+        match self.begin() {
+            Ok(()) | Err(Failure::Launch(LaunchError::AlreadyRunning | LaunchError::AlreadyStarted)) => Ok(()),
+            Err(Failure::Setup(message)) => Err(message),
+            Err(Failure::Launch(error)) => Err(describe_launch_error(error)),
+        }
+    }
+
+    fn begin(&self) -> Result<(), Failure> {
         let settings = self.prefs.ai_settings();
-        let endpoint = settings.ready_to_use().map_err(|problem| problem.to_string())?;
-        let command =
-            settings.launch_command().map_err(|problem| format!("There is no usable launch command: {problem}."))?;
+        let endpoint = settings.ready_to_use().map_err(|problem| Failure::Setup(problem.to_string()))?;
+        let command = settings
+            .launch_command()
+            .map_err(|problem| Failure::Setup(format!("There is no usable launch command: {problem}.")))?;
         let server = (self.service)(endpoint);
-        self.manager.start(command, server.as_ref(), Instant::now()).map_err(describe_launch_error)
+        self.manager.start(command, server.as_ref(), Instant::now()).map_err(Failure::Launch)
     }
 
     pub fn stop(&self) -> Result<(), String> {
@@ -160,6 +177,12 @@ impl AiControl {
     pub fn shutdown(&self) {
         self.manager.shutdown(self.prefs.ai_settings().stop_on_quit);
     }
+}
+
+/// Why a start did not happen: the settings are not usable, or the launch itself was refused or failed.
+enum Failure {
+    Setup(String),
+    Launch(LaunchError),
 }
 
 fn plain(state: &str, message: &str, settings: &AiSettings) -> AiStatusView {

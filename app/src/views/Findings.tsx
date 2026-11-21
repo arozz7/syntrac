@@ -12,6 +12,7 @@ import type {
   FindingsView,
 } from '../api/types';
 import { DataGate } from '../components/DataGate';
+import { InvestigateButton } from '../components/InvestigatePanel';
 import { formatBytes, formatDateTime } from '../format';
 import { usePolled } from '../hooks/usePolled';
 import { ReviewToday } from './ReviewToday';
@@ -175,6 +176,7 @@ function FindingCard({ finding, onChanged }: { finding: FindingView; onChanged: 
           ))}
         </ul>
       )}
+      <InvestigateButton subject={{ kind: 'finding', id: finding.id }} />
       <p className="muted">
         This was {times(finding.hits)}: first {formatDateTime(finding.firstAtMs)}, last{' '}
         {formatDateTime(finding.lastAtMs)}.
