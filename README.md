@@ -62,6 +62,20 @@ stand-in for the service, and opens the app. Requirements: Windows 11, Rust (MSV
   </tr>
 </table>
 
+## AI help (optional, off by default)
+
+An **Investigate** button on findings and programs asks a language model that runs **on your own machine** (LM Studio, `llama-server` or
+any server that speaks the common chat API on `127.0.0.1`) to explain the evidence in plain words, and shows what was sent. SYNTRAC never
+talks to the Internet for this; detection never uses it; an answer is an explanation, not a decision. If you would rather use a hosted
+assistant, SYNTRAC can prepare a much more reduced text (no file names, folders, addresses or finding sentences) for you to look at, edit and
+copy yourself.
+
+<p align="center">
+  <img src="docs/images/ai-investigate.png" alt="Investigate on a finding: a small local model explains the evidence, says what could be harmless, what to check next and what is uncertain" width="900">
+</p>
+
+<sub>The picture is the demo machine with a small local model answering. [docs/USER-GUIDE.md](docs/USER-GUIDE.md) explains the settings and what is sent.</sub>
+
 ## Quick start (installing for real)
 
 SYNTRAC is two parts: an elevated Windows **service** that collects the data into a local SQLite database, and an unelevated

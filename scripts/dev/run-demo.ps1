@@ -14,7 +14,12 @@ param(
     # Also start a stand-in model server and turn the AI help on, pointed at it (the app's own settings file, not yours).
     [switch]$WithModel,
     # Drive the AI help through the real app and write its pictures and a report to this folder (implies -WithModel).
-    [string]$CheckAi
+    [string]$CheckAi,
+    # Use a model server that is already running instead of the stand-in (for example http://127.0.0.1:1234/v1), with the model name it knows.
+    [string]$ModelEndpoint,
+    [string]$ModelName,
+    # Drive the AI help against that real server (needs -ModelEndpoint and -ModelName); pictures and the answer go to this folder.
+    [string]$LiveAi
 )
 
 $ErrorActionPreference = 'Stop'
@@ -56,18 +61,28 @@ $appCopy = Join-Path $work 'syntrac-demo-app.exe'
 Copy-Item (Join-Path $root 'target\debug\syntrac-app.exe') $appCopy
 $app = $null
 $model = $null
-$withModel = $WithModel -or [bool]$CheckAi
+$withModel = $WithModel -or [bool]$CheckAi -or [bool]$LiveAi
+$useStandIn = -not $ModelEndpoint
+if ($LiveAi -and (-not $ModelEndpoint -or -not $ModelName)) { throw "-LiveAi needs -ModelEndpoint and -ModelName." }
 $modelPort = 18080
 $modelLog = Join-Path $work 'model-requests.log'
 try {
     $localFolder = Join-Path $work 'local'
     if ($withModel) {
-        Write-Host '==> starting the stand-in model server (a canned answer, not a language model)' -ForegroundColor Cyan
-        $model = Start-Process -FilePath (Join-Path $root 'target\debug\demo-model.exe') `
-            -ArgumentList @("$modelPort", "`"$modelLog`"") -PassThru -WindowStyle Hidden
-        # The app's own settings file (inside the demo's isolated folder): the AI help on, pointed at the stand-in.
+        if ($useStandIn) {
+            Write-Host '==> starting the stand-in model server (a canned answer, not a language model)' -ForegroundColor Cyan
+            $model = Start-Process -FilePath (Join-Path $root 'target\debug\demo-model.exe') `
+                -ArgumentList @("$modelPort", "`"$modelLog`"") -PassThru -WindowStyle Hidden
+            $endpoint = "http://127.0.0.1:$modelPort/v1"
+            $modelId = 'demo-model'
+        } else {
+            Write-Host "==> using the model server at $ModelEndpoint (the demo data is invented; nothing real is sent)" -ForegroundColor Cyan
+            $endpoint = $ModelEndpoint
+            $modelId = $ModelName
+        }
+        # The app's own settings file (inside the demo's isolated folder): the AI help on, pointed at the model server.
         New-Item -ItemType Directory -Force -Path (Join-Path $localFolder 'Syntrac') | Out-Null
-        $settings = @{ ai = @{ enabled = $true; endpoint = "http://127.0.0.1:$modelPort/v1"; model = 'demo-model'; detail_level = 'summary' } }
+        $settings = @{ ai = @{ enabled = $true; endpoint = $endpoint; model = $modelId; detail_level = 'summary' } }
         [IO.File]::WriteAllText((Join-Path $localFolder 'Syntrac\app.json'), ($settings | ConvertTo-Json -Depth 4), (New-Object Text.UTF8Encoding($false)))
     }
     Start-Sleep -Seconds 2
@@ -77,13 +92,20 @@ try {
     $env:SYNTRAC_PIPE = $pipe
     # The fictional machine's user is "demo": that is the name the AI help must replace in what it sends.
     if ($withModel) { $env:USERNAME = 'demo' }
-    if ($Capture -or $CheckAi) { $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$debugPort" }
+    if ($Capture -or $CheckAi -or $LiveAi) { $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$debugPort" }
     Write-Host '==> starting the app' -ForegroundColor Cyan
     $app = Start-Process -FilePath $appCopy -PassThru
     $env:LOCALAPPDATA = $saved.L; $env:SYNTRAC_DB = $saved.D; $env:SYNTRAC_PIPE = $saved.P; $env:USERNAME = $saved.U
     $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $saved.W
 
-    if ($CheckAi) {
+    if ($LiveAi) {
+        . (Join-Path $PSScriptRoot 'demo-capture.ps1')
+        . (Join-Path $PSScriptRoot 'demo-ai-check.ps1')
+        $out = if ([IO.Path]::IsPathRooted($LiveAi)) { $LiveAi } else { Join-Path $root $LiveAi }
+        New-Item -ItemType Directory -Force -Path $out | Out-Null
+        $passed = Test-DemoAiLive -Port $debugPort -OutputFolder $out
+        if (-not $passed) { $script:checkFailed = $true }
+    } elseif ($CheckAi) {
         . (Join-Path $PSScriptRoot 'demo-capture.ps1')
         . (Join-Path $PSScriptRoot 'demo-ai-check.ps1')
         $out = if ([IO.Path]::IsPathRooted($CheckAi)) { $CheckAi } else { Join-Path $root $CheckAi }

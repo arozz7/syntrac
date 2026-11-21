@@ -75,7 +75,7 @@ To try the [AI help](#ai-help-optional) on the demo, add `-WithModel`: the scrip
 canned text that says it is not a language model) and turns the AI help on, pointed at it, in the demo's own settings file. You can also
 point the demo at your own model server on the AI help tab: the demo data is invented, so nothing real is sent. `-CheckAi <folder>` drives
 the AI help through the real app and writes a report and pictures to that folder; it also reads the stand-in's request log to check what a
-model server would have received (no user name in a path, no addresses at the summary level).
+model server would have received (no user name in a path, no addresses at the summary level). To try a real model server on the demo instead of the stand-in, use `-LiveAi <folder> -ModelEndpoint http://127.0.0.1:1234/v1 -ModelName <the name your server knows>`: it asks about one demo finding, waits as long as the model needs, and saves the answer and a picture. Some servers (LM Studio) load a model into memory the first time it is asked for, so the first answer can take a while.
 
 ## The screens
 

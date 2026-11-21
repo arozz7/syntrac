@@ -99,3 +99,58 @@ function Test-DemoAi([int]$Port, [string]$OutputFolder, [string]$ModelLog) {
     Write-Host "==> $summary (report and pictures: $OutputFolder)" -ForegroundColor $(if ($passed) { 'Green' } else { 'Red' })
     return $passed
 }
+
+# The full text of a page expression (Invoke-PageScript stops at the first quote; an answer has many).
+function Get-PageString($Socket, [string]$Expression) {
+    $reply = Invoke-Cdp $Socket 'Runtime.evaluate' @{ expression = $Expression; returnByValue = $true }
+    $value = ($reply | ConvertFrom-Json).result.result.value
+    if ($null -eq $value) { return '' }
+    return [string]$value
+}
+
+# Investigates one demo finding against a REAL model server (run-demo.ps1 -LiveAi ... -ModelEndpoint ... -ModelName ...), waiting as long as a
+# slow model needs. The demo data is invented, so nothing real is sent. Writes the answer and a picture to $OutputFolder and returns $true when
+# an answer arrived.
+function Test-DemoAiLive([int]$Port, [string]$OutputFolder, [int]$WaitSeconds = 900) {
+    Write-Host '==> asking the real model server about a demo finding' -ForegroundColor Cyan
+    $socket = Connect-DemoPage $Port
+    if (-not (Wait-Page $socket "document.querySelector('[role=status]')?.getAttribute('data-state') === 'running'" 60)) {
+        throw 'The demo collector never read as running.'
+    }
+    Invoke-PageScript $socket "(() => { const s = document.createElement('style'); s.textContent = '::-webkit-scrollbar { display: none; }'; document.head.appendChild(s); return 'ok'; })()" | Out-Null
+
+    Click-DemoButton $socket 'AI help' -Exact
+    Start-Sleep -Seconds 4
+    $status = Get-PageString $socket "document.querySelector('[aria-label=""Model server status""]')?.innerText ?? ''"
+    Write-Host "  server status on the AI help tab: $($status -replace '\s+', ' ')"
+
+    Click-DemoButton $socket 'Findings'
+    Click-DemoButton $socket 'Investigate' -Exact
+    Click-DemoButton $socket 'Investigate with my model' -Exact
+    $started = Get-Date
+    $firstWords = $null
+    $outcome = 'timed out'
+    while (((Get-Date) - $started).TotalSeconds -lt $WaitSeconds) {
+        Start-Sleep -Seconds 2
+        $length = [int](Get-PageString $socket "String(document.querySelector('[aria-label=Answer]')?.textContent.length ?? 0)")
+        $phase = Get-PageString $socket "(document.querySelector('.ai-panel')?.innerText.match(/(Finished\.|Stopped\.|It could not finish\.|The model is answering|Waiting for the model server)/) ?? [''])[0]"
+        if ($length -gt 0 -and $null -eq $firstWords) {
+            $firstWords = ((Get-Date) - $started).TotalSeconds
+            Write-Host ("  first words after {0:N0} s" -f $firstWords)
+        }
+        $problem = Get-PageString $socket "document.querySelector('.ai-panel [role=alert]')?.textContent ?? ''"
+        if ($problem) { $outcome = "problem: $problem"; break }
+        if ($phase -eq 'Finished.') { $outcome = 'finished'; break }
+        Write-Host ("  {0,4:N0} s  {1}  ({2} characters so far)" -f ((Get-Date) - $started).TotalSeconds, $phase, $length)
+    }
+    $seconds = ((Get-Date) - $started).TotalSeconds
+    $answer = Get-PageString $socket "document.querySelector('[aria-label=Answer]')?.textContent ?? ''"
+    $reasoning = Get-PageString $socket "document.querySelector('.ai-panel')?.innerText ?? ''"
+    Set-Content -Path (Join-Path $OutputFolder 'answer.txt') -Value $answer -Encoding UTF8
+    Set-Content -Path (Join-Path $OutputFolder 'panel-text.txt') -Value $reasoning -Encoding UTF8
+    Invoke-PageScript $socket "(() => { (document.querySelector('.ai-panel')?.closest('.finding') ?? document.querySelector('.ai-panel'))?.scrollIntoView(); return 'ok'; })()" | Out-Null
+    Save-DemoShot $socket $OutputFolder 'ai-live-answer' 1150
+    $socket.Dispose()
+    Write-Host ("==> {0} after {1:N0} s; the answer is {2} characters (saved to answer.txt)" -f $outcome, $seconds, $answer.Length) -ForegroundColor $(if ($outcome -eq 'finished') { 'Green' } else { 'Red' })
+    return ($outcome -eq 'finished' -and $answer.Length -gt 80)
+}
