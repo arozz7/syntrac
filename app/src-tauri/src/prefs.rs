@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use serde::{Deserialize, Serialize};
+use syntrac_core::llm::AiSettings;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -14,11 +15,13 @@ pub struct Prefs {
     pub notifications: bool,
     /// The highest finding id already announced (or seen while notifications were off). `None` until the very first run.
     pub last_announced: Option<i64>,
+    /// The optional AI help (docs/PHASE4-PLAN.md): off and empty until the user sets it up.
+    pub ai: AiSettings,
 }
 
 impl Default for Prefs {
     fn default() -> Self {
-        Self { notifications: true, last_announced: None }
+        Self { notifications: true, last_announced: None, ai: AiSettings::default() }
     }
 }
 
@@ -96,5 +99,13 @@ impl PrefsHandle {
 
     pub fn set_last_announced(&self, id: i64) {
         self.change(|prefs| prefs.last_announced = Some(id));
+    }
+
+    pub fn ai_settings(&self) -> AiSettings {
+        self.lock().prefs.ai.clone()
+    }
+
+    pub fn set_ai_settings(&self, settings: AiSettings) {
+        self.change(|prefs| prefs.ai = settings);
     }
 }

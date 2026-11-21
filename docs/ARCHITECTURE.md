@@ -74,7 +74,7 @@ Client: `syntrac-service --status` / `--ping` (`--pipe <name>`), exit codes 0 ok
 | `Clock` | Tool | Implemented: `SystemClock`, `ManualClock` |
 | `EntityRepository` / `ProfileRepository` / `BaselineRepository` / `AlertRepository` | Memory | Planned (Phases 2 and 3) |
 | `FileEnricher`, `IntelProvider` | Tool | Planned (Phases 2 and 3) |
-| `LLMService` | Tool | Planned (Phase 4): adapter over the local llama-server's OpenAI-compatible API |
+| `LLMService` | Tool | Phase 4 (optional, off by default): port in `syntrac-core::llm`; adapter `syntrac-llm::HttpLlm` over an OpenAI-compatible server on loopback only (L4a built, see `docs/PHASE4-PLAN.md`) |
 
 ## Reasoning loop
 

@@ -153,7 +153,7 @@ fn the_first_tick_announces_nothing_a_later_new_finding_is_announced_once() {
 fn with_notifications_off_nothing_is_shown_but_what_is_old_is_not_announced_when_they_come_back_on() {
     let source = FakeSource::new(vec![]);
     let notifier = FakeNotifier::default();
-    let prefs = PrefsHandle::in_memory(Prefs { notifications: false, last_announced: Some(0) });
+    let prefs = PrefsHandle::in_memory(Prefs { notifications: false, last_announced: Some(0), ..Prefs::default() });
     let mut watcher = watcher(&source, &notifier, &prefs);
 
     source.set(vec![finding(1, "suspicious")]);
@@ -170,7 +170,7 @@ fn a_finding_that_cannot_be_read_changes_nothing_and_says_so() {
     let source = FakeSource::new(vec![]);
     *source.open.lock().unwrap() = Err("the database is not there".into());
     let notifier = FakeNotifier::default();
-    let prefs = PrefsHandle::in_memory(Prefs { notifications: true, last_announced: Some(4) });
+    let prefs = PrefsHandle::in_memory(Prefs { notifications: true, last_announced: Some(4), ..Prefs::default() });
     let mut watcher = watcher(&source, &notifier, &prefs);
 
     let report = watcher.tick();

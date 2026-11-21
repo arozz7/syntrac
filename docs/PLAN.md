@@ -132,7 +132,7 @@ SHA-256 (cached by path, size, mtime), Authenticode/publisher via `WinVerifyTrus
 ### Phase 3: Detection
 YAML rules engine with starter rules (exe in temp path, unsigned new exe, unusual parent launching PowerShell, new scheduled task, periodic beacon), baseline learning, anomaly and risk scoring, behavioral score, alert lifecycle with toast notifications, offline threat-intel list import.
 
-### Phase 4: AI investigation (local only)
+### Phase 4: AI investigation (local only; the approved, optional design is in `docs/PHASE4-PLAN.md`)
 `LLMService` adapter for llama-server, prompts in config, natural-language questions answered through a fixed set of **read-only query tools** (not raw SQL), event explanations from correlated context. The adapter refuses non-loopback endpoints by default.
 
 When the LLM is used (owner-confirmed 2026-11-12): **on demand, for deeper analysis only.** Detection (collection, correlation, rules, baselines, risk scores) is deterministic and never calls the LLM, so a stopped or slow server cannot blind the tool. Triggers are user-initiated: an "Investigate" action on an alert or timeline event, and questions in the investigation assistant. Optional extras are off by default: a scheduled daily summary, and automatic explanation of high-severity alerts.

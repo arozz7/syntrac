@@ -22,6 +22,7 @@ pub mod known;
 pub mod launch_run;
 pub mod launch_target;
 pub mod launchers;
+pub mod llm;
 pub mod metrics;
 pub mod mini_xml;
 pub mod new_owner;

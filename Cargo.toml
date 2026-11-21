@@ -8,6 +8,7 @@ members = [
     "crates/syntrac-testkit",
     "crates/syntrac-ipc",
     "crates/syntrac-demo",
+    "crates/syntrac-llm",
     "app/src-tauri",
 ]
 

@@ -21,6 +21,7 @@ mod memory_owner;
 mod memory_rollup;
 mod memory_spawns;
 mod memory_usage;
+pub mod mock_llm;
 pub mod mocks;
 pub mod names_contract;
 pub mod owner_contract;
