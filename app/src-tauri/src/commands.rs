@@ -12,6 +12,7 @@ use crate::backend::{Backend, Data};
 use crate::health::HealthView;
 use crate::history::SystemHistoryView;
 use crate::history_findings::{FindingsView, ReviewView};
+use crate::history_map::ConnectionMapView;
 use crate::history_network::{
     DestinationHistoryView, DestinationOrderParam, DestinationsView, NewDestinationsView, OwnersView,
     ProgramDestinationsView,
@@ -185,6 +186,19 @@ pub async fn get_top_owners(
     let backend = Arc::clone(&backend);
     let scope = scope_of(all_addresses);
     Ok(blocking(move || backend.top_owners(range_secs, scope, limit)).await.unwrap_or_else(internal))
+}
+
+#[tauri::command]
+pub async fn get_connection_map(
+    backend: State<'_, SharedBackend>,
+    range_secs: u64,
+    programs: Option<usize>,
+    networks: Option<usize>,
+    all_addresses: Option<bool>,
+) -> Result<Data<ConnectionMapView>, ()> {
+    let backend = Arc::clone(&backend);
+    let scope = scope_of(all_addresses);
+    Ok(blocking(move || backend.connection_map(range_secs, scope, programs, networks)).await.unwrap_or_else(internal))
 }
 
 #[tauri::command]

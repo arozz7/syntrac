@@ -4,7 +4,7 @@
 use std::net::{IpAddr, Ipv4Addr};
 
 use syntrac_core::destination_trend::{
-    DestinationProgram, DestinationTotals, NewDestination, NewPair, ProgramDestination,
+    DestinationProgram, DestinationTotals, NewDestination, NewPair, ProgramDestination, TrafficPair,
 };
 use syntrac_core::{
     roll_up_due, DestinationTrendRepository, EventRepository, MetricsRepository, ProcessRepository, Retention,
@@ -40,6 +40,7 @@ pub fn destination_contract<R: DestinationSubject>(make: impl Fn() -> R) {
     the_programs_of_one_destination_are_summed_within_the_range(make());
     the_programs_of_many_destinations_come_back_in_one_read(make());
     the_destinations_of_one_program_are_summed_per_address_within_the_range(make());
+    the_traffic_of_every_program_to_every_address_comes_back_in_one_read(make());
     the_pairs_first_seen_after_a_time_come_from_the_permanent_ledger(make());
     the_programs_first_online_after_a_time_are_those_whose_earliest_pair_is_that_late(make());
 }
@@ -337,4 +338,49 @@ fn the_programs_of_many_destinations_come_back_in_one_read<R: DestinationSubject
         repo.programs_of_destinations(&[], t(0, 0), t(5, 0)).unwrap().is_empty(),
         "asking for nothing reads nothing"
     );
+}
+
+fn pair(
+    path: Option<&str>,
+    addr: Ipv4Addr,
+    sent: u64,
+    received: u64,
+    flows: u64,
+) -> (Option<String>, IpAddr, u64, u64, u64) {
+    (path.map(str::to_owned), ip(addr), sent, received, flows)
+}
+
+fn plain_pairs(rows: Vec<TrafficPair>) -> Vec<(Option<String>, IpAddr, u64, u64, u64)> {
+    let mut rows: Vec<_> = rows
+        .into_iter()
+        .map(|row| (row.exe.map(|exe| exe.path), row.addr, row.bytes_sent, row.bytes_received, row.flows))
+        .collect();
+    rows.sort();
+    rows
+}
+
+fn the_traffic_of_every_program_to_every_address_comes_back_in_one_read<R: DestinationSubject>(mut repo: R) {
+    scenario(&mut repo);
+
+    let mut expected = vec![
+        pair(Some(A_EXE), BEACON_TARGET, 150, 250, 2),
+        pair(Some(A_EXE), OTHER_TARGET, 1, 1, 1),
+        pair(Some(A_EXE), TIED, 2, 2, 1),
+        pair(Some(B_EXE), BEACON_TARGET, 10, 10, 1),
+        pair(Some(B_EXE), TIED, 2, 2, 1),
+        pair(None, BEACON_TARGET, 3, 0, 1),
+        pair(None, UNATTRIBUTED_ONLY, 5, 5, 1),
+    ];
+    expected.sort();
+    assert_eq!(
+        plain_pairs(repo.traffic_pairs(t(0, 0), t(5, 0)).unwrap()),
+        expected,
+        "one row per program and address, the unidentified bucket as no program, loopback left out"
+    );
+    assert_eq!(
+        plain_pairs(repo.traffic_pairs(t(2, 0), t(5, 0)).unwrap()),
+        vec![pair(Some(A_EXE), BEACON_TARGET, 50, 50, 1)],
+        "only the hours in the range count"
+    );
+    assert!(repo.traffic_pairs(t(6, 0), t(9, 0)).unwrap().is_empty());
 }

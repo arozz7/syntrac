@@ -5,7 +5,7 @@ use std::net::IpAddr;
 
 use rusqlite::{params, Row};
 use syntrac_core::destination_trend::{
-    DestinationProgram, DestinationTotals, NewDestination, NewPair, ProgramDestination,
+    DestinationProgram, DestinationTotals, NewDestination, NewPair, ProgramDestination, TrafficPair,
 };
 use syntrac_core::rollup::executable_key;
 use syntrac_core::{DestinationTrendRepository, Executable, RepoError, Timestamp};
@@ -47,6 +47,16 @@ fn program_destinations_sql() -> String {
          FROM rollup_traffic_hour t JOIN executables e ON e.id = t.exe_id
          WHERE e.path_key = ?1 AND t.hour_start >= ?2 AND t.hour_start <= ?3 AND t.{NOT_LOOPBACK}
          GROUP BY t.addr"
+    )
+}
+
+/// One row per (program, address). The unattributed bucket is its own `executables` row, so it comes back as a program with no path.
+fn traffic_pairs_sql() -> String {
+    format!(
+        "SELECT e.id, e.path_key, e.path, t.addr, SUM(t.bytes_sent), SUM(t.bytes_received), SUM(t.flows)
+         FROM rollup_traffic_hour t JOIN executables e ON e.id = t.exe_id
+         WHERE t.hour_start >= ?1 AND t.hour_start <= ?2 AND t.{NOT_LOOPBACK}
+         GROUP BY e.id, t.addr"
     )
 }
 
@@ -141,6 +151,29 @@ impl DestinationTrendRepository for SqliteStore {
             });
         }
         Ok(totals)
+    }
+
+    fn traffic_pairs(&self, from: Timestamp, to: Timestamp) -> Result<Vec<TrafficPair>, RepoError> {
+        let mut statement = self.conn.prepare(&traffic_pairs_sql()).map_err(backend)?;
+        let mut rows = statement.query(params![from.as_micros(), to.as_micros()]).map_err(backend)?;
+        let mut pairs = Vec::new();
+        while let Some(row) = rows.next().map_err(backend)? {
+            let id: i64 = row.get(0).map_err(backend)?;
+            let exe = if id == UNATTRIBUTED {
+                None
+            } else {
+                Some(Executable { key: row.get(1).map_err(backend)?, path: row.get(2).map_err(backend)? })
+            };
+            let addr: String = row.get(3).map_err(backend)?;
+            pairs.push(TrafficPair {
+                exe,
+                addr: parse_addr(&addr)?,
+                bytes_sent: to_u64(row.get(4).map_err(backend)?),
+                bytes_received: to_u64(row.get(5).map_err(backend)?),
+                flows: to_u64(row.get(6).map_err(backend)?),
+            });
+        }
+        Ok(pairs)
     }
 
     fn new_destinations(&self, since: Timestamp) -> Result<Vec<NewDestination>, RepoError> {

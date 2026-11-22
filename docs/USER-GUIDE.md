@@ -110,6 +110,12 @@ recent network activity, with the program that made it.
   what you have said about it.
 - **Network:** the destinations programs talked to, by bytes, flows or programs, with the network that owns each address and the name
   programs asked for. This tab also holds *Owner data* (see [your privacy](#your-data-and-your-privacy)).
+- **Connection map** (picture below): which programs talked to which networks over the range you choose, as bands as wide as the traffic.
+  Programs are on the left and the networks that own the addresses they reached on the right, busiest first; everything beyond the busiest
+  dozen on each side is added together in one *other* node, so the bands always add up. Click a program for its history, or a network for its
+  owner and its busiest addresses (each opens like in the Network tab). A table below the picture holds the same figures for anyone who cannot
+  use the picture. A network is the organisation that runs the range of addresses, often a cloud or hosting company, not necessarily the
+  service you reached; addresses no range covers are shown together as *No owner found*, never guessed.
 - **Process tree** (picture below): who started whom over the last hour to two weeks. A program sits under the one that started it, with
   when it started and ended, what it was started with (the command line, cleaned and cut) and who made it. Click a name for that program's
   history. A program whose starter was not running in the window, or was not recorded, is listed on its own and marked *parent not
@@ -119,6 +125,8 @@ recent network activity, with the program that made it.
   *looks* like one of them but is not (a look-alike) is listed so you can check.
 
 ![History: programs ranked by GPU, with one program open](images/history-program-detail.png)
+
+![History: the connection map](images/history-connection-map.png)
 
 ![History: the process tree](images/history-process-tree.png)
 

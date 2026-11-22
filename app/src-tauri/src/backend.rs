@@ -20,6 +20,7 @@ use crate::history::{system_history, SystemHistoryView};
 use crate::history_findings::{
     findings_view, review_view, FindingsView, ReviewView, DEFAULT_FINDING_ROWS, DEFAULT_REVIEW_GROUPS,
 };
+use crate::history_map::{connection_map, ConnectionMapView};
 use crate::history_network::{
     destination_history, destination_range, new_destinations_view, program_destinations_view, rank_destination_range,
     rank_owner_range, DestinationHistoryView, DestinationOrderParam, DestinationRange, DestinationsView,
@@ -318,6 +319,18 @@ impl<C: Clock + Send + Sync> Backend<C> {
                 limit.unwrap_or(DEFAULT_PROGRAM_DESTINATION_ROWS),
             )
         })
+    }
+
+    /// Which programs talked to which networks over the range, as a graph: the `programs` and `networks` busiest, the rest folded.
+    pub fn connection_map(
+        &self,
+        range_secs: u64,
+        scope: AddressScope,
+        programs: Option<usize>,
+        networks: Option<usize>,
+    ) -> Data<ConnectionMapView> {
+        let limits = programs.zip(networks);
+        self.with_store(|store, now| connection_map(store, now, range_secs, scope, limits))
     }
 
     /// The destinations of a range grouped by the network that owns them (the sums are the ones the ranking keeps).

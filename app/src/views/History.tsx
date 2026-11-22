@@ -1,16 +1,18 @@
 import { useState } from 'react';
+import { ConnectionMap } from './ConnectionMap';
 import { KnownPrograms } from './KnownPrograms';
 import { NetworkHistory } from './NetworkHistory';
 import { ProcessTree } from './ProcessTree';
 import { ProgramsHistory } from './ProgramsHistory';
 import { SystemHistory } from './SystemHistory';
 
-type TabId = 'system' | 'programs' | 'network' | 'tree' | 'known';
+type TabId = 'system' | 'programs' | 'network' | 'map' | 'tree' | 'known';
 
 const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'system', label: 'System' },
   { id: 'programs', label: 'Programs' },
   { id: 'network', label: 'Network' },
+  { id: 'map', label: 'Connection map' },
   { id: 'tree', label: 'Process tree' },
   { id: 'known', label: 'Known programs' },
 ];
@@ -23,6 +25,8 @@ function CurrentTab({ tab }: { tab: TabId }) {
       return <ProgramsHistory />;
     case 'network':
       return <NetworkHistory />;
+    case 'map':
+      return <ConnectionMap />;
     case 'tree':
       return <ProcessTree />;
     case 'known':

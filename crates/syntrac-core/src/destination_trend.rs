@@ -57,6 +57,16 @@ pub struct DestinationProgram {
     pub last_seen: Timestamp,
 }
 
+/// One program's traffic to one address over a range. `exe: None` is the bucket of unidentified programs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrafficPair {
+    pub exe: Option<Executable>,
+    pub addr: IpAddr,
+    pub bytes_sent: u64,
+    pub bytes_received: u64,
+    pub flows: u64,
+}
+
 /// A program reaching an address for the first time (the permanent ledger of pairs).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewPair {
@@ -102,6 +112,10 @@ pub trait DestinationTrendRepository {
         from: Timestamp,
         to: Timestamp,
     ) -> Result<Vec<ProgramDestination>, RepoError>;
+
+    /// The traffic of every program to every address over the hours in `[from, to]`, in ONE read: one row per (program, address),
+    /// loopback left out, in any order. The connection map is built from it.
+    fn traffic_pairs(&self, from: Timestamp, to: Timestamp) -> Result<Vec<TrafficPair>, RepoError>;
 
     /// Every destination over the hours in `[from, to]`, loopback left out, in any order.
     fn destination_totals(&self, from: Timestamp, to: Timestamp) -> Result<Vec<DestinationTotals>, RepoError>;

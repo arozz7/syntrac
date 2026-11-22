@@ -57,7 +57,7 @@ fn class_name(class: AddrClass) -> &'static str {
 }
 
 /// The most recently asked name of an address, and how many other names it has.
-fn names_summary<R: RollupRepository>(repo: &R, addr: IpAddr) -> Result<(Option<String>, u32), RepoError> {
+pub(crate) fn names_summary<R: RollupRepository>(repo: &R, addr: IpAddr) -> Result<(Option<String>, u32), RepoError> {
     let names = repo.address_names(addr)?;
     let other = u32::try_from(names.len().saturating_sub(1)).unwrap_or(u32::MAX);
     Ok((names.into_iter().next().map(|n| n.name), other))
@@ -90,7 +90,7 @@ fn owner_of<R: OwnerRepository>(repo: &R, addr: IpAddr) -> Result<Option<OwnerVi
     Ok(repo.lookup_owner(addr)?.map(|owner| OwnerView { asn: owner.asn, org: owner.org, country: owner.country }))
 }
 
-fn owner_data<R: OwnerRepository>(repo: &R) -> Result<Option<OwnerDataView>, RepoError> {
+pub(crate) fn owner_data<R: OwnerRepository>(repo: &R) -> Result<Option<OwnerDataView>, RepoError> {
     Ok(repo.dataset_info()?.map(|info| OwnerDataView {
         source: info.source,
         downloaded_ms: ms(info.downloaded_at),

@@ -12,6 +12,7 @@ import {
   ownersView,
   programDestinationsView,
 } from './fakeNetwork';
+import { connectionMapView } from './fakeMap';
 import { processTreeView } from './fakeTree';
 import { knownProgramsView, programHistoryView, programsView } from './fakePrograms';
 
@@ -20,6 +21,7 @@ export * from './fakePrograms';
 export * from './fakeNetwork';
 export * from './fakeFindings';
 export * from './fakeTree';
+export * from './fakeMap';
 
 const ok = <T>(data: T): Data<T> => ({ state: 'ok', data });
 
@@ -42,6 +44,7 @@ export function makeFakeApi(overrides: Partial<Api> = {}): Api & { [K in keyof A
     topPrograms: vi.fn(async () => ok(programsView())),
     programHistory: vi.fn(async () => ok(programHistoryView())),
     processTree: vi.fn(async () => ok(processTreeView())),
+    connectionMap: vi.fn(async () => ok(connectionMapView())),
     topDestinations: vi.fn(async () => ok(destinationsView())),
     topOwners: vi.fn(async () => ok(ownersView())),
     findings: vi.fn(async () => ok(findingsView())),

@@ -28,6 +28,7 @@ import type {
   OwnerDataOutcome,
   ProcessListParams,
   ProcessRowView,
+  ConnectionMapView,
   ProcessTreeView,
   ProgramHistoryView,
   ProgramMetric,
@@ -60,6 +61,11 @@ export interface Api {
     limit?: number,
     allAddresses?: boolean,
   ): Promise<Data<DestinationsView>>;
+  /** Which programs talked to which networks over the range, as a graph: the busiest of each, the rest folded into one node. */
+  connectionMap(
+    rangeSecs: number,
+    options?: { allAddresses?: boolean; programs?: number; networks?: number },
+  ): Promise<Data<ConnectionMapView>>;
   /** The same destinations grouped by the network that owns them, biggest owner first. */
   topOwners(rangeSecs: number, limit?: number, allAddresses?: boolean): Promise<Data<OwnersView>>;
   /** The findings with this status (every status when none), the counts, what the user said is expected, and whether detection is on. */
@@ -206,6 +212,13 @@ export const tauriApi: Api = {
   processTree: (windowSecs) => data<ProcessTreeView>('get_process_tree', { windowSecs }),
   topDestinations: (rangeSecs, order, limit, allAddresses) =>
     data<DestinationsView>('get_top_destinations', { rangeSecs, order, limit, allAddresses }),
+  connectionMap: (rangeSecs, options) =>
+    data<ConnectionMapView>('get_connection_map', {
+      rangeSecs,
+      programs: options?.programs,
+      networks: options?.networks,
+      allAddresses: options?.allAddresses,
+    }),
   topOwners: (rangeSecs, limit, allAddresses) => data<OwnersView>('get_top_owners', { rangeSecs, limit, allAddresses }),
   findings: (status) => data<FindingsView>('get_findings', { status, limit: undefined }),
   decideFinding: (id, decision, options) =>

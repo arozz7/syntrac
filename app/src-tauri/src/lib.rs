@@ -12,6 +12,7 @@ pub mod db_location;
 pub mod health;
 pub mod history;
 pub mod history_findings;
+pub mod history_map;
 pub mod history_network;
 pub mod history_programs;
 pub mod history_tree;
@@ -130,6 +131,7 @@ pub fn run() {
             commands::get_process_tree,
             commands::get_top_destinations,
             commands::get_top_owners,
+            commands::get_connection_map,
             commands::get_findings,
             commands::decide_finding,
             commands::remove_expectation,

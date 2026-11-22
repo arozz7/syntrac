@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::net::IpAddr;
 
 use syntrac_core::destination_trend::{
-    DestinationProgram, DestinationTotals, NewDestination, NewPair, ProgramDestination,
+    DestinationProgram, DestinationTotals, NewDestination, NewPair, ProgramDestination, TrafficPair,
 };
 use syntrac_core::rollup::executable_key;
 use syntrac_core::{DestinationTrendRepository, Executable, RepoError, Timestamp};
@@ -102,6 +102,26 @@ impl DestinationTrendRepository for InMemoryRepository {
                 totals
             })
             .collect())
+    }
+
+    fn traffic_pairs(&self, from: Timestamp, to: Timestamp) -> Result<Vec<TrafficPair>, RepoError> {
+        let mut by_pair: BTreeMap<(Option<String>, IpAddr), TrafficPair> = BTreeMap::new();
+        for ((hour, key, addr), row) in &self.rollups.traffic {
+            if *hour < from || *hour > to || addr.is_loopback() {
+                continue;
+            }
+            let entry = by_pair.entry((key.clone(), *addr)).or_insert_with(|| TrafficPair {
+                exe: row.exe.clone(),
+                addr: *addr,
+                bytes_sent: 0,
+                bytes_received: 0,
+                flows: 0,
+            });
+            entry.bytes_sent += row.bytes_sent;
+            entry.bytes_received += row.bytes_received;
+            entry.flows += u64::from(row.flows);
+        }
+        Ok(by_pair.into_values().collect())
     }
 
     fn new_destinations(&self, since: Timestamp) -> Result<Vec<NewDestination>, RepoError> {

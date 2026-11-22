@@ -2,6 +2,7 @@
 
 pub mod addr_class;
 pub mod clean_text;
+pub mod connection_map;
 pub mod context_run;
 pub mod correlator;
 pub mod destination_trend;
@@ -59,7 +60,7 @@ pub use correlator::correlate;
 pub use destination_trend::{
     new_destination_cutoff, rank_destination_programs, rank_destinations, select_new, top_destination_programs,
     AddressScope, DestinationOrder, DestinationProgram, DestinationTotals, DestinationTrendRepository, NewDestination,
-    NewPair, ProgramDestination,
+    NewPair, ProgramDestination, TrafficPair,
 };
 pub use dns_names::{backfill_names, AddressName, DnsAnswerRow, NamesBackfill};
 pub use event::{EventCategory, EventEnvelope, EventPayload, NetAction, NetProtocol, Severity};
