@@ -26,6 +26,8 @@ const CUT_NOTE_RESERVE: usize = 64;
 /// How much of a call's arguments the page is shown.
 const SHOWN_ARGUMENT_CHARS: usize = 200;
 const SHOWN_NAME_CHARS: usize = 60;
+/// Names of the placeholders written by `redact_user_name` and `scrub_addresses`.
+const PLACEHOLDERS: [&str; 2] = ["user", "address"];
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ToolError {
@@ -341,7 +343,11 @@ impl<'a> Loop<'a> {
 
     fn safe_text(&self, text: &str) -> String {
         let neutral = text.replace('<', "\u{2039}").replace('>', "\u{203A}");
-        redact_user_name(&neutral, self.setup.user_name.as_deref().unwrap_or(""))
+        let redacted = redact_user_name(&neutral, self.setup.user_name.as_deref().unwrap_or(""));
+        // The placeholders the tools themselves write (the cleaning of the evidence) are put back: they close nothing.
+        PLACEHOLDERS
+            .iter()
+            .fold(redacted, |text, name| text.replace(&format!("\u{2039}{name}\u{203A}"), &format!("<{name}>")))
     }
 }
 

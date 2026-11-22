@@ -193,10 +193,8 @@ fn turn_reply(body: &str) -> serde_json::Value {
                 "id": "call_demo_1", "type": "function", "function": { "name": name, "arguments": "{}" } }] },
             "finish_reason": "tool_calls" }] }),
         (_, Some(result), _) => message_reply(&format!(
-            "This is the demo stand-in model, not a language model, so it can only repeat what it was given.
-
-             It asked for a lookup and was shown these programs: {}.
-
+            "This is the demo stand-in model, not a language model, so it can only repeat what it was given.\n\n\
+             It asked for a lookup and was shown these programs: {}.\n\n\
              A real model would explain them. Here, only the round trip is being tested: the tool call, its result, and this answer.",
             names_in_result(result)
         )),

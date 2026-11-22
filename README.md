@@ -92,13 +92,13 @@ was sent. SYNTRAC never talks to the Internet for this; detection never uses it;
   <img src="docs/images/ai-investigate.png" alt="Investigate on a finding: a small local model explains the evidence, says what could be harmless, what to check next and what is uncertain" width="900">
 </p>
 
+<sub>An answer from a small local model on the demo machine. [docs/USER-GUIDE.md](docs/USER-GUIDE.md) explains the settings and what is sent.</sub>
+
 <p align="center">
   <img src="docs/images/ai-question-box.png" alt="The question box: the tool call that was made, and the answer" width="900">
 </p>
 
 <sub>The question box on the demo machine, answered by a stand-in that only repeats what the tool returned.</sub>
-
-<sub>An answer from a small local model on the demo machine. [docs/USER-GUIDE.md](docs/USER-GUIDE.md) explains the settings and what is sent.</sub>
 
 <table>
   <tr>

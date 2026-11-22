@@ -254,3 +254,44 @@ fn every_call_the_model_made_is_listed_for_the_page() {
     let view = finished(&questioner, id);
     assert_eq!(view.calls.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["top_programs"]);
 }
+
+/// A model whose turn does not return until it is released (or a few seconds pass), like a slow model thinking for minutes.
+struct Gate(Arc<std::sync::atomic::AtomicBool>);
+
+impl LlmService for Gate {
+    fn state(&self) -> ServerState {
+        ServerState::Ready
+    }
+
+    fn stream_chat(&self, _: &ChatRequest, _: &mut dyn FnMut(StreamEvent) -> Flow) -> Result<(), LlmError> {
+        Err(LlmError::BadResponse("not streamed".into()))
+    }
+
+    fn chat_turn(&self, _: &TurnRequest) -> Result<TurnReply, LlmError> {
+        let begin = Instant::now();
+        while !self.0.load(std::sync::atomic::Ordering::SeqCst) && begin.elapsed() < Duration::from_secs(5) {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        says("a late answer")
+    }
+}
+
+#[test]
+fn stop_shows_at_once_even_while_a_turn_is_still_being_waited_for_and_the_late_answer_is_dropped() {
+    let release = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let gate = Arc::clone(&release);
+    let service: ServiceFactory = Arc::new(move |_| Box::new(Gate(Arc::clone(&gate))));
+    let questioner = questioner(service, true);
+    let id = questioner.start("What is busy?").unwrap();
+
+    questioner.cancel(id);
+    let at_once = questioner.poll(id).unwrap();
+    assert_eq!(at_once.phase, "cancelled", "the page must not keep saying the model is working");
+    assert_eq!(at_once.stopped.as_deref(), Some("cancelled"));
+
+    release.store(true, std::sync::atomic::Ordering::SeqCst);
+    std::thread::sleep(Duration::from_millis(100));
+    let later = questioner.poll(id).unwrap();
+    assert_eq!(later.phase, "cancelled");
+    assert_eq!(later.answer, "", "an answer that arrives after Stop is not shown");
+}

@@ -8,7 +8,7 @@ before the commit. Pushed once per phase, when asked.
 | 0 | Split `api/types.ts` and `test/fakeApi.ts` by topic (no logic change) | done, `0ca0530` |
 | A1 | History, **Process tree**: who started whom (`aiChangeLog/phase-A1-process-tree.md`) | done, `991e183` |
 | A2 | History, **Connection map**: which programs talked to which networks (`aiChangeLog/phase-A2-connection-map.md`) | done, `48eb720` |
-| B | **L4e** free-form question box for the AI help, with read-only tools (`aiChangeLog/phase-B-question-box.md`) | built, committing |
+| B | **L4e** free-form question box for the AI help, with read-only tools (`aiChangeLog/phase-B-question-box.md`) | done, `16e2754` + `445c878` |
 | C | Windows **installer** (NSIS via Tauri) that installs the app and the service | next |
 
 Out of scope for now: a day timeline and a global search.
@@ -20,6 +20,8 @@ Out of scope for now: a day timeline and a global search.
 - **Safety:** no tool can write, start or stop anything. Arguments are validated; unknown tools are refused. Results get the same reductions as the
   current evidence (user name replaced, detail level respected), are cleaned and size-capped, and are marked as data in the prompt. Loopback only.
   The page lists every tool call that was made.
+- **As built:** four tools, not five: a program's destinations are part of `program_facts`. Tool turns are not streamed. Answers to questions are
+  not saved.
 - **Dependency:** OpenAI-style native tool calling, which some servers need a flag for (for example `--jinja` on `llama-server`). If the server does
   not support it, the box says so.
 

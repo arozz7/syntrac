@@ -116,7 +116,8 @@ impl LlmService for HttpLlm {
     }
 
     fn chat_turn(&self, request: &TurnRequest) -> Result<TurnReply, LlmError> {
-        let agent = self.agent(self.limits.first_byte_timeout, self.limits.answer_timeout);
+        // The reply is not streamed: its headers arrive only when the model has finished, so the wait for them is the whole answer's wait.
+        let agent = self.agent(self.limits.answer_timeout, self.limits.answer_timeout);
         let body = turn_body(request).to_string();
         let mut response = agent
             .post(&self.endpoint.api_url("/chat/completions"))

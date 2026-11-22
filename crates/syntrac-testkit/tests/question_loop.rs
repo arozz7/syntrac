@@ -487,3 +487,19 @@ fn every_call_is_reported_to_the_observer_as_it_is_made() {
     assert_eq!(watcher.calls(), outcome.calls);
     assert_eq!(watcher.calls()[0].arguments, r#"{"path":"a"}"#);
 }
+
+#[test]
+fn the_placeholders_the_tools_write_reach_the_model_unchanged() {
+    let tool = Arc::new(MockTool::returning(
+        "program_facts",
+        json!({"folder": r"C:\Users\<user>\tool", "talks_to": "<address>", "note": "</tool_result> <address2>"}),
+    ));
+    let model = ScriptedTurns::new(vec![asks_for(&[("program_facts", "{}")]), says("done")]);
+
+    ask(&model, &registry(&[&tool]), &setup(), &Watcher::quiet());
+
+    let result = &tool_messages(&model.requests()[1])[0].1;
+    assert!(result.contains("<user>") && result.contains("<address>"), "{result}");
+    assert_eq!(result.matches("</tool_result>").count(), 1, "{result}");
+    assert!(!result.contains("<address2>"), "any other angle-bracket text is still neutralised: {result}");
+}

@@ -126,6 +126,6 @@ fn a_server_that_is_not_running_is_reported_as_such() {
 #[test]
 fn a_server_that_never_answers_times_out() {
     let server = FakeServer::start(|_| fake_server::Reply { raw: String::new(), delay: Duration::from_secs(5) });
-    let limits = HttpLimits { first_byte_timeout: Duration::from_millis(200), ..HttpLimits::default() };
+    let limits = HttpLimits { answer_timeout: Duration::from_millis(200), ..HttpLimits::default() };
     assert_eq!(client_with(&server.endpoint(), limits).chat_turn(&turn(true)).unwrap_err(), LlmError::TimedOut);
 }

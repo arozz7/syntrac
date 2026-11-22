@@ -270,7 +270,7 @@ page lists every lookup under *What was looked up* (a refused one says why, a cu
 it. It uses at most six lookups and a limited time, then answers from what it gathered; **Stop** ends it. At the *Summary* detail level the
 tools give names and numbers only; *Full* adds addresses, hashes and command lines (with the values of arguments named like a token, password
 or key hidden). A tool can only read what SYNTRAC recorded: it never reads files from your disk, and it cannot change or start anything. Answers
-to questions are not saved. This needs a server and model that support **tool calling**: if yours does not, the box says so (for
+to questions are not saved. The setting *Start the server when I press Investigate* applies to **Ask** as well. This needs a server and model that support **tool calling**: if yours does not, the box says so (for
 `llama-server`, start it with the `--jinja` option and use a model whose chat template supports tools). Use **Investigate** instead if it does not.
 
 **If the server will not start or ends.** Set the **working folder** to the folder the server expects to run in: many servers read their

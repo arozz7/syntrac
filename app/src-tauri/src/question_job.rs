@@ -108,10 +108,13 @@ impl Job {
         self.cancel.load(Ordering::SeqCst)
     }
 
+    /// Ends the job in `phase`, unless Stop already did: a cancelled job stays cancelled whatever the worker finds out later.
     fn finish(&self, phase: Phase, error: Option<String>) {
         let mut state = self.lock();
-        state.phase = phase;
-        state.error = error;
+        if state.phase != Phase::Cancelled {
+            state.phase = phase;
+            state.error = error;
+        }
     }
 }
 
@@ -283,6 +286,12 @@ impl Questioner {
     pub fn cancel(&self, id: u64) {
         if let Some(job) = self.find(id) {
             job.cancel.store(true, Ordering::SeqCst);
+            // A turn of a slow model can take minutes and cannot be interrupted, so the page is told now; the worker's late result is dropped.
+            let mut state = job.lock();
+            if matches!(state.phase, Phase::Waiting | Phase::Running) {
+                state.phase = Phase::Cancelled;
+                state.stopped = Some(stop_name(StopReason::Cancelled));
+            }
         }
     }
 
@@ -317,7 +326,12 @@ fn run(
             Err(WaitEnd::Failed(message)) => return job.finish(Phase::Failed, Some(message)),
         }
     }
-    job.lock().phase = Phase::Running;
+    {
+        let mut state = job.lock();
+        if state.phase == Phase::Waiting {
+            state.phase = Phase::Running;
+        }
+    }
     match run_question_loop(server, registry, setup, question, job) {
         Ok(outcome) => record_outcome(job, outcome),
         Err(_) if job.cancelled() => job.finish(Phase::Cancelled, None),
@@ -332,6 +346,10 @@ fn run(
 fn record_outcome(job: &Job, outcome: LoopOutcome) {
     let phase = if outcome.stopped == StopReason::Cancelled { Phase::Cancelled } else { Phase::Done };
     let mut state = job.lock();
+    if state.phase == Phase::Cancelled {
+        // Stop was pressed while the model was still working: what arrives now is not shown.
+        return;
+    }
     state.answer = outcome.answer;
     state.truncated = outcome.cut_off;
     state.reasoning_chars = outcome.reasoning_chars;

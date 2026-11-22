@@ -29,6 +29,15 @@ only read. Off unless the AI help is on; nothing runs until **Ask** is pressed.
 - **Server without tool support.** llama-server answers an error when started without its template option; the page says so in generic terms and names that option. A server that ignores `tools` and answers in text is simply a final answer.
 - **Tools are not saved.** Unlike Investigate, answers to questions are not kept.
 
+## Review fixes (after the first commit)
+- Stop shows **at once**: a non-streamed turn cannot be interrupted, so `cancel` sets the job to cancelled immediately and a late answer is dropped (test with a model that blocks).
+- `chat_turn` waits for the whole answer, not 10 minutes for headers (the first-byte timeout only covers the headers, which a non-streamed reply sends last).
+- The `<user>` and `<address>` placeholders the tools write reach the model unchanged; any other angle-bracket text is still neutralised.
+- The stand-in model's text no longer has stray indentation.
+
+## Not yet checked
+The round trip has only run against the stand-in model. It has not been run against a real tool-calling server.
+
 ## Also fixed
 - Process tree (A1): the window is read newest first up to 20,000 processes; the view now says when more existed (commit `563c50d`).
 
