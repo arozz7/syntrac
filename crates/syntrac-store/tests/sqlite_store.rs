@@ -52,6 +52,11 @@ fn sqlite_store_satisfies_the_process_queries_contract() {
 }
 
 #[test]
+fn sqlite_store_satisfies_the_process_window_contract() {
+    syntrac_testkit::process_window_contract::process_window_contract(in_memory_store);
+}
+
+#[test]
 fn sqlite_store_satisfies_the_recent_flows_contract() {
     recent_flows_contract(in_memory_store);
 }

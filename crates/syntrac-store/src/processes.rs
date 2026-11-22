@@ -145,6 +145,12 @@ impl ProcessQueries for SqliteStore {
             args.push(like_pattern(text).into());
         }
 
+        if let Some((from, to)) = filter.alive_between {
+            clauses.push("started <= ? AND (ended IS NULL OR ended >= ?)");
+            args.push(to.as_micros().into());
+            args.push(from.as_micros().into());
+        }
+
         let mut sql = String::from("SELECT * FROM processes");
         if !clauses.is_empty() {
             sql.push_str(" WHERE ");

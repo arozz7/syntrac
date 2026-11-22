@@ -105,6 +105,8 @@ function Save-DemoScreenshots([int]$Port, [string]$OutputFolder) {
     Save-DemoShot $socket $OutputFolder 'history-program-detail' 1700 1760
     Click-DemoButton $socket 'Network' -Exact
     Save-DemoShot $socket $OutputFolder 'history-network' 1200
+    Click-DemoButton $socket 'Process tree' -Exact
+    Save-DemoShot $socket $OutputFolder 'history-process-tree' 1000 1200
     Click-DemoButton $socket 'Known programs' -Exact
     Save-DemoShot $socket $OutputFolder 'known-programs' 900
     $socket.Dispose()

@@ -87,6 +87,9 @@ impl ProcessQueries for InMemoryRepository {
             .processes
             .values()
             .filter(|p| !filter.running_only || p.ended.is_none())
+            .filter(|p| {
+                filter.alive_between.is_none_or(|(from, to)| p.started <= to && p.ended.is_none_or(|end| end >= from))
+            })
             .filter(|p| needle.as_ref().is_none_or(|n| p.image_path.to_lowercase().contains(n.as_str())))
             .cloned()
             .collect();

@@ -26,6 +26,7 @@ pub mod mock_process;
 pub mod mocks;
 pub mod names_contract;
 pub mod owner_contract;
+pub mod process_window_contract;
 pub mod rollup_contract;
 pub mod spawn_contract;
 pub mod storage_contract;

@@ -17,6 +17,7 @@ use crate::history_network::{
     ProgramDestinationsView,
 };
 use crate::history_programs::{Grouping, ProgramHistoryView, ProgramMetricParam, ProgramsView};
+use crate::history_tree::ProcessTreeView;
 use crate::known_view::KnownProgramsView;
 use crate::owner_data_view::OwnerDataStateView;
 use crate::prefs::PrefsHandle;
@@ -74,6 +75,15 @@ pub async fn get_program_history(
 ) -> Result<Data<ProgramHistoryView>, ()> {
     let backend = Arc::clone(&backend);
     Ok(blocking(move || backend.program_history(range_secs, path)).await.unwrap_or_else(internal))
+}
+
+#[tauri::command]
+pub async fn get_process_tree(
+    backend: State<'_, SharedBackend>,
+    window_secs: u64,
+) -> Result<Data<ProcessTreeView>, ()> {
+    let backend = Arc::clone(&backend);
+    Ok(blocking(move || backend.process_tree(window_secs)).await.unwrap_or_else(internal))
 }
 
 fn scope_of(all_addresses: Option<bool>) -> AddressScope {

@@ -23,7 +23,8 @@ use syntrac_testkit::fixtures::{dns_query, net_flow, process_started, EventFacto
 use syntrac_testkit::ManualClock;
 
 use crate::world::{
-    instance, is_busy, sample_at, slot_traffic, Moment, DAY_SECS, DESTINATIONS, HOUR_SECS, OWNERS, PROGRAMS,
+    command_line, instance, is_busy, sample_at, slot_traffic, starter, Moment, DAY_SECS, DESTINATIONS, HOUR_SECS,
+    OWNERS, PROGRAMS,
 };
 
 /// What was built, for the command line to print.
@@ -109,13 +110,14 @@ pub fn generate(path: &Path, now: i64) -> Result<Summary, String> {
     }
     for seen in instances.values() {
         let program = &PROGRAMS[seen.index];
+        let parent = starter(seen.index, &moment, seen.start);
         let mut record = ProcessRecord {
             id: seen.id,
             pid: seen.pid,
-            parent_pid: 4,
-            parent_id: None,
+            parent_pid: parent.0,
+            parent_id: parent.1,
             image_path: program.path.to_owned(),
-            command_line: None,
+            command_line: command_line(seen.index).map(str::to_owned),
             started: micros(seen.start),
             ended: None,
             ended_approximate: false,

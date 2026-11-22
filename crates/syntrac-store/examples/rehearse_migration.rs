@@ -227,7 +227,12 @@ fn main() {
         }
     }
     let processes_after: HashMap<_, _> = store
-        .list_processes(&ProcessFilter { running_only: false, name_contains: None, limit: usize::MAX })
+        .list_processes(&ProcessFilter {
+            running_only: false,
+            name_contains: None,
+            alive_between: None,
+            limit: usize::MAX,
+        })
         .expect("read processes")
         .into_iter()
         .map(|p| (p.id, p))

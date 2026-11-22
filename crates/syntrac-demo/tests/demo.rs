@@ -148,3 +148,58 @@ fn the_real_rules_find_something_of_every_kind_the_screens_show() {
     assert!(!findings.iter().any(|finding| finding.subject.contains("localai")), "the expected program is not raised");
     assert_eq!(store.known_products().unwrap().len(), 2);
 }
+
+#[test]
+fn the_processes_form_a_tree_whose_children_start_after_their_parents() {
+    use syntrac_core::process_tree::{build_forest, TreeLimits, TreeNode};
+    use syntrac_core::{ProcessFilter, ProcessQueries};
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = make(dir.path(), "tree.db");
+    let store = SqliteStore::open_read_only(&path).expect("the demo database opens");
+    let records =
+        store.list_processes(&ProcessFilter { limit: usize::MAX, ..ProcessFilter::default() }).expect("processes");
+    let forest = build_forest(records, TreeLimits { max_nodes: usize::MAX, max_depth: 16 });
+
+    fn walk(node: &TreeNode, depth: usize, deepest: &mut usize, started_early: &mut Vec<String>) {
+        *deepest = (*deepest).max(depth);
+        for child in &node.children {
+            if child.process.started < node.process.started {
+                started_early.push(child.process.image_path.clone());
+            }
+            walk(child, depth + 1, deepest, started_early);
+        }
+    }
+    let (mut deepest, mut started_early) = (0, Vec::new());
+    for root in &forest.roots {
+        walk(root, 0, &mut deepest, &mut started_early);
+    }
+
+    assert!(deepest >= 2, "a chain of at least three programs, such as a shell, an editor and a tool it started");
+    assert!(started_early.is_empty(), "children that start before their parent: {started_early:?}");
+    let roots: Vec<&str> = forest.roots.iter().map(|root| root.process.image_path.as_str()).collect();
+    assert!(
+        roots.len() < forest.total / 4,
+        "most processes hang under another one, not {} roots of {}",
+        roots.len(),
+        forest.total
+    );
+    assert!(roots.iter().any(|path| path.ends_with("explorer.exe")), "the desktop shell is a root: {roots:?}");
+}
+
+#[test]
+fn some_demo_processes_have_a_command_line_and_none_has_anything_real() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = make(dir.path(), "commands.db");
+    let lines: Vec<String> = {
+        let connection = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+        let mut statement =
+            connection.prepare("SELECT DISTINCT command_line FROM processes WHERE command_line IS NOT NULL").unwrap();
+        statement.query_map([], |row| row.get::<_, String>(0)).unwrap().map(Result::unwrap).collect()
+    };
+    assert!(lines.len() >= 3, "{lines:?}");
+    assert!(
+        lines.iter().all(|line| line.to_lowercase().contains("demo") || line.contains("Program Files")),
+        "{lines:?}"
+    );
+}

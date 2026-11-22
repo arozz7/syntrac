@@ -258,6 +258,7 @@ pub fn process_list<R: ProcessQueries>(repo: &R, params: &ProcessListParams) -> 
     let filter = ProcessFilter {
         running_only: params.running_only,
         name_contains: params.search.clone(),
+        alive_between: None,
         limit: clamp_limit(params.limit, DEFAULT_PROCESS_ROWS, MAX_PROCESS_ROWS),
     };
     Ok(repo

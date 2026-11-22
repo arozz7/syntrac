@@ -35,6 +35,7 @@ pub mod pattern_run;
 pub mod patterns;
 pub mod pipeline;
 pub mod ports;
+pub mod process_tree;
 pub mod program_group;
 pub mod retention;
 pub mod review;

@@ -61,6 +61,10 @@ model server that gives a canned answer. Requirements: Windows 11, Rust (MSVC), 
     <td width="50%"><img src="docs/images/history-program-detail.png" alt="One program's history, with CPU, memory and GPU charts"><br><sub><b>One program.</b> Its own history hour by hour, its identity and what it connected to.</sub></td>
     <td width="50%"><img src="docs/images/history-network.png" alt="History: network destinations with the network that owns each address"><br><sub><b>History, Network.</b> Destinations, the names programs asked for, and the network that owns each.</sub></td>
   </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/history-process-tree.png" alt="History: the process tree, who started whom"><br><sub><b>History, Process tree.</b> Who started whom over the last day to two weeks, with the command line and who made each program.</sub></td>
+    <td width="50%"><img src="docs/images/known-programs.png" alt="Known programs: the products you installed on purpose"><br><sub><b>Known programs.</b> What you told SYNTRAC you installed on purpose, and programs that imitate them.</sub></td>
+  </tr>
 </table>
 
 ## AI help (optional, off by default)

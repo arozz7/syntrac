@@ -30,6 +30,7 @@ use crate::history_programs::{
     program_history, range_totals, rank_range, Grouping, ProgramHistoryView, ProgramMetricParam, ProgramsView,
     RangeTotals, DEFAULT_PROGRAM_ROWS,
 };
+use crate::history_tree::{process_tree, ProcessTreeView};
 use crate::known_view::{known_programs, KnownProgramsView};
 use crate::owner_data_view::OwnerDataStateView;
 use crate::settings::AppSettings;
@@ -222,6 +223,10 @@ impl<C: Clock + Send + Sync> Backend<C> {
             let range = self.cached_totals(store, now, range_secs)?;
             rank_range(store, &range, metric, limit.unwrap_or(DEFAULT_PROGRAM_ROWS), grouping)
         })
+    }
+
+    pub fn process_tree(&self, window_secs: u64) -> Data<ProcessTreeView> {
+        self.with_store(|store, now| process_tree(store, now, window_secs))
     }
 
     pub fn program_history(&self, range_secs: u64, path: String) -> Data<ProgramHistoryView> {

@@ -87,6 +87,8 @@ pub struct ProcessFilter {
     pub running_only: bool,
     /// Case-insensitive match against any part of the image path.
     pub name_contains: Option<String>,
+    /// Only processes whose life overlaps this window (both ends inclusive): started at or before its end, and not ended before its start.
+    pub alive_between: Option<(Timestamp, Timestamp)>,
     pub limit: usize,
 }
 

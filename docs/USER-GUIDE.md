@@ -110,10 +110,17 @@ recent network activity, with the program that made it.
   what you have said about it.
 - **Network:** the destinations programs talked to, by bytes, flows or programs, with the network that owns each address and the name
   programs asked for. This tab also holds *Owner data* (see [your privacy](#your-data-and-your-privacy)).
+- **Process tree** (picture below): who started whom over the last hour to two weeks. A program sits under the one that started it, with
+  when it started and ended, what it was started with (the command line, cleaned and cut) and who made it. Click a name for that program's
+  history. A program whose starter was not running in the window, or was not recorded, is listed on its own and marked *parent not
+  recorded*. Per-process detail is kept for 14 days, so that is as far back as it can look; a very large tree is cut (nearest the top is kept)
+  and says how many were left out.
 - **Known programs** (picture below): the products you have told SYNTRAC you installed on purpose. They are never raised as new, and a program that
   *looks* like one of them but is not (a look-alike) is listed so you can check.
 
 ![History: programs ranked by GPU, with one program open](images/history-program-detail.png)
+
+![History: the process tree](images/history-process-tree.png)
 
 ![Known programs](images/known-programs.png)
 

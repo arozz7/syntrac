@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use syntrac_core::{roll_up_due, MetricsRepository, ProcessRecord, ProcessRepository, RollupSettings, Timestamp};
-use syntrac_demo::world::{sample_at, Moment, PROGRAMS};
+use syntrac_demo::world::{command_line, sample_at, starter, Moment, PROGRAMS};
 use syntrac_ipc::pipe::{PipeServer, PipeServerConfig};
 use syntrac_ipc::protocol::{
     CollectorTotals, EtwStatus, OwnerDataReport, OwnerDatasetReport, Request, Response, StatusReport, StorageLevel,
@@ -91,18 +91,18 @@ impl Demo {
 /// Adds the processes of the sample that the database does not know yet (a new day brings new processes), then the sample itself.
 fn feed(store: &mut SqliteStore, moment: &Moment, known: &mut HashSet<syntrac_core::ProcessInstanceId>, ts: i64) {
     let sample = sample_at(moment, ts, FEED_EVERY.as_secs() as i64);
-    for (metric, program) in
-        sample.processes.iter().zip(PROGRAMS.iter().filter(|program| syntrac_demo::world::is_busy(program, moment, ts)))
-    {
+    let busy = PROGRAMS.iter().enumerate().filter(|(_, program)| syntrac_demo::world::is_busy(program, moment, ts));
+    for (metric, (index, program)) in sample.processes.iter().zip(busy) {
         let Some(id) = metric.instance else { continue };
         if known.insert(id) && store.get(id).ok().flatten().is_none() {
+            let (parent_pid, parent_id) = starter(index, moment, ts);
             let record = ProcessRecord {
                 id,
                 pid: metric.pid,
-                parent_pid: 4,
-                parent_id: None,
+                parent_pid,
+                parent_id,
                 image_path: program.path.to_owned(),
-                command_line: None,
+                command_line: command_line(index).map(str::to_owned),
                 started: Timestamp::from_micros(ts * 1_000_000),
                 ended: None,
                 ended_approximate: false,

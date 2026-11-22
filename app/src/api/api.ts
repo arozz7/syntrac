@@ -28,6 +28,7 @@ import type {
   OwnerDataOutcome,
   ProcessListParams,
   ProcessRowView,
+  ProcessTreeView,
   ProgramHistoryView,
   ProgramMetric,
   ProgramsView,
@@ -50,6 +51,8 @@ export interface Api {
   ): Promise<Data<ProgramsView>>;
   /** One program, hour by hour. `path` is the program's image path as listed by `topPrograms`. */
   programHistory(rangeSecs: number, path: string): Promise<Data<ProgramHistoryView>>;
+  /** Who started whom among the processes alive in the last `windowSecs` (detail is kept for 14 days). */
+  processTree(windowSecs: number): Promise<Data<ProcessTreeView>>;
   /** Where the machine talked to the most over the range, from the rollups. Addresses on this network and multicast are left out unless `allAddresses`. */
   topDestinations(
     rangeSecs: number,
@@ -200,6 +203,7 @@ export const tauriApi: Api = {
   topPrograms: (rangeSecs, metric, limit, groupByProduct) =>
     data<ProgramsView>('get_top_programs', { rangeSecs, metric, limit, groupByProduct }),
   programHistory: (rangeSecs, path) => data<ProgramHistoryView>('get_program_history', { rangeSecs, path }),
+  processTree: (windowSecs) => data<ProcessTreeView>('get_process_tree', { windowSecs }),
   topDestinations: (rangeSecs, order, limit, allAddresses) =>
     data<DestinationsView>('get_top_destinations', { rangeSecs, order, limit, allAddresses }),
   topOwners: (rangeSecs, limit, allAddresses) => data<OwnersView>('get_top_owners', { rangeSecs, limit, allAddresses }),

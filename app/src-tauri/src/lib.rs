@@ -14,6 +14,7 @@ pub mod history;
 pub mod history_findings;
 pub mod history_network;
 pub mod history_programs;
+pub mod history_tree;
 pub mod identity_view;
 pub mod investigate_evidence;
 pub mod investigation_store;
@@ -126,6 +127,7 @@ pub fn run() {
             commands::mark_known_program,
             commands::unmark_known_program,
             commands::get_program_history,
+            commands::get_process_tree,
             commands::get_top_destinations,
             commands::get_top_owners,
             commands::get_findings,

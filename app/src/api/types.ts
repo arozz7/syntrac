@@ -4,6 +4,7 @@
 export * from './programTypes';
 export * from './networkTypes';
 export * from './findingTypes';
+export * from './processTreeTypes';
 
 /** What a data call produced. `state` decides which screen to show. */
 export type Data<T> =

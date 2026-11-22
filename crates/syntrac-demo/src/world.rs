@@ -426,13 +426,79 @@ pub fn is_busy(program: &Program, moment: &Moment, ts: i64) -> bool {
     exists_at(program, moment, ts) && program.when.contains(ts.div_euclid(HOUR_SECS).rem_euclid(24))
 }
 
-/// The process of this program on the day of `ts`: its id, process id and start. One process per program and day.
+/// Who started which program, by file name: (program, the program that started it). A program not listed was started by something the
+/// demo does not record (the desktop shell and the service host, which Windows starts itself).
+const STARTED_BY: &[(&str, &str)] = &[
+    ("fabrikam.exe", "explorer.exe"),
+    ("contoso-edit.exe", "explorer.exe"),
+    ("nwsync.exe", "explorer.exe"),
+    ("nwsync-helper.exe", "nwsync.exe"),
+    ("acmebackup.exe", "svchost.exe"),
+    ("acmebackup-agent.exe", "acmebackup.exe"),
+    ("acmebackup-ui.exe", "explorer.exe"),
+    ("tailspin.exe", "explorer.exe"),
+    ("localai-server.exe", "explorer.exe"),
+    ("toolx.exe", "explorer.exe"),
+    ("SetupHelper.exe", "explorer.exe"),
+    ("pdftool.exe", "contoso-edit.exe"),
+    ("renamer.exe", "explorer.exe"),
+];
+
+/// What a few programs were started with (the others have no command line recorded).
+const COMMAND_LINES: &[(&str, &str)] = &[
+    ("fabrikam.exe", r#""C:\Program Files\Fabrikam\Browser\fabrikam.exe" --profile-directory=Default"#),
+    ("contoso-edit.exe", r#""C:\Program Files\Contoso\Editor\contoso-edit.exe" "C:\Users\demo\work\notes.txt""#),
+    ("nwsync-helper.exe", r#""C:\Program Files\Northwind\Sync\nwsync-helper.exe" --worker 1"#),
+    ("acmebackup-agent.exe", r#""C:\Program Files\Acme\Backup\acmebackup-agent.exe" --service"#),
+    ("pdftool.exe", r#"pdftool.exe merge "C:\Users\demo\work\a.pdf" "C:\Users\demo\work\b.pdf""#),
+];
+
+fn file_name(path: &str) -> &str {
+    path.rsplit('\\').next().unwrap_or(path)
+}
+
+fn program_named(file: &str) -> Option<usize> {
+    PROGRAMS.iter().position(|program| file_name(program.path) == file)
+}
+
+/// The program that started this one, when the demo records it.
+fn starter_index(index: usize) -> Option<usize> {
+    let own = file_name(PROGRAMS[index].path);
+    STARTED_BY.iter().find(|(child, _)| *child == own).and_then(|(_, parent)| program_named(parent))
+}
+
+/// How many starters lie above this program (the shell and the service host are at 0).
+fn depth(index: usize) -> i64 {
+    std::iter::successors(starter_index(index), |&parent| starter_index(parent)).count() as i64
+}
+
+/// What the program was started with, when the demo records it.
+pub fn command_line(index: usize) -> Option<&'static str> {
+    let own = file_name(PROGRAMS[index].path);
+    COMMAND_LINES.iter().find(|(file, _)| *file == own).map(|(_, line)| *line)
+}
+
+/// Who started the process of this program on the day of `ts`: the starter's process id and instance, or the pid of a starter that is not
+/// recorded (and no instance).
+pub fn starter(index: usize, moment: &Moment, ts: i64) -> (u32, Option<ProcessInstanceId>) {
+    match starter_index(index) {
+        Some(parent) => {
+            let (id, pid, _) = instance(parent, moment, ts);
+            (pid, Some(id))
+        }
+        None => (4, None),
+    }
+}
+
+/// The process of this program on the day of `ts`: its id, process id and start. One process per program and day. A program starts ten minutes after the one that
+/// started it, per level.
 pub fn instance(index: usize, moment: &Moment, ts: i64) -> (ProcessInstanceId, u32, i64) {
     let program = &PROGRAMS[index];
     let day = ts.div_euclid(DAY_SECS);
     let day_start = day * DAY_SECS;
     let lifetime_start = moment.now - program.first_seen_hours_ago * HOUR_SECS;
-    let start = (day_start + program.when.first_hour() * HOUR_SECS + index as i64 * 7).max(lifetime_start);
+    let start =
+        (day_start + program.when.first_hour() * HOUR_SECS + depth(index) * 600 + index as i64 * 7).max(lifetime_start);
     let pid = 1_000 + (index as u32) * 100 + u32::try_from(day.rem_euclid(90)).unwrap_or(0);
     (ProcessInstanceId::from_pid_and_creation(pid, Timestamp::from_micros(start * 1_000_000)), pid, start)
 }
