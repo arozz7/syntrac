@@ -8,8 +8,8 @@ before the commit. Pushed once per phase, when asked.
 | 0 | Split `api/types.ts` and `test/fakeApi.ts` by topic (no logic change) | done, `0ca0530` |
 | A1 | History, **Process tree**: who started whom (`aiChangeLog/phase-A1-process-tree.md`) | done, `991e183` |
 | A2 | History, **Connection map**: which programs talked to which networks (`aiChangeLog/phase-A2-connection-map.md`) | done, `48eb720` |
-| B | **L4e** free-form question box for the AI help, with read-only tools | next |
-| C | Windows **installer** (NSIS via Tauri) that installs the app and the service | after B |
+| B | **L4e** free-form question box for the AI help, with read-only tools (`aiChangeLog/phase-B-question-box.md`) | built, committing |
+| C | Windows **installer** (NSIS via Tauri) that installs the app and the service | next |
 
 Out of scope for now: a day timeline and a global search.
 

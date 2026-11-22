@@ -67,7 +67,7 @@ pub struct InvestigationView {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Phase {
+pub(crate) enum Phase {
     Waiting,
     Running,
     Done,
@@ -76,7 +76,7 @@ enum Phase {
 }
 
 impl Phase {
-    fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Self::Waiting => "waiting",
             Self::Running => "running",
@@ -333,7 +333,7 @@ impl Investigator {
     }
 }
 
-fn level_name(level: PromptLevel) -> &'static str {
+pub(crate) fn level_name(level: PromptLevel) -> &'static str {
     match level {
         PromptLevel::Summary => "summary",
         PromptLevel::Full => "full",
@@ -341,7 +341,7 @@ fn level_name(level: PromptLevel) -> &'static str {
     }
 }
 
-fn not_ready_message(state: &ServerState) -> String {
+pub(crate) fn not_ready_message(state: &ServerState) -> String {
     match state {
         ServerState::Loading => "The model server is still loading. Try again when it is ready.".to_owned(),
         _ => "The model server is not running. Start it in the AI help settings, or turn on \"start it when I press Investigate\".".to_owned(),
@@ -392,33 +392,55 @@ fn run(
 
 /// Waits until the server answers. Returns whether to go on (false: the job was finished here).
 fn wait_for_server(job: &Job, server: &dyn LlmService, control: &AiControl, wait_step: Duration) -> bool {
+    match wait_until_ready(server, control, wait_step, &|| job.cancelled()) {
+        Ok(()) => true,
+        Err(WaitEnd::Cancelled) => {
+            job.finish(Phase::Cancelled, None);
+            false
+        }
+        Err(WaitEnd::Failed(message)) => {
+            job.finish(Phase::Failed, Some(message));
+            false
+        }
+    }
+}
+
+/// Why waiting for a server that is starting ended without it being ready.
+pub(crate) enum WaitEnd {
+    Cancelled,
+    Failed(String),
+}
+
+/// Waits until the server answers, giving up when cancelled, when the server reports a fault or ends, or after `SERVER_WAIT`.
+pub(crate) fn wait_until_ready(
+    server: &dyn LlmService,
+    control: &AiControl,
+    wait_step: Duration,
+    cancelled: &dyn Fn() -> bool,
+) -> Result<(), WaitEnd> {
     let deadline = Instant::now() + SERVER_WAIT;
     loop {
-        if job.cancelled() {
-            job.finish(Phase::Cancelled, None);
-            return false;
+        if cancelled() {
+            return Err(WaitEnd::Cancelled);
         }
         match server.state() {
-            ServerState::Ready => return true,
+            ServerState::Ready => return Ok(()),
             ServerState::Failed(reason) => {
-                job.finish(Phase::Failed, Some(format!("The model server answered badly: {reason}.")));
-                return false;
+                return Err(WaitEnd::Failed(format!("The model server answered badly: {reason}.")));
             }
             ServerState::NotRunning | ServerState::Loading => {}
         }
         if control.status().state == "exited" {
-            job.finish(Phase::Failed, Some("The model server ended before it was ready.".to_owned()));
-            return false;
+            return Err(WaitEnd::Failed("The model server ended before it was ready.".to_owned()));
         }
         if Instant::now() > deadline {
-            job.finish(Phase::Failed, Some("The model server did not become ready in time.".to_owned()));
-            return false;
+            return Err(WaitEnd::Failed("The model server did not become ready in time.".to_owned()));
         }
         std::thread::sleep(wait_step);
     }
 }
 
-fn describe(error: &LlmError) -> String {
+pub(crate) fn describe(error: &LlmError) -> String {
     match error {
         LlmError::NotRunning => "The model server is not running.".to_owned(),
         LlmError::Loading { retry_after_secs: Some(secs) } => {

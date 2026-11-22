@@ -1,6 +1,7 @@
 //! A stand-in "model server" for trying the AI help on the demo machine (docs/PHASE4-PLAN.md). It speaks the small part of the common chat API
 //! that SYNTRAC uses (`/health`, `/v1/models`, a streamed `/v1/chat/completions`) on loopback, and answers with a CANNED text that says plainly
-//! it is not a language model. It exists so the whole flow (settings, Investigate, streaming, Stop, the copy box) can be exercised and
+//! it is not a language model. A request that is not streamed and offers tools (the question box) gets a tool call first, and then, once a tool
+//! result is in the conversation, an answer that copies the names out of that result, so the whole round trip can be checked. It exists so the whole flow (settings, Investigate, streaming, Stop, the copy box) can be exercised and
 //! photographed with no real model and no real data. Every request body can be written to a log file, to check what a model server receives.
 //!
 //!   demo-model <port> [request-log-file]
@@ -75,6 +76,10 @@ fn serve(mut stream: TcpStream, log: Option<&str>) -> std::io::Result<()> {
                 let mut out = std::fs::OpenOptions::new().create(true).append(true).open(file)?;
                 writeln!(out, "{}", request.body.replace('\n', " "))?;
             }
+            if wants_whole_reply(&request.body) {
+                let reply = turn_reply(&request.body).to_string();
+                return plain(&mut stream, "200 OK", &reply);
+            }
             stream_answer(&mut stream, &request.body)
         }
         _ => plain(&mut stream, "404 Not Found", ""),
@@ -136,4 +141,122 @@ fn stream_answer(stream: &mut TcpStream, body: &str) -> std::io::Result<()> {
     }
     write!(stream, "data: [DONE]\n\n")?;
     stream.flush()
+}
+
+/// A request with `"stream": false` wants one whole reply (a turn that may carry tools) instead of a stream.
+fn wants_whole_reply(body: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(body).is_ok_and(|request| request["stream"] == false)
+}
+
+/// The tool to ask for: the programs ranking when it is offered, else the first one.
+fn tool_to_call(request: &serde_json::Value) -> Option<String> {
+    let names: Vec<&str> =
+        request["tools"].as_array()?.iter().filter_map(|tool| tool["function"]["name"].as_str()).collect();
+    names.iter().find(|name| **name == "top_programs").or(names.first()).map(|name| (*name).to_owned())
+}
+
+/// The program names in a tool result (the data between the marked block's tags), as one text.
+fn names_in_result(result: &str) -> String {
+    let (Some(start), Some(end)) = (result.find('{'), result.rfind('}')) else {
+        return "(nothing readable)".to_owned();
+    };
+    let names: Vec<String> = serde_json::from_str::<serde_json::Value>(&result[start..=end])
+        .ok()
+        .and_then(|data| data["programs"].as_array().cloned())
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|program| program["name"].as_str().map(str::to_owned))
+        .collect();
+    if names.is_empty() {
+        "(no programs)".to_owned()
+    } else {
+        names.join(", ")
+    }
+}
+
+fn message_reply(content: &str) -> serde_json::Value {
+    serde_json::json!({ "choices": [{ "message": { "role": "assistant", "content": content }, "finish_reason": "stop" }] })
+}
+
+/// One whole reply: a tool call when tools are offered and no tool result is in the conversation yet; otherwise an answer, which copies the
+/// names from the tool result when there is one.
+fn turn_reply(body: &str) -> serde_json::Value {
+    let request: serde_json::Value = serde_json::from_str(body).unwrap_or(serde_json::Value::Null);
+    let tools_offered = request["tools"].as_array().is_some_and(|tools| !tools.is_empty());
+    let result = request["messages"]
+        .as_array()
+        .and_then(|messages| messages.iter().rev().find(|message| message["role"] == "tool"))
+        .and_then(|message| message["content"].as_str());
+    match (tools_offered, result, tool_to_call(&request)) {
+        (true, None, Some(name)) => serde_json::json!({ "choices": [{
+            "message": { "role": "assistant", "content": null, "tool_calls": [{
+                "id": "call_demo_1", "type": "function", "function": { "name": name, "arguments": "{}" } }] },
+            "finish_reason": "tool_calls" }] }),
+        (_, Some(result), _) => message_reply(&format!(
+            "This is the demo stand-in model, not a language model, so it can only repeat what it was given.
+
+             It asked for a lookup and was shown these programs: {}.
+
+             A real model would explain them. Here, only the round trip is being tested: the tool call, its result, and this answer.",
+            names_in_result(result)
+        )),
+        _ => message_reply("This is the demo stand-in model, not a language model. No tool result was given, so it has nothing to repeat."),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn offered() -> serde_json::Value {
+        json!([{ "type": "function", "function": { "name": "list_findings" } }, { "type": "function", "function": { "name": "top_programs" } }])
+    }
+
+    #[test]
+    fn a_turn_with_tools_and_no_result_asks_for_the_ranking() {
+        let body = json!({ "stream": false, "tools": offered(), "messages": [{ "role": "user", "content": "q" }] })
+            .to_string();
+        let reply = turn_reply(&body);
+        let call = &reply["choices"][0]["message"]["tool_calls"][0];
+        assert_eq!(call["function"]["name"], "top_programs");
+        assert_eq!(call["function"]["arguments"], "{}");
+        assert_eq!(reply["choices"][0]["finish_reason"], "tool_calls");
+    }
+
+    #[test]
+    fn a_turn_with_a_tool_result_answers_with_the_names_in_it() {
+        let result = "<tool_result name=\"top_programs\">
+{\"programs\":[{\"name\":\"alpha.exe\"},{\"name\":\"beta.exe\"}]}
+</tool_result>";
+        let body = json!({ "stream": false, "tools": offered(), "messages": [
+            { "role": "user", "content": "q" },
+            { "role": "assistant", "content": null },
+            { "role": "tool", "tool_call_id": "call_demo_1", "content": result }] })
+        .to_string();
+        let answer = turn_reply(&body)["choices"][0]["message"]["content"].as_str().unwrap().to_owned();
+        assert!(answer.contains("alpha.exe, beta.exe"), "{answer}");
+        assert!(answer.contains("not a language model"));
+    }
+
+    #[test]
+    fn the_last_turn_without_tools_still_answers_from_the_result() {
+        let body = json!({ "stream": false, "messages": [
+            { "role": "tool", "content": "{\"programs\":[{\"name\":\"gamma.exe\"}]}" }] })
+        .to_string();
+        assert!(turn_reply(&body)["choices"][0]["message"]["content"].as_str().unwrap().contains("gamma.exe"));
+    }
+
+    #[test]
+    fn a_turn_with_nothing_to_repeat_says_so() {
+        let body = json!({ "stream": false, "messages": [{ "role": "user", "content": "q" }] }).to_string();
+        assert!(turn_reply(&body)["choices"][0]["message"]["content"].as_str().unwrap().contains("No tool result"));
+    }
+
+    #[test]
+    fn only_a_request_that_says_it_is_not_streamed_wants_a_whole_reply() {
+        assert!(wants_whole_reply(r#"{"stream":false}"#));
+        assert!(!wants_whole_reply(r#"{"stream":true}"#));
+        assert!(!wants_whole_reply("not json"));
+    }
 }

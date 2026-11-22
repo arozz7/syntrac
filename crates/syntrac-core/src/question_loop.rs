@@ -60,6 +60,11 @@ impl ToolRegistry {
         self.tools.iter().map(|(spec, _)| spec.clone()).collect()
     }
 
+    /// The tool by that name, if it is registered.
+    pub fn tool(&self, name: &str) -> Option<Arc<dyn ReadOnlyTool>> {
+        self.get(name).cloned()
+    }
+
     fn get(&self, name: &str) -> Option<&Arc<dyn ReadOnlyTool>> {
         self.tools.iter().find(|(spec, _)| spec.name == name).map(|(_, tool)| tool)
     }

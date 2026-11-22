@@ -81,12 +81,22 @@ was sent. SYNTRAC never talks to the Internet for this; detection never uses it;
 - **It remembers.** A finished answer is saved on your machine with its date and model. Open **Investigate** on the same program later and the saved
   answer appears at once, with **Ask again** and **Forget the saved answer**. A small **AI note** beside a program or finding shows what you have
   already looked into.
+- **Ask in your own words.** A question box on the AI help tab lets the model look things up in what SYNTRAC recorded, with four tools that only
+  read (a program's facts, the findings, the busiest programs, who started whom). Every lookup is listed with the answer, a result is cut to fit a
+  small model's window, and at the *Summary* detail level no command lines, addresses or hashes are shared. It needs a server and model that support
+  tool calling.
 - **Or use an outside assistant yourself.** SYNTRAC can prepare a much more reduced text (no file names, folders, addresses or finding sentences)
   for you to look at, edit and copy. It sends nothing itself.
 
 <p align="center">
   <img src="docs/images/ai-investigate.png" alt="Investigate on a finding: a small local model explains the evidence, says what could be harmless, what to check next and what is uncertain" width="900">
 </p>
+
+<p align="center">
+  <img src="docs/images/ai-question-box.png" alt="The question box: the tool call that was made, and the answer" width="900">
+</p>
+
+<sub>The question box on the demo machine, answered by a stand-in that only repeats what the tool returned.</sub>
 
 <sub>An answer from a small local model on the demo machine. [docs/USER-GUIDE.md](docs/USER-GUIDE.md) explains the settings and what is sent.</sub>
 
@@ -157,7 +167,7 @@ tests run against an in-memory store and the SQLite store, so they cannot drift 
 
 Built: collection (ETW, snapshots, metrics, GPU), storage with rollups and a storage guard, program identity and
 how programs start, the network and owner views, findings (new things, usage, known patterns), live and historical GPU views, the tray
-icon with toasts and start with Windows, and the demo. An optional, off-by-default **AI help** is built: an Investigate button that asks a model server on this machine (which it can start for you, on a button), remembers the answers, and can prepare a reduced text to copy for an outside assistant. Not built: a process tree and connection map, and an installer. [docs/PLAN.md](docs/PLAN.md) has the full plan.
+icon with toasts and start with Windows, and the demo. An optional, off-by-default **AI help** is built: an Investigate button that asks a model server on this machine (which it can start for you, on a button), remembers the answers, and can prepare a reduced text to copy for an outside assistant. Also built: a History process tree, a connection map and a question box for the AI help. Not built: an installer. [docs/PLAN.md](docs/PLAN.md) has the full plan.
 
 ## Development
 

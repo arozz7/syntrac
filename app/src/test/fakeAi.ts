@@ -1,6 +1,6 @@
 import { vi } from 'vitest';
 import type { Api } from '../api/api';
-import type { AiSettings, AiStatus, Investigation, PromptPreview, SavedAnswer } from '../api/aiTypes';
+import type { AiSettings, AiStatus, Investigation, PromptPreview, Question, SavedAnswer } from '../api/aiTypes';
 
 /** The AI help as a new installation has it: off and empty. */
 export function aiSettings(patch: Partial<AiSettings> = {}): AiSettings {
@@ -48,6 +48,33 @@ export function investigation(patch: Partial<Investigation> = {}): Investigation
   };
 }
 
+/** A finished question that looked one program up. */
+export function question(patch: Partial<Question> = {}): Question {
+  return {
+    id: 1,
+    phase: 'done',
+    question: 'What is widgetsync?',
+    answer: 'It looks like a sync tool.',
+    reasoningChars: 0,
+    truncated: false,
+    error: null,
+    toolsUnsupported: false,
+    calls: [
+      {
+        name: 'program_facts',
+        arguments: String.raw`{"path":"C:\\apps\\widgetsync.exe"}`,
+        status: 'done',
+        note: null,
+        resultBytes: 640,
+        cut: false,
+      },
+    ],
+    stopped: 'answered',
+    level: 'summary',
+    ...patch,
+  };
+}
+
 export function promptPreview(patch: Partial<PromptPreview> = {}): PromptPreview {
   return {
     level: 'external',
@@ -84,6 +111,9 @@ export function fakeAiApi(): Pick<
   | 'startInvestigation'
   | 'pollInvestigation'
   | 'cancelInvestigation'
+  | 'askQuestion'
+  | 'pollQuestion'
+  | 'cancelQuestion'
   | 'savedAnswer'
   | 'savedAnswers'
   | 'forgetAnswer'
@@ -98,6 +128,9 @@ export function fakeAiApi(): Pick<
     startInvestigation: vi.fn(async () => ({ ok: true as const, value: 1 })),
     pollInvestigation: vi.fn(async () => investigation()),
     cancelInvestigation: vi.fn(async () => undefined),
+    askQuestion: vi.fn(async () => ({ ok: true as const, value: 1 })),
+    pollQuestion: vi.fn(async () => question()),
+    cancelQuestion: vi.fn(async () => undefined),
     savedAnswer: vi.fn(async () => null),
     savedAnswers: vi.fn(async () => []),
     forgetAnswer: vi.fn(async () => undefined),

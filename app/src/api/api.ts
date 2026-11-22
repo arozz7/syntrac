@@ -5,6 +5,7 @@ import type {
   AiStatus,
   InvestigateSubject,
   Investigation,
+  Question,
   PromptPreview,
   SavedAnswer,
   SavedMark,
@@ -124,6 +125,10 @@ export interface Api {
   startInvestigation(subject: InvestigateSubject): Promise<AiResult<number>>;
   pollInvestigation(id: number): Promise<Investigation | null>;
   cancelInvestigation(id: number): Promise<void>;
+  /** Asks a free-form question; the model may look things up with read-only tools. Returns its number; poll it. */
+  askQuestion(question: string): Promise<AiResult<number>>;
+  pollQuestion(id: number): Promise<Question | null>;
+  cancelQuestion(id: number): Promise<void>;
   /** The answer kept from an earlier investigation of this subject, or null. */
   savedAnswer(subject: InvestigateSubject): Promise<SavedAnswer | null>;
   /** Which subjects have a kept answer and since when (no answers), for marking lists. */
@@ -283,6 +288,21 @@ export const tauriApi: Api = {
   cancelInvestigation: async (id) => {
     try {
       await invoke('ai_cancel_investigation', { id });
+    } catch {
+      // Nothing to cancel if the program cannot be reached.
+    }
+  },
+  askQuestion: (question) => attempt<number>('ai_ask_question', { question }),
+  pollQuestion: async (id) => {
+    try {
+      return await invoke<Question | null>('ai_poll_question', { id });
+    } catch {
+      return null;
+    }
+  },
+  cancelQuestion: async (id) => {
+    try {
+      await invoke('ai_cancel_question', { id });
     } catch {
       // Nothing to cancel if the program cannot be reached.
     }

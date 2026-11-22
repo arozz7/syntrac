@@ -23,6 +23,10 @@ pub mod known_view;
 pub mod names;
 pub mod owner_data_view;
 pub mod prefs;
+pub mod question_backend;
+pub mod question_data;
+pub mod question_job;
+pub mod question_tools;
 pub mod series;
 pub mod server_process;
 pub mod settings;
@@ -76,11 +80,25 @@ pub fn run() {
         ai_investigate::Investigator::new(
             prefs.clone(),
             Arc::clone(&ai),
-            service,
+            Arc::clone(&service),
             evidence,
             syntrac_core::investigate::PromptConfig::builtin(),
         )
         .with_store(store),
+    );
+    // The question box: a model may look things up with a few read-only tools that read the database like every screen does.
+    let user_name = std::env::var("USERNAME").ok();
+    let question_data: Arc<dyn question_tools::QuestionData> =
+        Arc::new(question_backend::BackendQuestionData::new(Arc::clone(&backend), user_name.clone()));
+    let questioner: ai_commands::SharedQuestioner = Arc::new(
+        question_job::Questioner::new(
+            prefs.clone(),
+            Arc::clone(&ai),
+            service,
+            question_data,
+            syntrac_core::question_config::QuestionConfig::builtin(),
+        )
+        .with_user_name(user_name),
     );
     let exit_ai = Arc::clone(&ai);
     let (watch_backend, watch_prefs) = (Arc::clone(&backend), prefs.clone());
@@ -93,6 +111,7 @@ pub fn run() {
         .manage(prefs.clone())
         .manage(ai)
         .manage(investigator)
+        .manage(questioner)
         .setup(move |app| {
             tray::install(app.handle(), &prefs)?;
             tray::start_watcher(app.handle().clone(), watch_backend, watch_prefs);
@@ -118,6 +137,9 @@ pub fn run() {
             ai_commands::ai_saved_investigation,
             ai_commands::ai_saved_list,
             ai_commands::ai_forget_investigation,
+            ai_commands::ai_ask_question,
+            ai_commands::ai_poll_question,
+            ai_commands::ai_cancel_question,
             commands::get_health,
             commands::get_overview,
             commands::list_processes,

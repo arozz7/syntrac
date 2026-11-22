@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useApi } from '../api/ApiContext';
 import type { AiDetailLevel, AiSettings } from '../api/aiTypes';
 import { useAiEnabled } from '../components/AiEnabled';
+import { QuestionBox } from '../components/QuestionBox';
 import { usePolled } from '../hooks/usePolled';
 
 const STATUS_REFRESH_MS = 3000;
@@ -321,6 +322,7 @@ export function AiHelp() {
           <Form initial={initial} onSaved={changed} />
         )}
       </section>
+      <QuestionBox />
       <section className="card card--wide">
         <div className="card__head">
           <h2>Model server</h2>

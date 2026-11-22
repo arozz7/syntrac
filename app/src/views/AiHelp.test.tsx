@@ -33,6 +33,16 @@ describe('AiHelp', () => {
     expect(screen.queryByRole('button', { name: 'Start the model server' })).toBeNull();
   });
 
+  it('offers the question box only while the help is turned on', async () => {
+    show();
+    await screen.findByLabelText('Turn on AI help');
+    expect(screen.queryByLabelText('Your question')).toBeNull();
+    cleanup();
+
+    show({ aiSettings: vi.fn(async () => aiSettings({ enabled: true })) });
+    expect(await screen.findByLabelText('Your question')).toBeTruthy();
+  });
+
   it('saves what was typed, with the arguments one per line', async () => {
     const api = show();
     await userEvent.click(await screen.findByLabelText('Turn on AI help'));

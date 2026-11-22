@@ -38,6 +38,7 @@ pub mod pipeline;
 pub mod ports;
 pub mod process_tree;
 pub mod program_group;
+pub mod question_config;
 pub mod question_loop;
 pub mod retention;
 pub mod review;

@@ -182,6 +182,12 @@ pub fn evidence_json(evidence: &Evidence, level: PromptLevel) -> Value {
     Value::Object(root)
 }
 
+/// One piece of outside text made safe to quote at a detail level: cleaned, cut, angle brackets neutralised, the user name replaced and (below
+/// `Full`) addresses removed. For the tools of the question box, which must treat text exactly as the evidence does.
+pub fn safe_text(raw: &str, max_chars: usize, level: PromptLevel, user_name: &str) -> Option<String> {
+    Writer { level, user: user_name }.text(raw, max_chars)
+}
+
 struct Writer<'a> {
     level: PromptLevel,
     user: &'a str,

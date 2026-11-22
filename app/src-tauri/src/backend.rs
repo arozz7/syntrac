@@ -183,7 +183,7 @@ impl<C: Clock + Send + Sync> Backend<C> {
         })
     }
 
-    fn with_store<T>(&self, work: impl FnOnce(&SqliteStore, Timestamp) -> Result<T, RepoError>) -> Data<T> {
+    pub(crate) fn with_store<T>(&self, work: impl FnOnce(&SqliteStore, Timestamp) -> Result<T, RepoError>) -> Data<T> {
         let store = match self.open() {
             Ok(store) => store,
             Err(Data::NoDatabase { message }) => return Data::NoDatabase { message },

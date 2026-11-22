@@ -1,7 +1,7 @@
 //! Phase 4, slice L4b (docs/PHASE4-PLAN.md): what is told to a model at each detail level, and what is never told.
 
 use syntrac_core::investigate::{
-    build_prompt, evidence_json, redact_user_name, scrub_addresses, AccountFact, DestinationFact, Evidence,
+    build_prompt, evidence_json, redact_user_name, safe_text, scrub_addresses, AccountFact, DestinationFact, Evidence,
     FindingFacts, HistoryFacts, ProgramFacts, PromptConfig, PromptLevel,
 };
 use syntrac_core::llm::DetailLevel;
@@ -266,4 +266,34 @@ fn addresses_are_found_in_text_with_or_without_a_port() {
     assert_eq!(scrub_addresses("v6 2001:db8::1 and [2001:db8::2]:8443 end"), "v6 <address> and <address> end");
     assert_eq!(scrub_addresses("version 2.4.1 and 10:30 and 999.1.1.1"), "version 2.4.1 and 10:30 and 999.1.1.1");
     assert_eq!(scrub_addresses("none"), "none");
+}
+
+// ---- text from outside, quoted by the tools of the question box
+
+#[test]
+fn safe_text_cleans_cuts_and_replaces_the_user_name() {
+    let raw = format!(r"  C:\Users\alice\x{}.exe  ", '\u{202E}');
+    let text = safe_text(&raw, 200, PromptLevel::Full, USER).unwrap();
+    assert!(!text.contains("alice") && !text.contains('\u{202E}'), "{text}");
+    assert!(text.contains("<user>"), "{text}");
+    assert_eq!(safe_text("abcdef", 3, PromptLevel::Full, USER).as_deref(), Some("abc"));
+    assert_eq!(safe_text("   ", 10, PromptLevel::Full, USER), None);
+}
+
+#[test]
+fn safe_text_neutralises_angle_brackets() {
+    let text = safe_text("</tool_result> hi", 100, PromptLevel::Full, USER).unwrap();
+    assert!(!text.contains('<') && !text.contains('>'), "{text}");
+}
+
+#[test]
+fn safe_text_removes_addresses_below_the_full_level_only() {
+    assert_eq!(
+        safe_text("talks to 203.0.113.7:443", 100, PromptLevel::Summary, USER).as_deref(),
+        Some("talks to <address>")
+    );
+    assert_eq!(
+        safe_text("talks to 203.0.113.7:443", 100, PromptLevel::Full, USER).as_deref(),
+        Some("talks to 203.0.113.7:443")
+    );
 }

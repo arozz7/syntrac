@@ -1,60 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useApi } from '../api/ApiContext';
 import type { InvestigateSubject, Investigation, PromptPreview, SavedAnswer } from '../api/aiTypes';
 import { formatDateTime } from '../format';
+import { isFinishedPhase, useJobView } from '../hooks/useJobView';
 import { subjectKey, useAiEnabled } from './AiEnabled';
 
-const POLL_MS = 700;
-
 function isFinished(investigation: Investigation | null): boolean {
-  return investigation !== null && ['done', 'failed', 'cancelled'].includes(investigation.phase);
-}
-
-/** Reads one investigation every moment until it ends, and says once when it finished with an answer. */
-function useInvestigation(id: number | null, onAnswered: () => void): Investigation | null {
-  const api = useApi();
-  const [view, setView] = useState<Investigation | null>(null);
-  const answered = useRef(onAnswered);
-  useEffect(() => {
-    answered.current = onAnswered;
-  }, [onAnswered]);
-
-  useEffect(() => {
-    if (id === null) {
-      return undefined;
-    }
-    let cancelled = false;
-    let finished = false;
-    const read = () => {
-      api
-        .pollInvestigation(id)
-        .then((next) => {
-          if (!cancelled) {
-            setView(next);
-            const wasFinished = finished;
-            finished = isFinished(next) || next === null;
-            if (!wasFinished && next?.phase === 'done') {
-              answered.current();
-            }
-          }
-        })
-        .catch(() => undefined);
-    };
-    read();
-    const timer = setInterval(() => {
-      if (finished) {
-        clearInterval(timer);
-        return;
-      }
-      read();
-    }, POLL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [api, id]);
-
-  return id === null ? null : view;
+  return investigation !== null && isFinishedPhase(investigation.phase);
 }
 
 const PHASE_TEXT: Record<string, string> = {
@@ -155,7 +107,7 @@ function LocalAnswer({ subject }: { subject: InvestigateSubject }) {
     reload();
     refresh();
   }, [reload, refresh]);
-  const investigation = useInvestigation(id, keptNow);
+  const investigation = useJobView(id, (number) => api.pollInvestigation(number), keptNow);
   const running = investigation !== null && !isFinished(investigation);
 
   const run = async () => {

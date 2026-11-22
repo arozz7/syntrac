@@ -8,6 +8,7 @@ use tauri::State;
 use crate::ai_control::{AiControl, AiSettingsDto, AiStatusView};
 use crate::ai_investigate::{InvestigationView, Investigator, PromptPreview, SubjectRef};
 use crate::investigation_store::{SavedInvestigation, SavedMark};
+use crate::question_job::{QuestionView, Questioner};
 
 pub type SharedAi = Arc<AiControl>;
 
@@ -96,4 +97,23 @@ pub fn ai_saved_list(investigator: State<'_, SharedInvestigator>) -> Vec<SavedMa
 #[tauri::command]
 pub fn ai_forget_investigation(investigator: State<'_, SharedInvestigator>, subject: SubjectRef) {
     investigator.forget(&subject);
+}
+
+pub type SharedQuestioner = Arc<Questioner>;
+
+/// Starts a question and returns its number; the page then polls for the answer and for the tool calls made.
+#[tauri::command]
+pub async fn ai_ask_question(questioner: State<'_, SharedQuestioner>, question: String) -> Result<u64, String> {
+    let questioner = Arc::clone(&questioner);
+    off_the_ui_thread(move || questioner.start(&question)).await?
+}
+
+#[tauri::command]
+pub fn ai_poll_question(questioner: State<'_, SharedQuestioner>, id: u64) -> Option<QuestionView> {
+    questioner.poll(id)
+}
+
+#[tauri::command]
+pub fn ai_cancel_question(questioner: State<'_, SharedQuestioner>, id: u64) {
+    questioner.cancel(id);
 }

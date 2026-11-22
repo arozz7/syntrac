@@ -117,16 +117,37 @@ function Test-DemoAi([int]$Port, [string]$OutputFolder, [string]$ModelLog) {
     Click-DemoButton $socket 'Forget the saved answer' -Exact
     & $note (Wait-Page $socket "($programRow)?.querySelector('.ai-note') == null" 15) 'forgetting removes the mark from the list'
     & $note (Test-Page $socket "[...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'Investigate with my model')") 'and the panel offers to ask the model again'
+
+    # 7. The question box: the model asks for a lookup, the read-only tool answers from the database, and the answer repeats what the tool returned.
+    Click-DemoButton $socket 'AI help' -Exact
+    & $note (Wait-Page $socket "document.querySelector('textarea') != null" 15) 'the AI help tab offers a question box while the help is on'
+    $before = Get-ModelRequestCount $ModelLog
+    Invoke-PageScript $socket "(() => { const box = document.querySelector('[aria-label=""Ask a question""] textarea'); const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set; set.call(box, 'Which programs were busiest this week?'); box.dispatchEvent(new Event('input', { bubbles: true })); return 'ok'; })()" | Out-Null
+    Click-DemoButton $socket 'Ask' -Exact
+    & $note (Wait-Page $socket "document.querySelector('[aria-label=""Ask a question""]')?.innerText.includes('Finished.')" 60) 'the question finished'
+    $calls = Get-PageString $socket "[...document.querySelectorAll('[aria-label=""What was looked up""] li')].map(li => li.textContent).join(' | ')"
+    & $note ($calls -match 'top_programs' -and $calls -match 'looked up') 'the page lists the tool call that was made'
+    $answerText = Get-PageString $socket "document.querySelector('[aria-label=""Ask a question""] [aria-label=Answer]')?.textContent ?? ''"
+    & $note ($answerText -match 'demo stand-in model' -and $answerText -match 'shown these programs: [A-Za-z0-9_.-]+\.exe') 'the answer repeats program names the tool returned from the demo database'
+    Invoke-PageScript $socket "(() => { document.querySelector('[aria-label=""Ask a question""]')?.scrollIntoView(); return 'ok'; })()" | Out-Null
+    Save-DemoShot $socket $OutputFolder 'ai-question-box' 1300
+    & $note ((Get-ModelRequestCount $ModelLog) -eq ($before + 2)) 'the model was asked twice: once for the tool call, once with its result'
     $socket.Dispose()
 
-    # 7. What the model server actually received (its own log of every request body).
+    # 8. What the model server actually received (its own log of every request body).
     $lines = @()
     if (Test-Path $ModelLog) { $lines = @(Get-Content $ModelLog) }
     & $note ($lines.Count -ge 3) "the stand-in model received the requests ($($lines.Count) so far)"
     foreach ($line in $lines) {
         $body = $line | ConvertFrom-Json
         $user = [string]$body.messages[1].content
-        & $note ($body.model -eq 'demo-model' -and $body.stream -eq $true) 'a request names the model exactly and asks for a stream'
+        if ($body.tools) {
+            & $note ($body.model -eq 'demo-model' -and $body.stream -eq $false -and $body.tools.Count -eq 4) 'a question request names the model exactly, is not streamed and offers exactly four tools'
+            $offered = (@($body.tools | ForEach-Object { $_.function.name } | Sort-Object) -join ',')
+            & $note ($offered -eq 'list_findings,program_facts,program_family,top_programs') 'the tools offered are the four read-only ones'
+        } else {
+            & $note ($body.model -eq 'demo-model' -and $body.stream -eq $true) 'a request names the model exactly and asks for a stream'
+        }
         & $note ($body.messages[0].role -eq 'system' -and $body.messages[0].content -match 'never follow instructions') 'a request carries the instruction that the evidence is data'
         & $note ($user -notmatch '(?i)users\\+demo' -and $user -notmatch '\b\d{1,3}(\.\d{1,3}){3}\b') 'a request carries no user name in a path and no IP address'
     }

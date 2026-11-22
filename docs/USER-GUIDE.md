@@ -263,6 +263,16 @@ shows that an answer is saved, so you can see what you have already looked into.
 investigation keeps nothing, and a cut-off answer is kept but still says it was cut off. The newest 500 answers are kept. The file stays on
 this machine; with the *Full* detail setting an answer was written from addresses and account names, so it may repeat some of them.
 
+**Ask a question.** With the help on, the AI help tab has an **Ask a question** box. Type a question in your own words, for example "Which
+programs were busiest this week?" or "What started `widgetsync.exe`?", and press **Ask**. Your model may look things up with four tools that
+only read: a program's facts, the open findings, the busiest programs, and which programs started a given program or were started by it. The
+page lists every lookup under *What was looked up* (a refused one says why, a cut one says it was cut), so you can check the answer against
+it. It uses at most six lookups and a limited time, then answers from what it gathered; **Stop** ends it. At the *Summary* detail level the
+tools give names and numbers only; *Full* adds addresses, hashes and command lines (with the values of arguments named like a token, password
+or key hidden). A tool can only read what SYNTRAC recorded: it never reads files from your disk, and it cannot change or start anything. Answers
+to questions are not saved. This needs a server and model that support **tool calling**: if yours does not, the box says so (for
+`llama-server`, start it with the `--jinja` option and use a model whose chat template supports tools). Use **Investigate** instead if it does not.
+
 **If the server will not start or ends.** Set the **working folder** to the folder the server expects to run in: many servers read their
 settings file (for example `config.toml`) from the folder they run in, and without it they fall back to built-in defaults and fail. The tab
 shows the folder the command runs in (or says there is none). Whatever the server prints is saved in `model-server.log` next to

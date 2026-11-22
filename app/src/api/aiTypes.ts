@@ -87,3 +87,36 @@ export interface SavedMark {
 
 /** A command that can refuse says why, in words for the person. */
 export type AiResult<T> = { ok: true; value: T } | { ok: false; message: string };
+
+// ---- The question box (docs/PHASE5-PLAN.md, B). They mirror the views in app/src-tauri/src/question_job.rs.
+
+/** One tool call the model made while answering a question. */
+export interface QuestionCall {
+  name: string;
+  /** The arguments as asked, cleaned and cut. */
+  arguments: string;
+  /** `done`, `refused` (not run) or `failed`. */
+  status: 'done' | 'refused' | 'failed';
+  note: string | null;
+  resultBytes: number;
+  /** The result was cut to fit the model's small window. */
+  cut: boolean;
+}
+
+export type QuestionStop = 'answered' | 'call_limit' | 'time_budget' | 'context_full' | 'cancelled';
+
+export interface Question {
+  id: number;
+  phase: InvestigationPhase;
+  question: string;
+  answer: string;
+  reasoningChars: number;
+  truncated: boolean;
+  error: string | null;
+  /** The server cannot do tool calls; `error` says what to do. */
+  toolsUnsupported: boolean;
+  /** Every tool call so far, oldest first, so the answer can be checked against what was looked up. */
+  calls: QuestionCall[];
+  stopped: QuestionStop | null;
+  level: string;
+}
