@@ -45,8 +45,8 @@ The owner's separate coding-agent project (its tool-calling notes and parsing co
 - A `<tool_call>` tag that cannot be read (broken JSON, or cut off) is told to the model (`bad_call_nudge` in `question.toml`), at most twice, instead of being shown as the answer.
 - The per-turn answer cap is 6,000 tokens (was 1,500), for the same reason that project raised its own to 8,192.
 
-## Not yet checked
-The round trip has been seen once against the user's own server (above); the fix for what it returned is tested only with text from that reply, not yet re-run against it.
+## Checked against a real server
+After the fixes above, the owner asked a real question against their own local server: one `top_programs` lookup was made and listed on the page, and the answer stayed within what the result showed (and said what it had not looked up). Only one server and one question so far.
 
 ## Also fixed
 - Process tree (A1): the window is read newest first up to 20,000 processes; the view now says when more existed (commit `563c50d`).
