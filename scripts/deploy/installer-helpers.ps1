@@ -50,9 +50,11 @@ function Read-SchemaVersion {
 # starts, and an older program refuses a newer database: the copy is what lets a rollback put the data back. Nothing is changed unless there is
 # room for the copy.
 function Get-UpgradePlan {
-    param($ShippedSchema, $DatabaseSchema, [long]$DatabaseBytes, [long]$FreeBytes)
+    param($ShippedSchema, $DatabaseSchema, [long]$DatabaseBytes, [long]$FreeBytes, [bool]$DatabaseExists = $false)
     $refuse = { param($why) [pscustomobject]@{ CanProceed = $false; NeedsDatabaseCopy = $false; Reason = $why } }
     if ($null -eq $ShippedSchema) { return & $refuse 'The new program did not report which database schema it uses.' }
+    # A file that exists but whose schema is unknown must not be treated as "no database yet": the upgrade could migrate it with no copy to roll back to.
+    if ($DatabaseExists -and $null -eq $DatabaseSchema) { return & $refuse 'The installer could not read which schema the existing database uses, so it will not upgrade over it. Nothing was changed.' }
     if ($null -eq $DatabaseSchema) { return [pscustomobject]@{ CanProceed = $true; NeedsDatabaseCopy = $false; Reason = 'no database yet' } }
     if ($DatabaseSchema -gt $ShippedSchema) {
         return & $refuse "The database (schema v$DatabaseSchema) is newer than this version understands (schema v$ShippedSchema). Install a newer version."

@@ -22,6 +22,11 @@ pub fn format_database_report(path: &Path, report: &DatabaseReport) -> String {
     out
 }
 
+/// The one line `--db-schema` prints, in the form `--check-db` and `--version` use for the schema, so a script reads all three the same way.
+pub fn format_schema_line(schema_version: u32) -> String {
+    format!("schema:    v{schema_version}\n")
+}
+
 /// A database passes when SQLite's own integrity check says so.
 pub fn database_check_passed(report: &DatabaseReport) -> bool {
     report.integrity_ok

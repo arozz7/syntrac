@@ -89,13 +89,17 @@ try {
     $inDatabase = $null
     $databaseBytes = 0
     if (Test-Path $databaseFile) {
-        $reader_exe = $newExe
-        if ($hadProgram) { $reader_exe = $installedExe }
-        $inDatabase = Read-SchemaVersion (Invoke-Collector -Executable $reader_exe -Arguments @('--check-db', $databaseFile)).Lines
+        # The new program reads it (any older schema is readable, and it is quick: --check-db reads the whole file, minutes on a large one).
+        # A program that does not know --db-schema, or cannot start, prints no schema; the installed program's full check is the fallback.
+        $inDatabase = Read-SchemaVersion (Invoke-Collector -Executable $newExe -Arguments @('--db-schema', $databaseFile)).Lines
+        if ($null -eq $inDatabase -and $hadProgram) {
+            Write-Step 'The new program did not report the database schema; asking the installed program (slower)'
+            $inDatabase = Read-SchemaVersion (Invoke-Collector -Executable $installedExe -Arguments @('--check-db', $databaseFile)).Lines
+        }
         $databaseBytes = (Get-Item $databaseFile).Length
         foreach ($suffix in '-wal') { if (Test-Path "$databaseFile$suffix") { $databaseBytes += (Get-Item "$databaseFile$suffix").Length } }
     }
-    $plan = Get-UpgradePlan -ShippedSchema $shipped -DatabaseSchema $inDatabase -DatabaseBytes $databaseBytes -FreeBytes (Get-FreeBytes $dataRoot)
+    $plan = Get-UpgradePlan -ShippedSchema $shipped -DatabaseSchema $inDatabase -DatabaseExists (Test-Path $databaseFile) -DatabaseBytes $databaseBytes -FreeBytes (Get-FreeBytes $dataRoot)
     Write-Step "New program: schema v$shipped. Database: schema v$inDatabase. Plan: $($plan.Reason)"
     if (-not $plan.CanProceed) { throw $plan.Reason }
 

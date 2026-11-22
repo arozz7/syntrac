@@ -58,10 +58,14 @@ if ($app) {
     Shot 'app-maximised'
 }
 
-# The installer again, over the installed one: the page that offers to reinstall or uninstall first.
-Get-Process -Name syntrac-app -ErrorAction SilentlyContinue | Stop-Process -Force
+# The installer again, over the installed one WITH THE APP STILL OPEN: the page that offers to reinstall or uninstall, and the box that asks to close the app.
+$openApp = Get-Process -Name syntrac-app -ErrorAction SilentlyContinue | Select-Object -First 1
 Walk 'second-install' $installer
 Say "service after the second install: $(State)"
+if ($openApp) {
+    $openApp.Refresh()
+    Say "the app that was open during the second install was closed: $($openApp.HasExited)"
+}
 
 # The uninstaller as the Settings page would start it.
 Get-Process -Name syntrac-app -ErrorAction SilentlyContinue | Stop-Process -Force

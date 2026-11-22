@@ -21,15 +21,30 @@ pub struct DatabaseReport {
     pub tables: Vec<(String, u64)>,
 }
 
-/// Read-only. A missing file is an error (it is never created), and so is a file SQLite cannot read as a database.
-pub fn inspect_database(path: &Path) -> Result<DatabaseReport, RepoError> {
+/// Opens an existing database without any way to change it. A missing file is an error (it is never created).
+fn open_read_only(path: &Path) -> Result<Connection, RepoError> {
     if !path.exists() {
         return Err(RepoError::Backend(format!("there is no database file at {}", path.display())));
     }
     let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX;
-    let conn = Connection::open_with_flags(path, flags).map_err(backend)?;
+    Connection::open_with_flags(path, flags).map_err(backend)
+}
 
-    let schema_version: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).map_err(backend)?;
+fn schema_version_of(conn: &Connection) -> Result<u32, RepoError> {
+    conn.pragma_query_value(None, "user_version", |row| row.get(0)).map_err(backend)
+}
+
+/// Only the schema version, and so quick however large the database is: the installer needs it before an upgrade, where
+/// the full inspection would read every page of a multi-gigabyte file. Read-only, like [`inspect_database`].
+pub fn read_schema_version(path: &Path) -> Result<u32, RepoError> {
+    schema_version_of(&open_read_only(path)?)
+}
+
+/// Read-only. A missing file is an error (it is never created), and so is a file SQLite cannot read as a database.
+pub fn inspect_database(path: &Path) -> Result<DatabaseReport, RepoError> {
+    let conn = open_read_only(path)?;
+
+    let schema_version = schema_version_of(&conn)?;
     let integrity_message = integrity_summary(&conn)?;
     let integrity_ok = integrity_message == "ok";
 

@@ -9,7 +9,7 @@ There is no hosted CI (it is billed per minute); everything is checked on the ma
 1. **Change the version in three places, together:** `[workspace.package] version` in `Cargo.toml`, `version` in `app/src-tauri/tauri.conf.json` and in
    `app/package.json`. The build script refuses to build if they differ. (The crates' path dependencies carry no version, so nothing else changes.) The app shows
    the `package.json` version at the bottom of its menu; the service reports its own with `syntrac-service --version`.
-2. `scripts\deverify.ps1` must pass.
+2. `scripts\dev\verify.ps1` must pass.
 3. Run the sandbox test and the pages test (below); both need to pass. They build the installer into `target\installer-test\good`: **release that copy**, the one that was tested. (The test also builds an installer with a stand-in service; its file name ends `-TEST-ONLY.exe`: never release it.)
 4. Commit, then tag: `git tag -a v<version> -m "SYNTRAC <version>"`. Push the commit and the tag only when the owner says so.
 5. Attach `SYNTRAC_<version>_x64-setup.exe` to the release together with its SHA-256 (printed by the build) and say that it is unsigned.
@@ -38,7 +38,7 @@ Try it in Windows Sandbox or a virtual machine (see [Testing the installer](#tes
 
 | Where | What |
 |---|---|
-| `C:\Program Files\SYNTRAC\SYNTRAC.exe` | the app (Start menu entry) |
+| `C:\Program Files\SYNTRAC\syntrac-app.exe` | the app (Start menu entry) |
 | `C:\Program Files\SYNTRAC\setup\` | the payload the installer runs from: the service program, its config template, the deploy scripts |
 | `C:\Program Files\SYNTRAC\bin\syntrac-service.exe` | the running service program (made by the install script) |
 | `C:\Program Files\SYNTRAC\config\service.toml` | the service's configuration (made once, then kept) |
@@ -68,7 +68,7 @@ Run the new installer over the old one. The service is upgraded in place and rol
 4. when the new version has opened the data and it passes its check, the database copy is removed. If that cannot be confirmed, the copy is **kept** and the
    log says where.
 
-What is **not** rolled back: the app's own files (`SYNTRAC.exe`), which the installer replaces before it sets up the service. The app only reads, so an
+What is **not** rolled back: the app's own files (`syntrac-app.exe`), which the installer replaces before it sets up the service. The app only reads, so an
 older service with a newer app is a cosmetic mismatch at worst; run the previous installer to put the whole old version back.
 
 The log of an install is `%TEMP%\SYNTRAC-setup.log` (of the administrator account that ran it).
@@ -93,7 +93,7 @@ The installer is **not signed**. Windows SmartScreen therefore shows "Windows pr
 info**, then **Run anyway**, after you have checked the SHA-256 that the release lists against the downloaded file:
 
 ```powershell
-(Get-FileHash .\SYNTRAC_0.1.0_x64-setup.exe -Algorithm SHA256).Hash
+(Get-FileHash .\SYNTRAC_<version>_x64-setup.exe -Algorithm SHA256).Hash
 ```
 
 ### Signing (not enabled)
@@ -117,16 +117,14 @@ The behaviour above is tested in two layers:
   Containers-DisposableClientVM -All`, then restart) and a closed Sandbox window:
 
   ```powershell
-  powershell -ExecutionPolicy Bypass -File scripts
-elease\sandbox
-un-installer-test.ps1
+  powershell -ExecutionPolicy Bypass -File scripts\release\sandbox\run-installer-test.ps1
   ```
 
-  `-Pages` instead takes a picture of every page of the installer and uninstaller (`target\installer-test
-esults\pages`). The checks build the installer, run 28 checks and writes `target\installer-test
-esults
-eport.txt` and the installers' logs. It passed on 2026-11-22. What it
-  does not cover: a release that raises the database schema (the copy-and-restore path), and the installer's pages used by hand.
+  It builds the installer, runs 33 checks and writes `target\installer-test\results\report.txt` and the installers' logs. Among them: an upgrade while
+  the app is open (the silent installer closes it) and a check that the install log names the database's schema. `-Pages` instead takes a picture of every
+  page of the installer and uninstaller (`target\installer-test\results\pages`); its second install runs with the app open, so the box that asks to close it
+  is photographed. What the tests do not cover: a release that raises the database schema (the copy-and-restore path), and the installer used by hand on a
+  real machine beyond the upgrade of 2026-11-22 (same schema, the app open from another folder).
 
 The programs are built with the Visual C++ runtime linked in, and the build refuses to produce an installer if either still imports it: a clean Windows does not
 have that runtime.

@@ -65,6 +65,18 @@ Check 'the config was kept as it was' ((Hash $configFile) -eq $configBefore)
 Check 'the database is still there' (Test-Path $database)
 Check 'the previous program was kept for a rollback' (Test-Path "$serviceExe.previous")
 
+# 2b. An upgrade while the app is open: the silent installer closes it, then finishes as usual.
+# The schema line shows the quick read of the database's schema was used (the full check takes minutes on a large database).
+Check 'the install log says which schema the database has' ((Test-Path $setupLog) -and ((Get-Content $setupLog -Raw) -match 'Database: schema v\d+'))
+$appExe = Join-Path $installDir 'syntrac-app.exe'
+$appProcess = Start-Process -FilePath $appExe -PassThru
+Check 'the app is running before the upgrade' (-not $appProcess.HasExited)
+Start-Sleep -Seconds 5
+$code = Install $good
+Check 'an upgrade with the app open exits 0' ($code -eq 0) "exit code $code"
+Check 'the open app was closed by the installer' (Wait-For { $appProcess.HasExited } 30)
+Check 'the service is running after it' (Wait-For { (Get-State) -eq 'Running' }) (Get-State)
+
 # 3. An installer replacing this version runs the old uninstaller in place: that must leave the service alone.
 Start-Process -FilePath (Join-Path $installDir 'uninstall.exe') -ArgumentList '/S', "_?=$installDir" -Wait | Out-Null
 Check 'the in-place uninstall of an upgrade leaves the service running' ((Get-State) -eq 'Running') (Get-State)

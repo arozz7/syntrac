@@ -32,6 +32,8 @@ pub struct CliArgs {
     pub ping: bool,
     /// Inspect this database file (integrity, schema version, rows per table) and exit.
     pub check_db: Option<PathBuf>,
+    /// Print only the schema version of this database file and exit: quick on a large database, unlike `--check-db`.
+    pub db_schema: Option<PathBuf>,
     /// Print the program version and the newest database schema it understands, and exit (the installer compares it with the database).
     pub version: bool,
     /// Pipe to query for `--status` / `--ping` (default: the installed service's).
@@ -55,6 +57,7 @@ OPTIONS:
     --ping             Check that a running collector answers and exit
     --pipe <name>      Pipe for --status / --ping (default: syntrac-collector, the installed service)
     --check-db <file>  Inspect a database file (integrity, schema version, rows per table) and exit
+    --db-schema <file> Print only the schema version of a database file and exit (quick; --check-db reads the whole file)
     --version          Print the program version and the newest database schema it understands, and exit
     -h, --help         Show this help
 
@@ -83,6 +86,7 @@ impl CliArgs {
                 "--ping" => parsed.ping = true,
                 "--pipe" => parsed.pipe = Some(value(&mut args, &arg)?),
                 "--check-db" => parsed.check_db = Some(PathBuf::from(value(&mut args, &arg)?)),
+                "--db-schema" => parsed.db_schema = Some(PathBuf::from(value(&mut args, &arg)?)),
                 "--summary-file" => parsed.summary_file = Some(PathBuf::from(value(&mut args, &arg)?)),
                 "--version" => parsed.version = true,
                 "-h" | "--help" => parsed.help = true,

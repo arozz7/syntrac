@@ -52,4 +52,4 @@ mod trends;
 mod usage;
 
 pub use connection::SqliteStore;
-pub use inspect::{inspect_database, DatabaseReport};
+pub use inspect::{inspect_database, read_schema_version, DatabaseReport};

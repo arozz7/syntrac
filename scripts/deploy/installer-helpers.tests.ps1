@@ -61,6 +61,10 @@ $plan = Get-UpgradePlan -ShippedSchema 16 -DatabaseSchema $null -DatabaseBytes 0
 Assert-That 'a first install has no database to copy' ($plan.CanProceed -and -not $plan.NeedsDatabaseCopy)
 $plan = Get-UpgradePlan -ShippedSchema $null -DatabaseSchema 15 -DatabaseBytes 100 -FreeBytes (10 * $GB)
 Assert-That 'a new version that cannot say its schema is not installed over a database' (-not $plan.CanProceed)
+$plan = Get-UpgradePlan -ShippedSchema 16 -DatabaseSchema $null -DatabaseExists $true -DatabaseBytes (2 * $GB) -FreeBytes (10 * $GB)
+Assert-That 'a database whose schema could not be read is not upgraded without a copy' ((-not $plan.CanProceed) -and ($plan.Reason -like '*could not read*'))
+$plan = Get-UpgradePlan -ShippedSchema 16 -DatabaseSchema 16 -DatabaseExists $true -DatabaseBytes (2 * $GB) -FreeBytes 0
+Assert-That 'a database whose schema was read is judged by it' ($plan.CanProceed -and -not $plan.NeedsDatabaseCopy)
 
 # --- what a rollback does
 $steps = @(Get-RollbackSteps -HadPreviousProgram $true -HadConfigCopy $true -HadDatabaseCopy $true -WasRunning $true)

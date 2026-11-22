@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use syntrac_core::EventRepository;
-use syntrac_store::{inspect_database, SqliteStore};
+use syntrac_store::{inspect_database, read_schema_version, SqliteStore};
 use syntrac_testkit::fixtures::{at_secs, process_started, EventFactory};
 
 fn database_with_some_data(path: &Path) {
@@ -112,4 +112,45 @@ fn a_database_that_is_damaged_in_the_middle_is_reported_as_failing_the_integrity
     if let Ok(report) = inspect_database(&path) {
         assert!(!report.integrity_ok, "damage must not look healthy");
     }
+}
+
+// --- reading only the schema version (what the installer needs; the full inspection reads the whole file)
+
+#[test]
+fn the_schema_version_alone_is_read_from_a_database() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("db.sqlite");
+    database_with_some_data(&path);
+
+    assert_eq!(read_schema_version(&path).unwrap(), SqliteStore::LATEST_SCHEMA_VERSION);
+}
+
+#[test]
+fn reading_the_schema_version_of_a_missing_file_is_an_error_and_creates_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("absent.sqlite");
+
+    assert!(read_schema_version(&path).is_err());
+    assert!(!path.exists());
+}
+
+#[test]
+fn reading_the_schema_version_of_something_that_is_not_a_database_is_an_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("not-a-database.sqlite");
+    std::fs::write(&path, vec![0x41u8; 8192]).unwrap();
+
+    assert!(read_schema_version(&path).is_err());
+}
+
+#[test]
+fn reading_the_schema_version_leaves_the_database_as_it_was() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("db.sqlite");
+    database_with_some_data(&path);
+    let before = inspect_database(&path).unwrap();
+
+    read_schema_version(&path).unwrap();
+
+    assert_eq!(inspect_database(&path).unwrap(), before);
 }

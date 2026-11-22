@@ -13,8 +13,9 @@ use std::time::Duration;
 use syntrac_ipc::pipe::{request, ClientError};
 use syntrac_ipc::protocol::{Request, Response};
 use syntrac_service::{
-    database_check_passed, format_database_report, format_status, format_version_report, run_host, CliArgs, HostError,
-    HostOptions, PipeOptions, ServiceConfig, CONSOLE_PIPE_NAME, DEFAULT_SHUTDOWN_LIMIT, SERVICE_PIPE_NAME, USAGE,
+    database_check_passed, format_database_report, format_schema_line, format_status, format_version_report, run_host,
+    CliArgs, HostError, HostOptions, PipeOptions, ServiceConfig, CONSOLE_PIPE_NAME, DEFAULT_SHUTDOWN_LIMIT,
+    SERVICE_PIPE_NAME, USAGE,
 };
 use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
@@ -54,6 +55,9 @@ fn main() -> ExitCode {
     if args.status || args.ping {
         return run_client(&args);
     }
+    if let Some(path) = &args.db_schema {
+        return run_db_schema(path);
+    }
     if let Some(path) = &args.check_db {
         return run_check_db(path);
     }
@@ -81,6 +85,20 @@ fn main() -> ExitCode {
         Err(HostError::Failed(message)) => {
             error!(error = %message, "Collector stopped with an error");
             eprintln!("error: {message}");
+            ExitCode::from(EXIT_FAILURE)
+        }
+    }
+}
+
+/// `--db-schema <file>`: prints only the schema version, read-only and quick however large the file is. Exit 0 when it was read.
+fn run_db_schema(path: &Path) -> ExitCode {
+    match syntrac_store::read_schema_version(path) {
+        Ok(version) => {
+            print!("{}", format_schema_line(version));
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("error: could not read the schema version of {}: {error}", path.display());
             ExitCode::from(EXIT_FAILURE)
         }
     }

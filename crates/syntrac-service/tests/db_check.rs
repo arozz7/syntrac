@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use syntrac_service::{database_check_passed, format_database_report};
+use syntrac_service::{database_check_passed, format_database_report, format_schema_line};
 use syntrac_store::DatabaseReport;
 
 fn report(integrity: &str, tables: &[(&str, u64)]) -> DatabaseReport {
@@ -59,4 +59,9 @@ fn the_version_report_names_the_program_version_and_the_newest_database_schema_i
         ["syntrac-service 1.2.3", "schema:    v15"],
         "a script reads the second line, so the format is fixed"
     );
+}
+
+#[test]
+fn the_schema_line_is_exactly_what_the_installer_reads() {
+    assert_eq!(format_schema_line(16), "schema:    v16\n");
 }

@@ -65,3 +65,10 @@ fn the_version_option_is_read() {
     assert!(parse(&["--version"]).unwrap().version);
     assert!(!parse(&[]).unwrap().version);
 }
+
+#[test]
+fn db_schema_takes_a_file_and_needs_one() {
+    let args = parse(&["--db-schema", r"D:\Syntrac\data\syntrac.db"]).unwrap();
+    assert_eq!(args.db_schema, Some(PathBuf::from(r"D:\Syntrac\data\syntrac.db")));
+    assert!(matches!(parse(&["--db-schema"]), Err(syntrac_service::CliError::MissingValue(_))));
+}
