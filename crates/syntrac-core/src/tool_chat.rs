@@ -58,6 +58,10 @@ pub struct TurnReply {
     pub tool_calls: Vec<ToolCall>,
     /// The server stopped at the length limit: `content` is cut off.
     pub cut_off: bool,
+    /// The calls were written by the model as `<tool_call>` text (a server that does not parse them itself), so the turn goes back as text.
+    pub calls_as_text: bool,
+    /// The text holds a `<tool_call>` tag that could not be read as a call (broken JSON, or cut off): worth telling the model, not an answer.
+    pub tried_a_call: bool,
 }
 
 fn message_json(message: &TurnMessage) -> Value {
@@ -135,17 +139,63 @@ pub fn parse_turn_reply(text: &str) -> Result<TurnReply, LlmError> {
         .and_then(Value::as_array)
         .map(|calls| calls.iter().enumerate().filter_map(|(index, call)| tool_call(index, call)).collect())
         .unwrap_or_default();
-    let mut content = text_of("content").unwrap_or_default().to_owned();
+    let (visible, thinking_chars) = strip_thinking(text_of("content").unwrap_or_default());
+    let mut content = visible;
+    let (mut calls_as_text, mut tried_a_call) = (false, false);
     if tool_calls.is_empty() {
         // A server that does not parse tool calls itself hands back what the model wrote: calls in `<tool_call>` tags.
         (content, tool_calls) = tagged_calls(&content);
+        calls_as_text = !tool_calls.is_empty();
+        tried_a_call = tool_calls.is_empty() && content.contains(CALL_OPEN);
     }
+    let reasoning_chars =
+        text_of("reasoning_content").or_else(|| text_of("reasoning")).map_or(0, |t| t.chars().count());
     Ok(TurnReply {
         content,
-        reasoning_chars: text_of("reasoning_content").or_else(|| text_of("reasoning")).map_or(0, |t| t.chars().count()),
+        reasoning_chars: reasoning_chars + thinking_chars,
         tool_calls,
         cut_off: choice.get("finish_reason").and_then(Value::as_str) == Some("length"),
+        calls_as_text,
+        tried_a_call,
     })
+}
+
+const THINK_OPEN: &str = "<think>";
+const THINK_CLOSE: &str = "</think>";
+
+/// The text without its `<think>...</think>` traces (one that never ends is dropped to the end), and how many characters of thinking there were.
+fn strip_thinking(text: &str) -> (String, usize) {
+    let mut visible = String::new();
+    let mut thinking = 0;
+    let mut remaining = text;
+    while let Some(start) = remaining.find(THINK_OPEN) {
+        visible.push_str(&remaining[..start]);
+        let after = &remaining[start + THINK_OPEN.len()..];
+        match after.find(THINK_CLOSE) {
+            Some(end) => {
+                thinking += after[..end].chars().count();
+                remaining = &after[end + THINK_CLOSE.len()..];
+            }
+            None => {
+                thinking += after.chars().count();
+                remaining = "";
+            }
+        }
+    }
+    visible.push_str(remaining);
+    (visible.trim().to_owned(), thinking)
+}
+
+/// A call as the model writes it in text: the tag, holding a JSON object with its name and arguments.
+pub fn render_call_as_text(call: &ToolCall) -> String {
+    let arguments =
+        serde_json::from_str::<Value>(&call.arguments).unwrap_or_else(|_| Value::String(call.arguments.clone()));
+    format!(
+        "{CALL_OPEN}
+{}
+{CALL_CLOSE}",
+        json!({ "name": call.name, "arguments": arguments })
+    )
 }
 
 fn tool_call(index: usize, call: &Value) -> Option<ToolCall> {

@@ -38,6 +38,13 @@ only read. Off unless the AI help is on; nothing runs until **Ask** is pressed.
 ## Found on the user's own server
 A real server answered with the call as text, `<tool_call>{"name": ..., "arguments": ...}</tool_call>`, in the answer instead of a structured call (the server was not parsing tool calls), so nothing ran and the page showed the raw text as the answer. `parse_turn_reply` now reads tagged calls (at most 8 per reply, only when the server gave no structured ones; a block that is not a call stays in the text). Tests first in `tests/tool_chat.rs`.
 
+## Learned from the owner's other agent project (same local server)
+The owner's separate coding-agent project (its tool-calling notes and parsing code) records how this server behaves: its non-streaming reply is the raw text with `<tool_call>` tags (no structured field), it runs with server-level thinking (traces of ~1,500 tokens are ordinary, and a turn that runs out of room inside its thinking returns nothing), and it passes `role: "tool"` straight to the chat template. Applied here, tests first:
+- `<think>` traces are removed from the reply and counted, so a call merely mentioned while thinking is never run, and an unfinished trace leaves no answer.
+- A call the model wrote as text goes back as text in the model's turn (tags included) with no structured `tool_calls`, so the template shows the model its own call.
+- A `<tool_call>` tag that cannot be read (broken JSON, or cut off) is told to the model (`bad_call_nudge` in `question.toml`), at most twice, instead of being shown as the answer.
+- The per-turn answer cap is 6,000 tokens (was 1,500), for the same reason that project raised its own to 8,192.
+
 ## Not yet checked
 The round trip has been seen once against the user's own server (above); the fix for what it returned is tested only with text from that reply, not yet re-run against it.
 

@@ -26,8 +26,9 @@ use crate::question_tools::{question_registry, QuestionData};
 const KEPT_JOBS: usize = 8;
 /// The longest question taken, in characters.
 const MAX_QUESTION_CHARS: usize = 500;
-/// The longest one turn may answer. A model that thinks first spends part of this on thinking.
-const MAX_TURN_TOKENS: u32 = 1500;
+/// The longest one turn may answer. A model that thinks first spends a good part of this on thinking (a trace of 1,500 tokens is ordinary), and
+/// a turn that runs out of room inside its thinking says nothing at all.
+const MAX_TURN_TOKENS: u32 = 6000;
 const TEMPERATURE: f64 = 0.2;
 
 /// What the loop may use. A small local model has a small window, so a result and the whole conversation are kept short.
@@ -235,6 +236,7 @@ impl Questioner {
             model: settings.model.trim().to_owned(),
             system: self.config.system.trim().to_owned(),
             final_request: self.config.final_request.trim().to_owned(),
+            bad_call_nudge: self.config.bad_call_nudge.trim().to_owned(),
             user_name: self.user_name.clone(),
             limits: self.limits,
             max_tokens: Some(MAX_TURN_TOKENS),

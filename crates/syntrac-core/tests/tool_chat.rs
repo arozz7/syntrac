@@ -233,3 +233,59 @@ fn no_more_than_a_few_tagged_calls_are_taken() {
     let many = "<tool_call>{\"name\":\"a\",\"arguments\":{}}</tool_call>".repeat(50);
     assert!(text_reply(&many).tool_calls.len() <= 8);
 }
+
+// ---- thinking traces and calls written as text (learned from the coding-agent project's notes on the same local server)
+
+#[test]
+fn a_thinking_trace_is_removed_from_the_answer_and_counted() {
+    let parsed = text_reply("<think>Let me work this out.</think>It is the browser.");
+    assert_eq!(parsed.content, "It is the browser.");
+    assert_eq!(parsed.reasoning_chars, "Let me work this out.".chars().count());
+}
+
+#[test]
+fn a_tool_call_mentioned_while_thinking_is_not_a_call() {
+    let parsed = text_reply(
+        "<think>I could write <tool_call>{\"name\":\"delete\",\"arguments\":{}}</tool_call> but no.</think>\
+         <tool_call>{\"name\":\"top_programs\",\"arguments\":{}}</tool_call>",
+    );
+    assert_eq!(parsed.tool_calls.len(), 1);
+    assert_eq!(parsed.tool_calls[0].name, "top_programs");
+}
+
+#[test]
+fn a_thinking_trace_that_never_ends_leaves_no_answer_and_no_call() {
+    let parsed = text_reply("<think>Still thinking about <tool_call>{\"name\":\"x\",\"arguments\":{}}</tool_call>");
+    assert_eq!(parsed.content, "");
+    assert!(parsed.tool_calls.is_empty());
+    assert!(parsed.reasoning_chars > 0);
+}
+
+#[test]
+fn calls_read_from_text_are_marked_so_and_structured_ones_are_not() {
+    assert!(text_reply("<tool_call>{\"name\":\"a\",\"arguments\":{}}</tool_call>").calls_as_text);
+    let structured = reply(json!({"choices": [{"message": {"tool_calls": [
+        {"id": "s", "type": "function", "function": {"name": "a", "arguments": "{}"}}
+    ]}}]}))
+    .unwrap();
+    assert!(!structured.calls_as_text);
+    assert!(!text_reply("plain").calls_as_text);
+}
+
+#[test]
+fn a_call_tag_that_cannot_be_read_is_reported_as_an_attempted_call() {
+    assert!(text_reply("<tool_call>{\"name\": \"a\", \"arguments\": {oops}</tool_call>").tried_a_call);
+    assert!(text_reply("<tool_call>{\"name\": \"a\"").tried_a_call, "an unfinished one counts too");
+    assert!(!text_reply("<tool_call>{\"name\":\"a\",\"arguments\":{}}</tool_call>").tried_a_call);
+    assert!(!text_reply("a plain answer").tried_a_call);
+}
+
+#[test]
+fn a_call_written_as_text_goes_back_as_text_in_the_model_turn() {
+    use syntrac_core::tool_chat::render_call_as_text;
+    let text = render_call_as_text(&call("c", "top_programs", r#"{"metric":"cpu"}"#));
+    assert!(text.starts_with("<tool_call>") && text.trim_end().ends_with("</tool_call>"));
+    let inner: Value =
+        serde_json::from_str(text.trim().trim_start_matches("<tool_call>").trim_end_matches("</tool_call>")).unwrap();
+    assert_eq!(inner, json!({"name": "top_programs", "arguments": {"metric": "cpu"}}));
+}

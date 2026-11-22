@@ -52,6 +52,7 @@ fn setup() -> LoopSetup {
         model: "m".into(),
         system: "You answer questions about this computer.".into(),
         final_request: "Answer now from what you gathered.".into(),
+        bad_call_nudge: "That call could not be read; try again.".into(),
         user_name: None,
         limits: LoopLimits {
             max_calls: 6,
@@ -502,4 +503,61 @@ fn the_placeholders_the_tools_write_reach_the_model_unchanged() {
     assert!(result.contains("<user>") && result.contains("<address>"), "{result}");
     assert_eq!(result.matches("</tool_result>").count(), 1, "{result}");
     assert!(!result.contains("<address2>"), "any other angle-bracket text is still neutralised: {result}");
+}
+
+fn text_call(name: &str, arguments: &str) -> Result<TurnReply, LlmError> {
+    Ok(TurnReply {
+        tool_calls: vec![ToolCall { id: "call_1".into(), name: name.into(), arguments: arguments.into() }],
+        calls_as_text: true,
+        ..TurnReply::default()
+    })
+}
+
+fn broken_call() -> Result<TurnReply, LlmError> {
+    Ok(TurnReply { content: "<tool_call>{oops".into(), tried_a_call: true, ..TurnReply::default() })
+}
+
+#[test]
+fn a_call_the_model_wrote_as_text_goes_back_as_text_and_not_as_a_structured_call() {
+    let tool = facts();
+    let model = ScriptedTurns::new(vec![text_call("program_facts", r#"{"path":"a"}"#), says("done")]);
+
+    ask(&model, &registry(&[&tool]), &setup(), &Watcher::quiet());
+
+    let second = &model.requests()[1];
+    let assistant = second
+        .messages
+        .iter()
+        .find_map(|m| match m {
+            TurnMessage::Assistant { content, tool_calls } => Some((content.clone(), tool_calls.clone())),
+            _ => None,
+        })
+        .expect("the model's turn is in the conversation");
+    assert!(assistant.0.contains("<tool_call>") && assistant.0.contains("program_facts"), "{}", assistant.0);
+    assert!(assistant.1.is_empty(), "a server that did not structure the call is not sent one");
+    assert_eq!(tool_messages(second).len(), 1, "the result still follows");
+}
+
+#[test]
+fn a_broken_call_is_told_to_the_model_which_may_try_again() {
+    let tool = facts();
+    let model = ScriptedTurns::new(vec![broken_call(), text_call("program_facts", "{}"), says("done")]);
+
+    let outcome = ask(&model, &registry(&[&tool]), &setup(), &Watcher::quiet());
+
+    assert_eq!(outcome.answer, "done");
+    assert_eq!(tool.runs().len(), 1);
+    let second = &model.requests()[1];
+    assert_eq!(second.messages.last(), Some(&TurnMessage::User("That call could not be read; try again.".into())));
+    assert!(!second.tools.is_empty(), "tools are still offered after the nudge");
+}
+
+#[test]
+fn a_model_that_keeps_breaking_its_calls_is_not_nudged_for_ever() {
+    let model = ScriptedTurns::new(vec![broken_call(), broken_call(), broken_call(), says("never reached")]);
+
+    let outcome = ask(&model, &registry(&[&facts()]), &setup(), &Watcher::quiet());
+
+    assert_eq!(model.requests().len(), 3, "two nudges, then the third reply is taken as it is");
+    assert_eq!(outcome.stopped, StopReason::Answered);
 }

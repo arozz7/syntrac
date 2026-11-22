@@ -30,6 +30,15 @@ fn a_tool_the_config_does_not_know_has_no_description() {
 
 #[test]
 fn wording_can_be_replaced_from_text() {
-    let config = QuestionConfig::from_toml("system = \"s\"\nfinal_request = \"f\"\n[tools]\nx = \" d \"\n").unwrap();
+    let config = QuestionConfig::from_toml(
+        "system = \"s\"\nfinal_request = \"f\"\nbad_call_nudge = \"n\"\n[tools]\nx = \" d \"\n",
+    )
+    .unwrap();
     assert_eq!((config.system.as_str(), config.describe("x").as_str()), ("s", "d"));
+}
+
+#[test]
+fn the_nudge_for_an_unreadable_call_shows_the_format_to_use() {
+    let nudge = QuestionConfig::builtin().bad_call_nudge;
+    assert!(nudge.contains("<tool_call>") && nudge.contains("valid JSON"));
 }

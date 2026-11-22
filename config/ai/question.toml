@@ -14,6 +14,10 @@ final_request = """
 Answer the question now, in plain text, using only what the tool results above showed. Do not ask for more tools.
 """
 
+bad_call_nudge = """
+That tool call could not be read. Write exactly one tool call as <tool_call>{"name": "...", "arguments": {...}}</tool_call> with valid JSON, or answer in plain text.
+"""
+
 [tools]
 program_facts = "What is recorded about one program: who made it, where it runs from, whether it is signed, how it starts, its recent CPU and memory, and where it connected. Give the full path of a program that was recorded."
 list_findings = "The findings the monitor raised, most recent activity first: what each is about and why it was raised."

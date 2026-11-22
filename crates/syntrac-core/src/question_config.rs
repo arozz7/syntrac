@@ -10,6 +10,8 @@ pub struct QuestionConfig {
     pub system: String,
     /// Sent with the last turn, which is made without tools.
     pub final_request: String,
+    /// Sent when the model wrote a tool call that could not be read.
+    pub bad_call_nudge: String,
     /// What each tool does, in the model's words, by tool name.
     pub tools: BTreeMap<String, String>,
 }

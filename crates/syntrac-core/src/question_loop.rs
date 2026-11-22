@@ -17,9 +17,11 @@ use thiserror::Error;
 use crate::clean_text::clean_text;
 use crate::investigate::redact_user_name;
 use crate::llm::{LlmError, LlmService};
-use crate::tool_chat::{ToolCall, ToolSpec, TurnMessage, TurnRequest};
+use crate::tool_chat::{render_call_as_text, ToolCall, ToolSpec, TurnMessage, TurnReply, TurnRequest};
 
 /// Room that must be left in the conversation for another tool result to be worth fetching.
+/// How many times a call that could not be read is told to the model before its reply is taken as the answer.
+const MAX_NUDGES: usize = 2;
 const MIN_ROOM_BYTES: usize = 512;
 /// Space kept for the "cut" note when a result is shortened.
 const CUT_NOTE_RESERVE: usize = 64;
@@ -90,6 +92,8 @@ pub struct LoopSetup {
     pub system: String,
     /// The message that asks for an answer from what was gathered, sent with the last turn.
     pub final_request: String,
+    /// Sent when the model wrote a tool call that could not be read, so it can try again.
+    pub bad_call_nudge: String,
     /// The Windows user name, replaced by `<user>` in everything that goes to the model or to the page.
     pub user_name: Option<String>,
     pub limits: LoopLimits,
@@ -170,6 +174,7 @@ struct Loop<'a> {
     calls: Vec<CallRecord>,
     already_asked: HashSet<(String, String)>,
     reasoning_chars: usize,
+    nudges: usize,
     /// Set when the conversation is full: the next turn is the last.
     full: bool,
 }
@@ -193,6 +198,7 @@ impl<'a> Loop<'a> {
             calls: Vec::new(),
             already_asked: HashSet::new(),
             reasoning_chars: 0,
+            nudges: 0,
             full: false,
         }
     }
@@ -213,11 +219,15 @@ impl<'a> Loop<'a> {
                 return Ok(self.outcome(reply.content.trim().to_owned(), reply.cut_off, reason));
             }
             if reply.tool_calls.is_empty() {
+                if reply.tried_a_call && self.nudges < MAX_NUDGES && self.room() >= MIN_ROOM_BYTES {
+                    self.nudge(&reply.content);
+                    continue;
+                }
                 return Ok(self.outcome(reply.content.trim().to_owned(), reply.cut_off, StopReason::Answered));
             }
-            self.used_bytes +=
-                reply.content.len() + reply.tool_calls.iter().map(|c| c.name.len() + c.arguments.len()).sum::<usize>();
-            self.messages.push(TurnMessage::Assistant { content: reply.content, tool_calls: reply.tool_calls.clone() });
+            let model_turn = self.model_turn(&reply);
+            self.used_bytes += content_bytes(&model_turn);
+            self.messages.push(model_turn);
             for call in &reply.tool_calls {
                 if self.observer.cancelled() {
                     return Ok(self.outcome(String::new(), false, StopReason::Cancelled));
@@ -226,6 +236,26 @@ impl<'a> Loop<'a> {
             }
             self.full = self.room() < MIN_ROOM_BYTES;
         }
+    }
+
+    /// The model's turn as it goes back into the conversation. A call the model wrote as text goes back as text (the server never structured it,
+    /// so its chat template shows the model its own call); one the server structured goes back structured, exactly as received.
+    fn model_turn(&self, reply: &TurnReply) -> TurnMessage {
+        if reply.calls_as_text {
+            let calls: Vec<String> = reply.tool_calls.iter().map(render_call_as_text).collect();
+            let content = format!("{}\n{}", reply.content, calls.join("\n")).trim().to_owned();
+            TurnMessage::Assistant { content, tool_calls: Vec::new() }
+        } else {
+            TurnMessage::Assistant { content: reply.content.clone(), tool_calls: reply.tool_calls.clone() }
+        }
+    }
+
+    /// Tells the model its call could not be read, so it can try again.
+    fn nudge(&mut self, what_it_wrote: &str) {
+        self.nudges += 1;
+        self.used_bytes += what_it_wrote.len() + self.setup.bad_call_nudge.len();
+        self.messages.push(TurnMessage::Assistant { content: what_it_wrote.to_owned(), tool_calls: Vec::new() });
+        self.messages.push(TurnMessage::User(self.setup.bad_call_nudge.clone()));
     }
 
     /// Why the next turn must be the last, if it must.
@@ -372,4 +402,15 @@ fn fit(text: &str, max_bytes: usize) -> (String, bool) {
         end -= 1;
     }
     (format!("{}\u{2026} [cut: {} bytes left out]", &text[..end], text.len() - end), true)
+}
+
+/// How many bytes a message adds to the conversation.
+fn content_bytes(message: &TurnMessage) -> usize {
+    match message {
+        TurnMessage::Assistant { content, tool_calls } => {
+            content.len() + tool_calls.iter().map(|c| c.name.len() + c.arguments.len()).sum::<usize>()
+        }
+        TurnMessage::System(text) | TurnMessage::User(text) => text.len(),
+        TurnMessage::Tool { content, .. } => content.len(),
+    }
 }
