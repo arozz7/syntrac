@@ -14,7 +14,8 @@ There is no hosted CI (it is billed per minute); everything is checked on the ma
 4. Commit, then tag: `git tag -a v<version> -m "SYNTRAC <version>"`. Push the commit and the tag only when the owner says so.
 5. Attach `SYNTRAC_<version>_x64-setup.exe` to the release together with its SHA-256 (printed by the build) and say that it is unsigned.
 
-Releases so far: **v0.7.0** is the first with an installer.
+Releases so far: **v0.7.0** is the first with an installer. **v0.7.1** reads the database's schema quickly during an upgrade (`--db-schema`, in place of a
+full check that took minutes on a large database).
 
 ## Build it
 
