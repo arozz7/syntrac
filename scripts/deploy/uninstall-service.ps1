@@ -4,6 +4,8 @@
 # program files are kept. Deleting them needs an explicit switch, so a quick uninstall can never remove your history.
 param(
     [switch]$RemoveProgramFiles,
+    # Removes only the program folder (bin\), keeping the config and the data. What the installer's uninstaller asks for.
+    [switch]$RemoveBinaries,
     [switch]$RemoveData,
     [string]$InstallDir = (Join-Path $env:ProgramFiles 'Syntrac'),
     # Which data folder -RemoveData would delete. Default: the one the installed config points at (the data may have been
@@ -36,6 +38,13 @@ if ($service) {
     Write-Host 'The service is not registered.'
 }
 
+if ($RemoveBinaries -and -not $RemoveProgramFiles) {
+    $binFolder = Join-Path $InstallDir 'bin'
+    if (Test-Path $binFolder) {
+        Remove-Item -Recurse -Force $binFolder
+        Write-Host "Removed $binFolder (the program); the configuration is kept."
+    }
+}
 if ($RemoveProgramFiles -and (Test-Path $InstallDir)) {
     Remove-Item -Recurse -Force $InstallDir
     Write-Host "Removed $InstallDir"
@@ -46,5 +55,6 @@ if ($RemoveData -and (Test-Path $DataDir)) {
 }
 
 Write-Host ''
-if (-not $RemoveProgramFiles) { Write-Host "Kept: $InstallDir (program files and config)" }
+if (-not $RemoveProgramFiles -and -not $RemoveBinaries) { Write-Host "Kept: $InstallDir (program files and config)" }
+if ($RemoveBinaries -and -not $RemoveProgramFiles) { Write-Host "Kept: $InstallDir\config (configuration)" }
 if (-not $RemoveData) { Write-Host "Kept: $DataDir (database and logs)" }

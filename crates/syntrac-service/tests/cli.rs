@@ -59,3 +59,9 @@ fn check_db_takes_a_file_and_needs_one() {
     assert_eq!(args.check_db, Some(PathBuf::from(r"D:\Syntrac\data\syntrac.db")));
     assert!(matches!(parse(&["--check-db"]), Err(syntrac_service::CliError::MissingValue(_))));
 }
+
+#[test]
+fn the_version_option_is_read() {
+    assert!(parse(&["--version"]).unwrap().version);
+    assert!(!parse(&[]).unwrap().version);
+}

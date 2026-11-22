@@ -13,8 +13,8 @@ use std::time::Duration;
 use syntrac_ipc::pipe::{request, ClientError};
 use syntrac_ipc::protocol::{Request, Response};
 use syntrac_service::{
-    database_check_passed, format_database_report, format_status, run_host, CliArgs, HostError, HostOptions,
-    PipeOptions, ServiceConfig, CONSOLE_PIPE_NAME, DEFAULT_SHUTDOWN_LIMIT, SERVICE_PIPE_NAME, USAGE,
+    database_check_passed, format_database_report, format_status, format_version_report, run_host, CliArgs, HostError,
+    HostOptions, PipeOptions, ServiceConfig, CONSOLE_PIPE_NAME, DEFAULT_SHUTDOWN_LIMIT, SERVICE_PIPE_NAME, USAGE,
 };
 use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
@@ -42,6 +42,13 @@ fn main() -> ExitCode {
     };
     if args.help {
         println!("{USAGE}");
+        return ExitCode::SUCCESS;
+    }
+    if args.version {
+        print!(
+            "{}",
+            format_version_report(env!("CARGO_PKG_VERSION"), syntrac_store::SqliteStore::LATEST_SCHEMA_VERSION)
+        );
         return ExitCode::SUCCESS;
     }
     if args.status || args.ping {

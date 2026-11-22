@@ -110,7 +110,9 @@ was sent. SYNTRAC never talks to the Internet for this; detection never uses it;
 ## Quick start (installing for real)
 
 SYNTRAC is two parts: an elevated Windows **service** that collects the data into a local SQLite database, and an unelevated
-**Tauri 2 + React app** that reads it. There is no installer yet; both are built from this repository.
+**Tauri 2 + React app** that reads it. There is no released installer yet: both are built from this repository, as below. An installer can be
+built with `scripts/release/build-installer.ps1` (see [docs/RELEASE.md](docs/RELEASE.md)); it is unsigned and has not yet been tried in a clean Windows,
+so the steps below are the supported way for now.
 
 ```powershell
 # build and check everything (format, lint, build, tests, file sizes)
@@ -167,7 +169,7 @@ tests run against an in-memory store and the SQLite store, so they cannot drift 
 
 Built: collection (ETW, snapshots, metrics, GPU), storage with rollups and a storage guard, program identity and
 how programs start, the network and owner views, findings (new things, usage, known patterns), live and historical GPU views, the tray
-icon with toasts and start with Windows, and the demo. An optional, off-by-default **AI help** is built: an Investigate button that asks a model server on this machine (which it can start for you, on a button), remembers the answers, and can prepare a reduced text to copy for an outside assistant. Also built: a History process tree, a connection map and a question box for the AI help. Not built: an installer. [docs/PLAN.md](docs/PLAN.md) has the full plan.
+icon with toasts and start with Windows, and the demo. An optional, off-by-default **AI help** is built: an Investigate button that asks a model server on this machine (which it can start for you, on a button), remembers the answers, and can prepare a reduced text to copy for an outside assistant. Also built: a History process tree, a connection map and a question box for the AI help. An installer can be built (unsigned; [docs/RELEASE.md](docs/RELEASE.md)) but has not yet passed its test in a clean Windows. [docs/PLAN.md](docs/PLAN.md) has the full plan.
 
 ## Development
 

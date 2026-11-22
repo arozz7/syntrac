@@ -49,3 +49,14 @@ fn a_database_that_fails_its_integrity_check_does_not_pass_and_says_why() {
 fn a_healthy_database_passes() {
     assert!(database_check_passed(&report("ok", &[])));
 }
+
+#[test]
+fn the_version_report_names_the_program_version_and_the_newest_database_schema_it_knows() {
+    let text = syntrac_service::format_version_report("1.2.3", 15);
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(
+        lines,
+        ["syntrac-service 1.2.3", "schema:    v15"],
+        "a script reads the second line, so the format is fixed"
+    );
+}

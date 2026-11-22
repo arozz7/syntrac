@@ -31,5 +31,9 @@ path = "src/bin/demo_collector.rs"
 name = "demo-model"
 path = "src/bin/demo_model.rs"
 
+[[bin]]
+name = "broken-service"
+path = "src/bin/broken_service.rs"
+
 [lints]
 workspace = true

@@ -1,0 +1,20 @@
+{
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "publisher": "The SYNTRAC authors",
+    "copyright": "Copyright (c) 2026 The SYNTRAC authors",
+    "shortDescription": "Local workstation activity monitor",
+    "licenseFile": "../../LICENSE",
+    "resources": {
+      "installer-stage/setup/": "setup/"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "perMachine",
+        "installerHooks": "installer/hooks.nsh",
+        "languages": ["English"]
+      }
+    }
+  }
+}

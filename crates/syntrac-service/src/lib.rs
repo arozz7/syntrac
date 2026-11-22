@@ -21,7 +21,7 @@ pub use cli::{CliArgs, CliError, USAGE};
 pub use collector::{Collector, CollectorSettings, TickReport, Totals};
 pub use config::{ConfigError, ServiceConfig};
 pub use context_worker::{ContextTick, ContextWorker, ContextWorkerSettings};
-pub use db_check::{database_check_passed, format_database_report};
+pub use db_check::{database_check_passed, format_database_report, format_version_report};
 pub use detect_worker::{DetectTick, DetectWorker, DetectWorkerSettings};
 pub use findings_admin::{FindingsAdmin, FindingsControl};
 pub use guard::StorageSnapshot;

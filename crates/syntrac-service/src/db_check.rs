@@ -26,3 +26,12 @@ pub fn format_database_report(path: &Path, report: &DatabaseReport) -> String {
 pub fn database_check_passed(report: &DatabaseReport) -> bool {
     report.integrity_ok
 }
+
+/// The text printed by `syntrac-service --version`: the program version, then the newest schema it can open. The installer reads the second line.
+pub fn format_version_report(version: &str, latest_schema: u32) -> String {
+    format!(
+        "syntrac-service {version}
+schema:    v{latest_schema}
+"
+    )
+}

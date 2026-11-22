@@ -32,6 +32,8 @@ pub struct CliArgs {
     pub ping: bool,
     /// Inspect this database file (integrity, schema version, rows per table) and exit.
     pub check_db: Option<PathBuf>,
+    /// Print the program version and the newest database schema it understands, and exit (the installer compares it with the database).
+    pub version: bool,
     /// Pipe to query for `--status` / `--ping` (default: the installed service's).
     pub pipe: Option<String>,
     pub help: bool,
@@ -53,6 +55,7 @@ OPTIONS:
     --ping             Check that a running collector answers and exit
     --pipe <name>      Pipe for --status / --ping (default: syntrac-collector, the installed service)
     --check-db <file>  Inspect a database file (integrity, schema version, rows per table) and exit
+    --version          Print the program version and the newest database schema it understands, and exit
     -h, --help         Show this help
 
 ETW needs an elevated (Administrator) terminal.";
@@ -81,6 +84,7 @@ impl CliArgs {
                 "--pipe" => parsed.pipe = Some(value(&mut args, &arg)?),
                 "--check-db" => parsed.check_db = Some(PathBuf::from(value(&mut args, &arg)?)),
                 "--summary-file" => parsed.summary_file = Some(PathBuf::from(value(&mut args, &arg)?)),
+                "--version" => parsed.version = true,
                 "-h" | "--help" => parsed.help = true,
                 _ => return Err(CliError::UnknownOption(arg)),
             }

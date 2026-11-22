@@ -25,3 +25,6 @@ Thumbs.db
 
 # Local dev databases from scripts/dev/run-console.ps1
 /data/
+
+# Built installer payload (scripts/release/build-installer.ps1)
+app/src-tauri/installer-stage/

@@ -55,6 +55,10 @@ Invoke-Step 'deploy scripts: config helper self-test' { & powershell -NoProfile 
 
 Invoke-Step 'deploy scripts: data root self-test' { & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot '../deploy/data-root.tests.ps1') }
 
+Invoke-Step 'deploy scripts: installer decisions self-test' { & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot '../deploy/installer-helpers.tests.ps1') }
+
+Invoke-Step 'release scripts: installer build helpers self-test' { & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot '../release/release-helpers.tests.ps1') }
+
 Invoke-Step 'file size check' { & (Join-Path $PSScriptRoot 'check-file-size.ps1') }
 
 Write-Host ""
