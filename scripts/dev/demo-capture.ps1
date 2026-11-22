@@ -100,6 +100,8 @@ function Save-DemoScreenshots([int]$Port, [string]$OutputFolder) {
     Click-DemoButton $socket 'GPU' -Exact
     Save-DemoShot $socket $OutputFolder 'history-programs-gpu' 1000 1760
     Click-DemoButton $socket 'toolx.exe' -Exact
+    # Choosing a program scrolls its details into view; the picture shows the whole page, the list above them included.
+    Invoke-PageScript $socket "(() => { window.scrollTo(0, 0); return 'ok'; })()" | Out-Null
     Save-DemoShot $socket $OutputFolder 'history-program-detail' 1700 1760
     Click-DemoButton $socket 'Network' -Exact
     Save-DemoShot $socket $OutputFolder 'history-network' 1200

@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiProvider } from '../api/ApiContext';
 import type { Api } from '../api/api';
 import type { InvestigateSubject } from '../api/aiTypes';
-import { aiSettings, investigation, promptPreview } from '../test/fakeAi';
+import { aiSettings, investigation, promptPreview, savedAnswer } from '../test/fakeAi';
+import { formatDateTime } from '../format';
 import { makeFakeApi } from '../test/fakeApi';
 import { AiEnabledProvider } from './AiEnabled';
 import { InvestigateButton } from './InvestigatePanel';
@@ -162,5 +163,71 @@ describe('InvestigateButton: a model that thinks first, and an answer that is cu
     await userEvent.click(screen.getByRole('button', { name: 'Investigate with my model' }));
     expect(await screen.findByText('Finished.')).toBeTruthy();
     expect(screen.queryByText(/length limit/)).toBeNull();
+  });
+});
+
+describe('InvestigateButton: answers kept from an earlier time', () => {
+  const kept = savedAnswer({ subject: SUBJECT, answer: 'Kept: a sync tool.', model: 'big-model' });
+
+  it('shows the kept answer with when it was kept, and asks nothing', async () => {
+    const api = show({ savedAnswer: vi.fn(async () => kept) });
+    await open();
+
+    expect((await screen.findByLabelText('Answer')).textContent).toBe('Kept: a sync tool.');
+    expect(api.savedAnswer).toHaveBeenCalledWith(SUBJECT);
+    expect(screen.getByText(new RegExp(`Saved answer from ${formatDateTime(kept.savedMs)}`))).toBeTruthy();
+    expect(screen.getByText(/big-model/)).toBeTruthy();
+    expect(api.startInvestigation).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Investigate with my model' })).toBeNull();
+    expect(screen.getByText(/What was sent \(summary detail\)/)).toBeTruthy();
+  });
+
+  it('says a kept answer was cut off', async () => {
+    show({ savedAnswer: vi.fn(async () => ({ ...kept, truncated: true })) });
+    await open();
+    expect(await screen.findByText(/reached its length limit/)).toBeTruthy();
+  });
+
+  it('shows no saved-answer line when nothing was kept', async () => {
+    show();
+    await open();
+    await screen.findByRole('button', { name: 'Investigate with my model' });
+    expect(screen.queryByText(/Saved answer from/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Forget the saved answer' })).toBeNull();
+  });
+
+  it('asks the model again only when told to, and then shows the new answer instead', async () => {
+    const api = show({
+      savedAnswer: vi.fn(async () => kept),
+      pollInvestigation: vi.fn(async () => investigation({ answer: 'A fresh answer.' })),
+    });
+    await open();
+    await userEvent.click(await screen.findByRole('button', { name: 'Ask again' }));
+
+    expect(api.startInvestigation).toHaveBeenCalledWith(SUBJECT);
+    await waitFor(() => expect(screen.getByLabelText('Answer').textContent).toBe('A fresh answer.'));
+    expect(screen.queryByText(/Saved answer from/)).toBeNull();
+  });
+
+  it('forgets the kept answer on request and goes back to the first state', async () => {
+    const api = show({ savedAnswer: vi.fn(async () => kept) });
+    await open();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Forget the saved answer' }));
+
+    expect(api.forgetAnswer).toHaveBeenCalledWith(SUBJECT);
+    expect(await screen.findByRole('button', { name: 'Investigate with my model' })).toBeTruthy();
+    expect(screen.queryByLabelText('Answer')).toBeNull();
+  });
+
+  it('reads the kept answer again, and refreshes the marks in the lists, when a new answer finishes', async () => {
+    const api = show();
+    await open();
+    await userEvent.click(await screen.findByRole('button', { name: 'Investigate with my model' }));
+
+    await screen.findByText('Finished.');
+
+    await waitFor(() => expect(vi.mocked(api.savedAnswer).mock.calls.length).toBeGreaterThanOrEqual(2));
+    await waitFor(() => expect(vi.mocked(api.savedAnswers).mock.calls.length).toBeGreaterThanOrEqual(2));
   });
 });

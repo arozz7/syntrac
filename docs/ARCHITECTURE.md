@@ -75,6 +75,7 @@ Client: `syntrac-service --status` / `--ping` (`--pipe <name>`), exit codes 0 ok
 | `EntityRepository` / `ProfileRepository` / `BaselineRepository` / `AlertRepository` | Memory | Planned (Phases 2 and 3) |
 | `FileEnricher`, `IntelProvider` | Tool | Planned (Phases 2 and 3) |
 | `LLMService` | Tool | Phase 4 (optional, off by default): port in `syntrac-core::llm`; adapter `syntrac-llm::HttpLlm` over an OpenAI-compatible server on loopback only (L4a built, see `docs/PHASE4-PLAN.md`) |
+| `InvestigationStore` | Memory | Phase 4 (L4i): the answers of the AI help that were kept, one per program or finding; port and `JsonInvestigationStore` (a JSON file next to the settings file, or memory only) in `app/src-tauri/src/investigation_store.rs`, so the screens never touch the file |
 
 ## Reasoning loop
 

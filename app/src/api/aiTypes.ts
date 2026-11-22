@@ -65,5 +65,25 @@ export interface Investigation {
   level: string;
 }
 
+/** An answer kept from an earlier investigation, so the same subject need not be asked about again. */
+export interface SavedAnswer {
+  subject: InvestigateSubject;
+  answer: string;
+  /** The answer was cut off at the model's length limit. */
+  truncated: boolean;
+  model: string;
+  level: string;
+  /** The evidence block that was sent. */
+  sent: string;
+  /** When it was kept, in milliseconds since 1970. */
+  savedMs: number;
+}
+
+/** That an answer is kept for a subject and since when, without the answer. */
+export interface SavedMark {
+  subject: InvestigateSubject;
+  savedMs: number;
+}
+
 /** A command that can refuse says why, in words for the person. */
 export type AiResult<T> = { ok: true; value: T } | { ok: false; message: string };

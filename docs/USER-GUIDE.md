@@ -182,7 +182,7 @@ findings.
   not read that switch.
 - The tray icon may be under the **^** arrow; drag it to the taskbar to keep it visible.
 
-Your settings (notifications on or off, and the newest finding announced) are in `%LOCALAPPDATA%\Syntrac\app.json`.
+Your settings (notifications on or off, and the newest finding announced) are in `%LOCALAPPDATA%\Syntrac\app.json`. Answers kept by the optional AI help are in `investigations.json` in the same folder.
 
 ## GPU use
 
@@ -241,6 +241,13 @@ Investigate*). Only a full local path to an `.exe` is accepted (no scripts, no n
 stops a server **it started itself**, and only when you press Stop (or tick *Stop ... when SYNTRAC quits*). Leave the launch command empty if
 you start the server yourself.
 
+**Saved answers.** When an answer finishes, SYNTRAC keeps it (in `investigations.json` next to `app.json`), together with the model's name, the
+detail setting, the date and what was sent. Open **Investigate** on the same program or finding later and the saved answer is shown at once with
+its date; nothing is asked of the model until you press **Ask again**. A small **AI note** beside a program (History, Programs) or a finding
+shows that an answer is saved, so you can see what you have already looked into. **Forget the saved answer** removes it. A stopped or failed
+investigation keeps nothing, and a cut-off answer is kept but still says it was cut off. The newest 500 answers are kept. The file stays on
+this machine; with the *Full* detail setting an answer was written from addresses and account names, so it may repeat some of them.
+
 **If the server will not start or ends.** Set the **working folder** to the folder the server expects to run in: many servers read their
 settings file (for example `config.toml`) from the folder they run in, and without it they fall back to built-in defaults and fail. The tab
 shows the folder the command runs in (or says there is none). Whatever the server prints is saved in `model-server.log` next to
@@ -265,7 +272,7 @@ minutes to load, and some servers give up waiting for their model after a fixed 
   running as you could read it too; this is accepted for a personal tool, and [docs/THREAT-MODEL.md](THREAT-MODEL.md) says so.
 - **Checking a database:** `target\release\syntrac-service.exe --check-db <path>` reports the schema, integrity and rows per table,
   read-only.
-- **AI help:** off by default. What it sends to your own server is limited by the detail setting, and the text for an outside assistant is reduced further and shown to you before anything is copied.
+- **AI help:** off by default. What it sends to your own server is limited by the detail setting, and the text for an outside assistant is reduced further and shown to you before anything is copied. Saved answers stay in a file on this machine that you can empty with *Forget the saved answer*.
 - **Sharing screenshots:** the app shows program names, paths, and your user name in paths. Look before you post one.
 
 ## Troubleshooting

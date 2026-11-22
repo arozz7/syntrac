@@ -66,6 +66,9 @@ a fixed set of bounded readers.
 - **L4c: the launcher.** Start, stop and state of the server process behind a trait with a fake, a real Windows adapter (job object, so Stop also ends what the server started), and the commands the page calls. The screen that shows the status comes with the settings section in L4d.
 - **L4d: Investigate.** The button on findings and programs, the streaming panel, cancel, the error states, the *copy a prompt* box with its preview,
   the settings section, the user guide.
+- **L4i: saved answers.** A finished answer is kept (`investigations.json` next to the settings file, behind an `InvestigationStore` interface), shown again
+  at once with its date and model, and marked by an *AI note* in the Programs and Findings lists; *Ask again* replaces it and *Forget* removes it. Failed
+  and stopped runs keep nothing.
 - **L4e (later, optional).** A free-form question box with read-only tools.
 
 ## Out of scope

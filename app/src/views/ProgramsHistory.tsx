@@ -3,6 +3,7 @@ import { useApi } from '../api/ApiContext';
 import type { ProgramMetric, ProgramRowView, ProgramsView } from '../api/types';
 import { DataGate } from '../components/DataGate';
 import { IdentityCell } from '../components/IdentityBadge';
+import { SavedNote } from '../components/SavedNote';
 import { DEFAULT_HISTORY_RANGE_SECS, HISTORY_RANGES } from '../components/historyRanges';
 import { RangePicker } from '../components/RangePicker';
 import { SortHeader } from '../components/SortHeader';
@@ -45,7 +46,8 @@ function ProgramName({
         <button type="button" className="linklike" aria-expanded={expanded} onClick={onToggle}>
           {program.name}
         </button>{' '}
-        <span className="muted">{program.members.length} programs</span>
+        <span className="muted">{program.members.length} programs</span>{' '}
+        <SavedNote subject={program.members.map((member) => ({ kind: 'program', path: member.path }))} />
       </>
     );
   }
@@ -54,9 +56,12 @@ function ProgramName({
   }
   const path = program.path;
   return (
-    <button type="button" className="linklike" onClick={() => onSelect({ name: program.name, path })}>
-      {program.name}
-    </button>
+    <>
+      <button type="button" className="linklike" onClick={() => onSelect({ name: program.name, path })}>
+        {program.name}
+      </button>{' '}
+      <SavedNote subject={{ kind: 'program', path }} />
+    </>
   );
 }
 
@@ -148,7 +153,8 @@ function ProgramsTable({
                       onClick={() => onSelect({ name: member.name, path: member.path })}
                     >
                       {member.name}
-                    </button>
+                    </button>{' '}
+                    <SavedNote subject={{ kind: 'program', path: member.path }} />
                   </td>
                   <td>
                     <IdentityCell identity={member.identity} standing={member.standing} />

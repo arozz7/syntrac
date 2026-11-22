@@ -1,5 +1,14 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { AiResult, AiSettings, AiStatus, InvestigateSubject, Investigation, PromptPreview } from './aiTypes';
+import type {
+  AiResult,
+  AiSettings,
+  AiStatus,
+  InvestigateSubject,
+  Investigation,
+  PromptPreview,
+  SavedAnswer,
+  SavedMark,
+} from './aiTypes';
 import type {
   ConnectionRowView,
   Data,
@@ -106,6 +115,12 @@ export interface Api {
   startInvestigation(subject: InvestigateSubject): Promise<AiResult<number>>;
   pollInvestigation(id: number): Promise<Investigation | null>;
   cancelInvestigation(id: number): Promise<void>;
+  /** The answer kept from an earlier investigation of this subject, or null. */
+  savedAnswer(subject: InvestigateSubject): Promise<SavedAnswer | null>;
+  /** Which subjects have a kept answer and since when (no answers), for marking lists. */
+  savedAnswers(): Promise<SavedMark[]>;
+  /** Throws the kept answer for a subject away. */
+  forgetAnswer(subject: InvestigateSubject): Promise<void>;
   processes(params: ProcessListParams): Promise<Data<ProcessRowView[]>>;
   connections(rangeSecs: number, limit?: number): Promise<Data<ConnectionRowView[]>>;
 }
@@ -253,6 +268,27 @@ export const tauriApi: Api = {
       await invoke('ai_cancel_investigation', { id });
     } catch {
       // Nothing to cancel if the program cannot be reached.
+    }
+  },
+  savedAnswer: async (subject) => {
+    try {
+      return await invoke<SavedAnswer | null>('ai_saved_investigation', { subject });
+    } catch {
+      return null;
+    }
+  },
+  savedAnswers: async () => {
+    try {
+      return await invoke<SavedMark[]>('ai_saved_list');
+    } catch {
+      return [];
+    }
+  },
+  forgetAnswer: async (subject) => {
+    try {
+      await invoke('ai_forget_investigation', { subject });
+    } catch {
+      // Nothing to forget if the program cannot be reached.
     }
   },
 };

@@ -7,6 +7,7 @@ use tauri::State;
 
 use crate::ai_control::{AiControl, AiSettingsDto, AiStatusView};
 use crate::ai_investigate::{InvestigationView, Investigator, PromptPreview, SubjectRef};
+use crate::investigation_store::{SavedInvestigation, SavedMark};
 
 pub type SharedAi = Arc<AiControl>;
 
@@ -75,4 +76,24 @@ pub fn ai_poll_investigation(investigator: State<'_, SharedInvestigator>, id: u6
 #[tauri::command]
 pub fn ai_cancel_investigation(investigator: State<'_, SharedInvestigator>, id: u64) {
     investigator.cancel(id);
+}
+
+/// The answer kept from an earlier investigation of this subject, if there is one.
+#[tauri::command]
+pub fn ai_saved_investigation(
+    investigator: State<'_, SharedInvestigator>,
+    subject: SubjectRef,
+) -> Option<SavedInvestigation> {
+    investigator.saved(&subject)
+}
+
+/// Which subjects have a kept answer and since when, for marking the lists.
+#[tauri::command]
+pub fn ai_saved_list(investigator: State<'_, SharedInvestigator>) -> Vec<SavedMark> {
+    investigator.saved_list()
+}
+
+#[tauri::command]
+pub fn ai_forget_investigation(investigator: State<'_, SharedInvestigator>, subject: SubjectRef) {
+    investigator.forget(&subject);
 }

@@ -1,6 +1,6 @@
 import { vi } from 'vitest';
 import type { Api } from '../api/api';
-import type { AiSettings, AiStatus, Investigation, PromptPreview } from '../api/aiTypes';
+import type { AiSettings, AiStatus, Investigation, PromptPreview, SavedAnswer } from '../api/aiTypes';
 
 /** The AI help as a new installation has it: off and empty. */
 export function aiSettings(patch: Partial<AiSettings> = {}): AiSettings {
@@ -58,6 +58,20 @@ export function promptPreview(patch: Partial<PromptPreview> = {}): PromptPreview
   };
 }
 
+/** An answer kept from an earlier investigation of a finding. */
+export function savedAnswer(patch: Partial<SavedAnswer> = {}): SavedAnswer {
+  return {
+    subject: { kind: 'finding', id: 7 },
+    answer: 'It looked like a sync tool last time.',
+    truncated: false,
+    model: 'some-model',
+    level: 'summary',
+    sent: '<evidence>\n{ "detail_level": "summary" }\n</evidence>',
+    savedMs: Date.UTC(2026, 10, 20, 9, 30),
+    ...patch,
+  };
+}
+
 /** Defaults for the AI part of the Api: everything off, nothing running. */
 export function fakeAiApi(): Pick<
   Api,
@@ -70,6 +84,9 @@ export function fakeAiApi(): Pick<
   | 'startInvestigation'
   | 'pollInvestigation'
   | 'cancelInvestigation'
+  | 'savedAnswer'
+  | 'savedAnswers'
+  | 'forgetAnswer'
 > {
   return {
     aiSettings: vi.fn(async () => aiSettings()),
@@ -81,5 +98,8 @@ export function fakeAiApi(): Pick<
     startInvestigation: vi.fn(async () => ({ ok: true as const, value: 1 })),
     pollInvestigation: vi.fn(async () => investigation()),
     cancelInvestigation: vi.fn(async () => undefined),
+    savedAnswer: vi.fn(async () => null),
+    savedAnswers: vi.fn(async () => []),
+    forgetAnswer: vi.fn(async () => undefined),
   };
 }

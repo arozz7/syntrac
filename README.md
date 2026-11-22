@@ -32,7 +32,7 @@ addresses, and sends none of your addresses. It can be switched off for good wit
   what is probably harmless). You decide: expected this time, always expected, raise the limit, snooze.
 - **Tells you without getting in the way.** A tray icon, Windows toasts for new suspicious findings (with or without the window open),
   and an optional start with Windows.
-- **Optionally explains in plain words.** An off-by-default Investigate button asks a model on your own machine (LM Studio, llama-server or similar; loopback only), or prepares a reduced text you can copy to an outside assistant yourself.
+- **Optionally explains in plain words.** An off-by-default Investigate button asks a model on your own machine (LM Studio, llama-server or similar; loopback only), or prepares a reduced text you can copy to an outside assistant yourself. It remembers the answers, so a program you already looked into is marked and needs no second question.
 
 <p align="center">
   <img src="docs/images/findings.png" alt="Findings: an unsigned program in a user folder that keeps the GPU busy, and a program that uploaded far more than usual" width="900">
@@ -47,7 +47,8 @@ powershell -ExecutionPolicy Bypass -File scripts/dev/run-demo.ps1
 ```
 
 It generates a demo database (sixteen days of invented history, run through the real rollups and the real detection rules), starts a
-stand-in for the service, and opens the app. Requirements: Windows 11, Rust (MSVC), Node.js 22+ and pnpm.
+stand-in for the service, and opens the app. Add `-WithModel` to also try the [AI help](#ai-help-optional-off-by-default) against a stand-in
+model server that gives a canned answer. Requirements: Windows 11, Rust (MSVC), Node.js 22+ and pnpm.
 
 ## Screens
 
@@ -64,17 +65,33 @@ stand-in for the service, and opens the app. Requirements: Windows 11, Rust (MSV
 
 ## AI help (optional, off by default)
 
-An **Investigate** button on findings and programs asks a language model that runs **on your own machine** (LM Studio, `llama-server` or
-any server that speaks the common chat API on `127.0.0.1`) to explain the evidence in plain words, and shows what was sent. SYNTRAC never
-talks to the Internet for this; detection never uses it; an answer is an explanation, not a decision. If you would rather use a hosted
-assistant, SYNTRAC can prepare a much more reduced text (no file names, folders, addresses or finding sentences) for you to look at, edit and
-copy yourself.
+An **Investigate** button on findings and programs asks a language model that runs **on your own machine** (LM Studio, `llama-server`,
+your own loader, or any server that speaks the common chat API on `127.0.0.1`) to explain the evidence in plain words, and shows exactly what
+was sent. SYNTRAC never talks to the Internet for this; detection never uses it; an answer is an explanation, not a decision.
+
+- **Your server, your model.** The AI help tab takes the address (only this machine is accepted), the model name and how much detail to send. If you
+  like, it can also **start your model server for you**: it shows the exact command first, runs it only when you press **Start** (never a script,
+  never a shell), shows the server's output if it ends, and stops only a server it started itself.
+- **It tells you what it is doing.** A model that thinks before it answers can take a minute or two for its first words; the page says it is thinking
+  and how far it has got, and an answer that hit the model's length limit is marked **cut off** instead of looking finished.
+- **It remembers.** A finished answer is saved on your machine with its date and model. Open **Investigate** on the same program later and the saved
+  answer appears at once, with **Ask again** and **Forget the saved answer**. A small **AI note** beside a program or finding shows what you have
+  already looked into.
+- **Or use an outside assistant yourself.** SYNTRAC can prepare a much more reduced text (no file names, folders, addresses or finding sentences)
+  for you to look at, edit and copy. It sends nothing itself.
 
 <p align="center">
   <img src="docs/images/ai-investigate.png" alt="Investigate on a finding: a small local model explains the evidence, says what could be harmless, what to check next and what is uncertain" width="900">
 </p>
 
-<sub>The picture is the demo machine with a small local model answering. [docs/USER-GUIDE.md](docs/USER-GUIDE.md) explains the settings and what is sent.</sub>
+<sub>An answer from a small local model on the demo machine. [docs/USER-GUIDE.md](docs/USER-GUIDE.md) explains the settings and what is sent.</sub>
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/ai-help.png" alt="The AI help tab: the settings and the model server's state"><br><sub><b>AI help tab.</b> Off until you turn it on; the server's state, and the exact command a Start would run.</sub></td>
+    <td width="50%"><img src="docs/images/history-programs-ai-note.png" alt="History, Programs: a program that was investigated before carries an AI note"><br><sub><b>Remembered answers.</b> An <i>AI note</i> marks a program (or finding) that was investigated before.</sub></td>
+  </tr>
+</table>
 
 ## Quick start (installing for real)
 
@@ -124,6 +141,9 @@ Windows ETW (processes, network, DNS) + performance counters (CPU, memory, GPU)
         v
   syntrac-app  (your account, read-only on the database)
    Overview, Processes, Connections, Findings, History  +  tray icon, toasts
+        |  optional, off by default: only when you press Investigate or Start
+        v
+  a model server on 127.0.0.1 (yours: LM Studio, llama-server, ...)  ->  answers kept in a small file next to the settings
 ```
 
 Pure logic lives in `syntrac-core` behind interfaces, so the whole pipeline runs offline against mocks. The same repository contract
@@ -133,7 +153,7 @@ tests run against an in-memory store and the SQLite store, so they cannot drift 
 
 Built: collection (ETW, snapshots, metrics, GPU), storage with rollups and a storage guard, program identity and
 how programs start, the network and owner views, findings (new things, usage, known patterns), live and historical GPU views, the tray
-icon with toasts and start with Windows, and the demo. An optional, off-by-default **AI help** (an Investigate button that asks a model server on this machine, or prepares a reduced text to copy for an outside assistant) is built. Not built: a process tree and connection map, and an installer. [docs/PLAN.md](docs/PLAN.md) has the full plan.
+icon with toasts and start with Windows, and the demo. An optional, off-by-default **AI help** is built: an Investigate button that asks a model server on this machine (which it can start for you, on a button), remembers the answers, and can prepare a reduced text to copy for an outside assistant. Not built: a process tree and connection map, and an installer. [docs/PLAN.md](docs/PLAN.md) has the full plan.
 
 ## Development
 
@@ -147,6 +167,7 @@ file-size check), and it is run before every push. Frontend tests run with `pnpm
 | `crates/syntrac-collector` | Telemetry sources (ETW, snapshots, metrics, GPU counters) and enrichers |
 | `crates/syntrac-service` | The Windows service host and its workers |
 | `crates/syntrac-ipc` | The named-pipe protocol and server |
+| `crates/syntrac-llm` | The optional AI help's client for a model server on this machine (loopback only) |
 | `crates/syntrac-testkit` | Mocks, an in-memory repository, fixtures and the repository contract suites |
 | `crates/syntrac-demo` | The fictional machine and its data generator, for screenshots and trying the app |
 | `app/` | The Tauri 2 shell and the React/TypeScript screens |

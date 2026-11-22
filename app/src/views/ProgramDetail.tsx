@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useApi } from '../api/ApiContext';
 import type { ProgramHistoryView } from '../api/types';
 import { granularityFor } from '../charts/bucketing';
@@ -166,10 +166,21 @@ export function ProgramDetail({
   onChanged: () => void;
   version?: number;
 }) {
+  const card = useRef<HTMLElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  // The card opens below the list, which can be long: bring it into view, and let a screen reader land on it.
+  useEffect(() => {
+    // Scrolled first and focused after, so that focusing finds the heading already in view and has nothing to move.
+    card.current?.scrollIntoView?.({ block: 'start' });
+    heading.current?.focus({ preventScroll: true });
+  }, [name, path]);
+
   return (
-    <section className="card card--wide">
+    <section className="card card--wide program-detail" ref={card}>
       <div className="card__head">
-        <h2>{name}</h2>
+        <h2 ref={heading} tabIndex={-1}>
+          {name}
+        </h2>
         <button type="button" className="range__button" onClick={onClose}>
           Close
         </button>

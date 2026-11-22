@@ -98,3 +98,17 @@
 .ai-panel section > h4 {
   margin: 0;
 }
+
+/* The mark beside a program or finding whose answer from the model was kept. Small, and a word, not a colour alone. */
+.ai-note {
+  display: inline-block;
+  padding: 0.05rem 0.5rem;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  vertical-align: middle;
+}

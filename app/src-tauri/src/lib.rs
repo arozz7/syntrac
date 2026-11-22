@@ -16,6 +16,7 @@ pub mod history_network;
 pub mod history_programs;
 pub mod identity_view;
 pub mod investigate_evidence;
+pub mod investigation_store;
 pub mod known_view;
 pub mod names;
 pub mod owner_data_view;
@@ -63,13 +64,22 @@ pub fn run() {
     let evidence_backend = Arc::clone(&backend);
     let evidence: ai_investigate::EvidenceProvider =
         Arc::new(move |subject| evidence_backend.investigation_evidence(subject));
-    let investigator: ai_commands::SharedInvestigator = Arc::new(ai_investigate::Investigator::new(
-        prefs.clone(),
-        Arc::clone(&ai),
-        service,
-        evidence,
-        syntrac_core::investigate::PromptConfig::builtin(),
-    ));
+    // Finished answers are kept next to the settings file, so a subject that was investigated before need not be asked about again.
+    let store: Arc<dyn investigation_store::InvestigationStore> =
+        match prefs_path(|key| std::env::var(key).ok()).map(|file| investigation_store::investigations_path(&file)) {
+            Some(file) => Arc::new(investigation_store::JsonInvestigationStore::with_file(file)),
+            None => Arc::new(investigation_store::JsonInvestigationStore::in_memory()),
+        };
+    let investigator: ai_commands::SharedInvestigator = Arc::new(
+        ai_investigate::Investigator::new(
+            prefs.clone(),
+            Arc::clone(&ai),
+            service,
+            evidence,
+            syntrac_core::investigate::PromptConfig::builtin(),
+        )
+        .with_store(store),
+    );
     let exit_ai = Arc::clone(&ai);
     let (watch_backend, watch_prefs) = (Arc::clone(&backend), prefs.clone());
     let app = tauri::Builder::default()
@@ -103,6 +113,9 @@ pub fn run() {
             ai_commands::ai_start_investigation,
             ai_commands::ai_poll_investigation,
             ai_commands::ai_cancel_investigation,
+            ai_commands::ai_saved_investigation,
+            ai_commands::ai_saved_list,
+            ai_commands::ai_forget_investigation,
             commands::get_health,
             commands::get_overview,
             commands::list_processes,

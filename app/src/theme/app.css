@@ -152,6 +152,17 @@
   grid-column: 1 / -1;
 }
 
+/* A program's details open below a long list and are scrolled to. While their data loads they would be short, so the page could not scroll
+   to them, and the browser would then keep the page pinned to its bottom as they grew. A screen's height of room lets them be reached at once. */
+.program-detail {
+  min-height: 100vh;
+}
+
+/* The heading takes focus when the details open (for a screen reader), but it is not something to tab to, so it needs no ring. */
+.program-detail h2[tabindex='-1']:focus {
+  outline: none;
+}
+
 .notice {
   background: var(--color-surface);
   border: 1px solid var(--color-border);

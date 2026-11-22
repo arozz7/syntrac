@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 
 use syntrac_app_lib::ai_control::{AiControl, AiSettingsDto, ServiceFactory};
 use syntrac_app_lib::ai_investigate::{EvidenceProvider, Investigator, SubjectRef};
+use syntrac_app_lib::investigation_store::{InvestigationStore, JsonInvestigationStore};
 use syntrac_app_lib::prefs::{Prefs, PrefsHandle};
 use syntrac_core::investigate::{Evidence, FindingFacts, ProgramFacts, PromptConfig};
 use syntrac_core::llm::{ChatRequest, Flow, LlmError, LlmService, ServerState, StreamEvent};
@@ -75,6 +76,7 @@ struct Rig {
     control: Arc<AiControl>,
     server: Arc<MockLlm>,
     spawner: Arc<FakeSpawner>,
+    store: Arc<JsonInvestigationStore>,
 }
 
 fn evidence() -> Evidence {
@@ -123,10 +125,16 @@ fn rig_with(llm: impl Fn(Arc<MockLlm>) -> Box<dyn LlmService> + Send + Sync + 's
         SubjectRef::Finding { id: 0 } => Err("The finding no longer exists.".to_owned()),
         _ => Ok(evidence()),
     });
+    let store = Arc::new(JsonInvestigationStore::in_memory());
     let investigator = Investigator::new(prefs, Arc::clone(&control), service, provider, PromptConfig::builtin())
-        .with_wait_step(Duration::from_millis(10));
-    Rig { investigator, control, server, spawner }
+        .with_wait_step(Duration::from_millis(10))
+        .with_store(Arc::clone(&store) as Arc<dyn InvestigationStore>)
+        .with_clock(Arc::new(|| NOW_MS));
+    Rig { investigator, control, server, spawner, store }
 }
+
+/// The moment every test investigation is saved at.
+const NOW_MS: i64 = 1_700_000_000_000;
 
 fn rig(server: MockLlm) -> Rig {
     rig_with(|shared| Box::new(SharedLlm(shared)), Arc::new(server))
@@ -308,4 +316,88 @@ fn a_finished_answer_is_not_marked_cut_off_and_the_limit_leaves_room_for_thinkin
     assert!(!view.truncated);
     // A model that thinks first spends part of the limit on it, so the limit is generous.
     assert_eq!(rig.server.requests()[0].max_tokens, Some(3000));
+}
+
+#[test]
+fn a_finished_answer_is_kept_with_what_is_needed_to_judge_it_later() {
+    let rig = rig(MockLlm::answering(&["It is ", "a sync tool."]));
+    let id = rig.investigator.start(&finding()).unwrap();
+    let view = wait_for(&rig, id, |phase| phase == "done");
+
+    // The page sees "done" and asks at once, so the answer must already be kept by then.
+    let kept = rig.investigator.saved(&finding()).expect("the answer was kept");
+
+    assert_eq!(kept.answer, "It is a sync tool.");
+    assert!(!kept.truncated);
+    assert_eq!(kept.model, "some-model");
+    assert_eq!(kept.level, "summary");
+    assert_eq!(kept.sent, view.sent);
+    assert_eq!(kept.saved_ms, NOW_MS);
+    assert_eq!(rig.investigator.saved_list().len(), 1);
+}
+
+#[test]
+fn a_cut_off_answer_is_kept_and_still_says_it_was_cut_off() {
+    let rig = rig(MockLlm::playing(vec![StreamEvent::Answer("The program is".into()), StreamEvent::CutOff]));
+    let id = rig.investigator.start(&finding()).unwrap();
+    wait_for(&rig, id, |phase| phase == "done");
+    assert!(rig.investigator.saved(&finding()).unwrap().truncated);
+}
+
+#[test]
+fn a_failed_a_stopped_or_an_empty_investigation_keeps_nothing() {
+    let failing = rig(MockLlm::failing(ServerState::Ready, LlmError::TimedOut));
+    let id = failing.investigator.start(&finding()).unwrap();
+    wait_for(&failing, id, |phase| phase == "failed");
+    assert!(failing.investigator.saved(&finding()).is_none());
+
+    let stopped_flag = Arc::new(AtomicBool::new(false));
+    let seen = Arc::clone(&stopped_flag);
+    let slow = rig_with(move |_| Box::new(SlowLlm { stopped: Arc::clone(&seen) }), Arc::new(MockLlm::answering(&[])));
+    let id = slow.investigator.start(&finding()).unwrap();
+    wait_for(&slow, id, |_| slow.investigator.poll(id).is_some_and(|view| !view.answer.is_empty()));
+    slow.investigator.cancel(id);
+    wait_for(&slow, id, |phase| phase == "cancelled");
+    assert!(slow.investigator.saved(&finding()).is_none(), "half an answer is not worth keeping");
+
+    let silent = rig(MockLlm::playing(vec![StreamEvent::Reasoning("only thinking".into())]));
+    let id = silent.investigator.start(&finding()).unwrap();
+    wait_for(&silent, id, |phase| phase == "done");
+    assert!(silent.investigator.saved(&finding()).is_none(), "no answer, nothing to keep");
+}
+
+#[test]
+fn asking_again_replaces_the_kept_answer() {
+    let rig = rig(MockLlm::answering(&["First answer."]));
+    let id = rig.investigator.start(&finding()).unwrap();
+    wait_for(&rig, id, |phase| phase == "done");
+
+    rig.store.put(syntrac_app_lib::investigation_store::SavedInvestigation {
+        answer: "older text".into(),
+        saved_ms: 1,
+        ..rig.investigator.saved(&finding()).unwrap()
+    });
+    let again = rig.investigator.start(&finding()).unwrap();
+    wait_for(&rig, again, |phase| phase == "done");
+
+    let kept = rig.investigator.saved(&finding()).unwrap();
+    assert_eq!(kept.answer, "First answer.");
+    assert_eq!(kept.saved_ms, NOW_MS);
+    assert_eq!(rig.investigator.saved_list().len(), 1);
+}
+
+#[test]
+fn a_program_and_a_finding_are_kept_separately_and_forgetting_removes_one() {
+    let rig = rig(MockLlm::answering(&["Answer."]));
+    let program = SubjectRef::Program { path: r"C:\Users\alice\widgetsync.exe".into() };
+    for subject in [finding(), program.clone()] {
+        let id = rig.investigator.start(&subject).unwrap();
+        wait_for(&rig, id, |phase| phase == "done");
+    }
+    assert_eq!(rig.investigator.saved_list().len(), 2);
+
+    rig.investigator.forget(&program);
+
+    assert!(rig.investigator.saved(&program).is_none());
+    assert!(rig.investigator.saved(&finding()).is_some());
 }

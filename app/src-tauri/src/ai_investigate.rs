@@ -13,6 +13,7 @@ use syntrac_core::investigate::{build_prompt, Evidence, PromptConfig, PromptLeve
 use syntrac_core::llm::{ChatMessage, ChatRequest, Flow, LlmError, LlmService, Role, ServerState, StreamEvent};
 
 use crate::ai_control::{AiControl, ServiceFactory};
+use crate::investigation_store::{InvestigationStore, JsonInvestigationStore, SavedInvestigation, SavedMark};
 use crate::prefs::PrefsHandle;
 
 /// How many investigations are kept for the page to read; older ones are dropped.
@@ -24,7 +25,7 @@ const MAX_ANSWER_TOKENS: u32 = 3000;
 const TEMPERATURE: f64 = 0.2;
 
 /// What an investigation is about, as the page names it.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SubjectRef {
     Finding { id: i64 },
@@ -119,12 +120,26 @@ impl Job {
     }
 }
 
+/// Keeps a finished answer. Runs on the job's thread, before the job reads as done, so a page that sees "done" finds the answer kept.
+type Keeper = Box<dyn Fn(&str, bool) + Send>;
+
+/// The time now, in milliseconds since 1970 (replaced in tests).
+pub type Clock = Arc<dyn Fn() -> i64 + Send + Sync>;
+
+fn system_now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX))
+}
+
 pub struct Investigator {
     prefs: PrefsHandle,
     control: Arc<AiControl>,
     service: ServiceFactory,
     evidence: EvidenceProvider,
     config: PromptConfig,
+    store: Arc<dyn InvestigationStore>,
+    clock: Clock,
     wait_step: Duration,
     next_id: AtomicU64,
     jobs: Mutex<VecDeque<Arc<Job>>>,
@@ -144,6 +159,9 @@ impl Investigator {
             service,
             evidence,
             config,
+            // Answers are kept only in memory until the real program gives a file to keep them in.
+            store: Arc::new(JsonInvestigationStore::in_memory()),
+            clock: Arc::new(system_now_ms),
             wait_step: Duration::from_secs(2),
             next_id: AtomicU64::new(1),
             jobs: Mutex::new(VecDeque::new()),
@@ -155,6 +173,35 @@ impl Investigator {
     pub fn with_wait_step(mut self, step: Duration) -> Self {
         self.wait_step = step;
         self
+    }
+
+    /// Where finished answers are kept so the same subject need not be asked about again.
+    #[must_use]
+    pub fn with_store(mut self, store: Arc<dyn InvestigationStore>) -> Self {
+        self.store = store;
+        self
+    }
+
+    /// The clock that dates kept answers (fixed in tests).
+    #[must_use]
+    pub fn with_clock(mut self, clock: Clock) -> Self {
+        self.clock = clock;
+        self
+    }
+
+    /// The answer kept for a subject, if an earlier investigation finished.
+    pub fn saved(&self, subject: &SubjectRef) -> Option<SavedInvestigation> {
+        self.store.get(subject)
+    }
+
+    /// Which subjects have a kept answer, and when it was kept (no answers, so a list can be marked cheaply).
+    pub fn saved_list(&self) -> Vec<SavedMark> {
+        self.store.list()
+    }
+
+    /// Throws the kept answer for a subject away.
+    pub fn forget(&self, subject: &SubjectRef) {
+        self.store.forget(subject);
     }
 
     /// The prompt for a subject: at the level of the user's setting, or the reduced `external` text that a person may paste elsewhere. It
@@ -216,9 +263,10 @@ impl Investigator {
             }),
         });
         self.keep(&job);
+        let keeper = self.keeper(subject, &settings.model, level_name(level), &job.sent);
         let (control, wait_step) = (Arc::clone(&self.control), self.wait_step);
         let worker = Arc::clone(&job);
-        std::thread::spawn(move || run(&worker, server.as_ref(), &request, must_wait, &control, wait_step));
+        std::thread::spawn(move || run(&worker, server.as_ref(), &request, must_wait, &control, wait_step, &keeper));
         Ok(job.id)
     }
 
@@ -250,6 +298,27 @@ impl Investigator {
         {
             job.cancel.store(true, Ordering::SeqCst);
         }
+    }
+
+    fn keeper(&self, subject: &SubjectRef, model: &str, level: &str, sent: &str) -> Keeper {
+        let (store, clock) = (Arc::clone(&self.store), Arc::clone(&self.clock));
+        let template = SavedInvestigation {
+            subject: subject.clone(),
+            answer: String::new(),
+            truncated: false,
+            model: model.trim().to_owned(),
+            level: level.to_owned(),
+            sent: sent.to_owned(),
+            saved_ms: 0,
+        };
+        Box::new(move |answer, truncated| {
+            store.put(SavedInvestigation {
+                answer: answer.to_owned(),
+                truncated,
+                saved_ms: clock(),
+                ..template.clone()
+            });
+        })
     }
 
     fn keep(&self, job: &Arc<Job>) {
@@ -286,6 +355,7 @@ fn run(
     must_wait: bool,
     control: &AiControl,
     wait_step: Duration,
+    keeper: &Keeper,
 ) {
     if must_wait && !wait_for_server(job, server, control, wait_step) {
         return;
@@ -305,7 +375,17 @@ fn run(
     });
     match result {
         _ if job.cancelled() => job.finish(Phase::Cancelled, None),
-        Ok(()) => job.finish(Phase::Done, None),
+        Ok(()) => {
+            let (answer, truncated) = {
+                let state = job.lock();
+                (state.answer.clone(), state.truncated)
+            };
+            // Kept before the job reads as done: the page asks for the kept answer the moment it sees "done".
+            if !answer.trim().is_empty() {
+                keeper(&answer, truncated);
+            }
+            job.finish(Phase::Done, None);
+        }
         Err(error) => job.finish(Phase::Failed, Some(describe(&error))),
     }
 }

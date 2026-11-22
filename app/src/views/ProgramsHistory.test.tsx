@@ -3,6 +3,8 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiProvider } from '../api/ApiContext';
+import { AiEnabledProvider } from '../components/AiEnabled';
+import { aiSettings } from '../test/fakeAi';
 import { makeFakeApi, programRow, programsView, programHistoryView } from '../test/fakeApi';
 import { ProgramsHistory } from './ProgramsHistory';
 
@@ -69,6 +71,18 @@ describe('ProgramsHistory', () => {
     expect(screen.getByLabelText('Program memory over time')).toBeTruthy();
     expect(api.programHistory).toHaveBeenLastCalledWith(7 * 24 * 3600, 'C:\\apps\\chrome.exe');
     expect(screen.getByRole('heading', { name: 'chrome.exe' })).toBeTruthy();
+  });
+
+  it('brings the opened program into view and moves focus to it, since it opens below a long list', async () => {
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(Element.prototype, 'scrollIntoView', { value: scrollIntoView, configurable: true });
+    show();
+    await userEvent.click(await screen.findByRole('button', { name: /chrome\.exe/ }));
+
+    const heading = await screen.findByRole('heading', { name: 'chrome.exe' });
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    expect(scrollIntoView.mock.contexts.some((target) => (target as Element).contains(heading))).toBe(true);
+    expect(document.activeElement).toBe(heading);
   });
 
   it('can close the detail again', async () => {
@@ -206,5 +220,27 @@ describe('ProgramsHistory: the GPU', () => {
     await userEvent.click(await screen.findByRole('button', { name: /chrome\.exe/ }));
     await screen.findByLabelText('Program CPU over time');
     expect(screen.queryByLabelText('Program GPU over time')).toBeNull();
+  });
+});
+
+describe('ProgramsHistory: a kept answer from the AI help', () => {
+  it('marks the program that was investigated before, next to its name, and no other', async () => {
+    const api = makeFakeApi({
+      aiSettings: vi.fn(async () => aiSettings({ enabled: true })),
+      savedAnswers: vi.fn(async () => [
+        { subject: { kind: 'program' as const, path: 'c:\\apps\\chrome.exe' }, savedMs: Date.UTC(2026, 10, 20, 9, 30) },
+      ]),
+    });
+    render(
+      <ApiProvider api={api}>
+        <AiEnabledProvider>
+          <ProgramsHistory />
+        </AiEnabledProvider>
+      </ApiProvider>,
+    );
+
+    const chrome = (await screen.findByText('chrome.exe')).closest('tr')!;
+    await waitFor(() => expect(within(chrome).getByText('AI note')).toBeTruthy());
+    expect(within(screen.getByText('code.exe').closest('tr')!).queryByText('AI note')).toBeNull();
   });
 });

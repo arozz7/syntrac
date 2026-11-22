@@ -16,6 +16,11 @@ function Wait-Page($Socket, [string]$Condition, [int]$Seconds = 30) {
     return $false
 }
 
+function Get-ModelRequestCount([string]$ModelLog) {
+    if (-not (Test-Path $ModelLog)) { return 0 }
+    return @(Get-Content $ModelLog).Count
+}
+
 function Test-DemoAi([int]$Port, [string]$OutputFolder, [string]$ModelLog) {
     $results = New-Object System.Collections.Generic.List[string]
     $failed = $false
@@ -78,12 +83,46 @@ function Test-DemoAi([int]$Port, [string]$OutputFolder, [string]$ModelLog) {
     & $note (-not (Test-Page $socket "/\b\d{1,3}(\.\d{1,3}){3}\b/.test($box)")) 'the outside text contains no IP address'
     Invoke-PageScript $socket "(() => { document.querySelector('textarea.ai-copy')?.scrollIntoView(); return 'ok'; })()" | Out-Null
     Save-DemoShot $socket $OutputFolder 'ai-copy-box' 1500
+
+    # 5. Answers kept from an earlier time: marked in the list, shown again without asking the model, and forgotten on request.
+    & $note (Wait-Page $socket "document.querySelectorAll('.finding .ai-note').length === 1" 15) 'the finding that was investigated carries an AI note, and no other finding does'
+    $asked = Get-ModelRequestCount $ModelLog
+    Click-DemoButton $socket 'Close' -Exact
+    Click-DemoButton $socket 'Investigate' -Exact
+    & $note (Wait-Page $socket "document.querySelector('.ai-panel')?.innerText.includes('Saved answer from')" 15) 'opening Investigate again shows the saved answer with its date'
+    & $note (Test-Page $socket "document.querySelector('[aria-label=Answer]')?.textContent.includes('demo stand-in model')") 'the saved answer is the earlier text'
+    & $note ((Get-ModelRequestCount $ModelLog) -eq $asked) 'showing a saved answer asked the model nothing'
+    Invoke-PageScript $socket "(() => { document.querySelector('.ai-panel')?.closest('.finding')?.scrollIntoView(); return 'ok'; })()" | Out-Null
+    Save-DemoShot $socket $OutputFolder 'ai-saved-answer' 1300
+
+    # 6. A program from the Programs list: its details open in view, an answer is kept, the list shows the mark, and Forget removes it.
+    Invoke-Cdp $socket 'Emulation.setDeviceMetricsOverride' @{ width = 1760; height = 700; deviceScaleFactor = 1.5; mobile = $false } | Out-Null
+    Click-DemoButton $socket 'History'
+    Click-DemoButton $socket 'Programs' -Exact
+    Click-DemoButton $socket 'GPU' -Exact
+    Click-DemoButton $socket 'toolx.exe' -Exact
+    & $note (Test-Page $socket "document.activeElement?.tagName === 'H2' && document.activeElement.textContent === 'toolx.exe'") 'choosing a program in the list moves focus to its details'
+    & $note (Test-Page $socket "(() => { const r = document.activeElement.closest('section').getBoundingClientRect(); return r.top >= -2 && r.top < window.innerHeight; })()") 'and brings the details into view'
+    Click-DemoButton $socket 'Investigate' -Exact
+    Click-DemoButton $socket 'Investigate with my model' -Exact
+    & $note (Wait-Page $socket "document.body.innerText.includes('Finished.')" 40) 'a program can be investigated too'
+    $programRow = "[...document.querySelectorAll('tbody tr')].find(r => r.textContent.includes('toolx.exe'))"
+    & $note (Wait-Page $socket "($programRow)?.querySelector('.ai-note') != null" 15) 'the program is marked with an AI note in the list'
+    Click-DemoButton $socket 'Close' -Exact
+    Invoke-PageScript $socket "(() => { window.scrollTo(0, 0); return 'ok'; })()" | Out-Null
+    Save-DemoShot $socket $OutputFolder 'history-programs-ai-note' 1000 1760
+    Click-DemoButton $socket 'toolx.exe' -Exact
+    Click-DemoButton $socket 'Investigate' -Exact
+    & $note (Wait-Page $socket "document.querySelector('.ai-panel')?.innerText.includes('Saved answer from')" 15) 'the program shows its saved answer when reopened'
+    Click-DemoButton $socket 'Forget the saved answer' -Exact
+    & $note (Wait-Page $socket "($programRow)?.querySelector('.ai-note') == null" 15) 'forgetting removes the mark from the list'
+    & $note (Test-Page $socket "[...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'Investigate with my model')") 'and the panel offers to ask the model again'
     $socket.Dispose()
 
-    # 5. What the model server actually received (its own log of every request body).
+    # 7. What the model server actually received (its own log of every request body).
     $lines = @()
     if (Test-Path $ModelLog) { $lines = @(Get-Content $ModelLog) }
-    & $note ($lines.Count -ge 2) "the stand-in model received the requests ($($lines.Count) so far)"
+    & $note ($lines.Count -ge 3) "the stand-in model received the requests ($($lines.Count) so far)"
     foreach ($line in $lines) {
         $body = $line | ConvertFrom-Json
         $user = [string]$body.messages[1].content

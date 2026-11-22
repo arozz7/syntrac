@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApi } from '../api/ApiContext';
-import type { InvestigateSubject, Investigation, PromptPreview } from '../api/aiTypes';
-import { useAiEnabled } from './AiEnabled';
+import type { InvestigateSubject, Investigation, PromptPreview, SavedAnswer } from '../api/aiTypes';
+import { formatDateTime } from '../format';
+import { subjectKey, useAiEnabled } from './AiEnabled';
 
 const POLL_MS = 700;
 
@@ -9,10 +10,14 @@ function isFinished(investigation: Investigation | null): boolean {
   return investigation !== null && ['done', 'failed', 'cancelled'].includes(investigation.phase);
 }
 
-/** Reads one investigation every moment until it ends. */
-function useInvestigation(id: number | null): Investigation | null {
+/** Reads one investigation every moment until it ends, and says once when it finished with an answer. */
+function useInvestigation(id: number | null, onAnswered: () => void): Investigation | null {
   const api = useApi();
   const [view, setView] = useState<Investigation | null>(null);
+  const answered = useRef(onAnswered);
+  useEffect(() => {
+    answered.current = onAnswered;
+  }, [onAnswered]);
 
   useEffect(() => {
     if (id === null) {
@@ -26,7 +31,11 @@ function useInvestigation(id: number | null): Investigation | null {
         .then((next) => {
           if (!cancelled) {
             setView(next);
+            const wasFinished = finished;
             finished = isFinished(next) || next === null;
+            if (!wasFinished && next?.phase === 'done') {
+              answered.current();
+            }
           }
         })
         .catch(() => undefined);
@@ -67,12 +76,86 @@ function phaseText(investigation: Investigation): string {
   return PHASE_TEXT[investigation.phase] ?? '';
 }
 
+/** An answer as plain text, with what to keep in mind about it and what was sent to get it. */
+function AnswerBlock({
+  answer,
+  truncated,
+  level,
+  sent,
+}: {
+  answer: string;
+  truncated: boolean;
+  level: string;
+  sent: string;
+}) {
+  return (
+    <>
+      <div className="ai-answer" aria-live="polite" aria-label="Answer">
+        {answer}
+      </div>
+      {truncated && (
+        <p role="status">
+          The model stopped because it reached its length limit, so this answer is cut off. A model that thinks first
+          can use much of the limit on its thinking. You can ask again.
+        </p>
+      )}
+      <p className="muted">
+        An answer from a language model can be wrong or incomplete. It is an explanation to help you look, not a
+        decision, and it changed nothing.
+      </p>
+      <details>
+        <summary>What was sent ({level} detail)</summary>
+        <pre className="ai-sent">{sent}</pre>
+      </details>
+    </>
+  );
+}
+
+/** The answer kept from an earlier time for this subject (null when there is none), with a way to read it again and to drop it. */
+function useKeptAnswer(subject: InvestigateSubject): {
+  kept: SavedAnswer | null;
+  reload: () => void;
+  drop: () => void;
+} {
+  const api = useApi();
+  const key = subjectKey(subject);
+  const [kept, setKept] = useState<SavedAnswer | null>(null);
+  const [round, setRound] = useState(0);
+  const reload = useCallback(() => setRound((value) => value + 1), []);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .savedAnswer(subject)
+      .then((answer) => {
+        if (!cancelled) {
+          setKept(answer);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+    // The subject object is made again on every render of its page; its key says whether it is another one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, key, round]);
+
+  return { kept, reload, drop: () => setKept(null) };
+}
+
 function LocalAnswer({ subject }: { subject: InvestigateSubject }) {
   const api = useApi();
+  const { refresh } = useAiEnabled();
   const [id, setId] = useState<number | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
-  const investigation = useInvestigation(id);
+  const { kept, reload, drop } = useKeptAnswer(subject);
+  // A finished answer was kept by the program: read it again, and let the lists show their mark.
+  const keptNow = useCallback(() => {
+    reload();
+    refresh();
+  }, [reload, refresh]);
+  const investigation = useInvestigation(id, keptNow);
   const running = investigation !== null && !isFinished(investigation);
 
   const run = async () => {
@@ -88,6 +171,13 @@ function LocalAnswer({ subject }: { subject: InvestigateSubject }) {
     }
   };
 
+  const forget = async () => {
+    await api.forgetAnswer(subject);
+    drop();
+    refresh();
+  };
+
+  const showKept = investigation === null && kept !== null;
   return (
     <section aria-label="Ask my model server">
       <h4>Ask my model server</h4>
@@ -97,7 +187,7 @@ function LocalAnswer({ subject }: { subject: InvestigateSubject }) {
       </p>
       <div className="finding__actions">
         <button type="button" className="range__button" disabled={starting || running} onClick={() => void run()}>
-          {id === null ? 'Investigate with my model' : 'Ask again'}
+          {id === null && kept === null ? 'Investigate with my model' : 'Ask again'}
         </button>
         {investigation !== null && running && (
           <button
@@ -108,30 +198,33 @@ function LocalAnswer({ subject }: { subject: InvestigateSubject }) {
             Stop
           </button>
         )}
+        {kept !== null && !running && (
+          <button type="button" className="range__button" onClick={() => void forget()}>
+            Forget the saved answer
+          </button>
+        )}
         {investigation !== null && <span className="muted">{phaseText(investigation)}</span>}
       </div>
       {problem !== null && <p role="alert">{problem}</p>}
       {investigation?.error != null && <p role="alert">{investigation.error}</p>}
-      {investigation !== null && (
+      {showKept && (
         <>
-          <div className="ai-answer" aria-live="polite" aria-label="Answer">
-            {investigation.answer}
-          </div>
-          {investigation.truncated && (
-            <p role="status">
-              The model stopped because it reached its length limit, so this answer is cut off. A model that thinks
-              first can use much of the limit on its thinking. You can ask again.
-            </p>
-          )}
-          <p className="muted">
-            An answer from a language model can be wrong or incomplete. It is an explanation to help you look, not a
-            decision, and it changed nothing.
+          <p>
+            <strong>Saved answer from {formatDateTime(kept.savedMs)}</strong>{' '}
+            <span className="muted">
+              (model {kept.model}). It was kept so the model need not be asked again; nothing was sent just now.
+            </span>
           </p>
-          <details>
-            <summary>What was sent ({investigation.level} detail)</summary>
-            <pre className="ai-sent">{investigation.sent}</pre>
-          </details>
+          <AnswerBlock answer={kept.answer} truncated={kept.truncated} level={kept.level} sent={kept.sent} />
         </>
+      )}
+      {investigation !== null && (
+        <AnswerBlock
+          answer={investigation.answer}
+          truncated={investigation.truncated}
+          level={investigation.level}
+          sent={investigation.sent}
+        />
       )}
     </section>
   );

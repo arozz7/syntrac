@@ -13,6 +13,7 @@ import type {
 } from '../api/types';
 import { DataGate } from '../components/DataGate';
 import { InvestigateButton } from '../components/InvestigatePanel';
+import { SavedNote } from '../components/SavedNote';
 import { formatBytes, formatDateTime } from '../format';
 import { usePolled } from '../hooks/usePolled';
 import { ReviewToday } from './ReviewToday';
@@ -167,6 +168,7 @@ function FindingCard({ finding, onChanged }: { finding: FindingView; onChanged: 
           <span aria-hidden="true">{tier.shape}</span> {tier.label}
         </span>
         <h3>{finding.title}</h3>
+        <SavedNote subject={{ kind: 'finding', id: finding.id }} />
       </div>
       <p>{finding.why}</p>
       {finding.evidence.length > 0 && (

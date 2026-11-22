@@ -3,6 +3,8 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiProvider } from '../api/ApiContext';
+import { AiEnabledProvider } from '../components/AiEnabled';
+import { aiSettings } from '../test/fakeAi';
 import { expectationRow, findingRow, findingsView, makeFakeApi } from '../test/fakeApi';
 import { Findings } from './Findings';
 
@@ -471,5 +473,27 @@ describe('Findings: what you told SYNTRAC is expected', () => {
       }),
     );
     expect(await screen.findByText('Known pattern: remote access tool')).toBeTruthy();
+  });
+});
+
+describe('Findings: a kept answer from the AI help', () => {
+  it('marks only the finding that was investigated before', async () => {
+    const api = makeFakeApi({
+      aiSettings: vi.fn(async () => aiSettings({ enabled: true })),
+      savedAnswers: vi.fn(async () => [
+        { subject: { kind: 'finding' as const, id: 1 }, savedMs: Date.UTC(2026, 10, 20, 9, 30) },
+      ]),
+    });
+    render(
+      <ApiProvider api={api}>
+        <AiEnabledProvider>
+          <Findings />
+        </AiEnabledProvider>
+      </ApiProvider>,
+    );
+
+    await screen.findByText('New program tool.exe');
+    await waitFor(() => expect(within(card('New program tool.exe')).getByText('AI note')).toBeTruthy());
+    expect(within(card('New program other.exe')).queryByText('AI note')).toBeNull();
   });
 });
