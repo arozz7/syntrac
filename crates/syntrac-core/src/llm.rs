@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::server_launch::{LaunchCommand, LaunchProblem};
+use crate::tool_chat::{TurnReply, TurnRequest};
 
 /// How much detail goes into what is asked of a model server on this machine (docs/PHASE4-PLAN.md, "What is sent").
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -303,6 +304,10 @@ pub enum LlmError {
     BadResponse(String),
     #[error("the connection to the model server failed: {0}")]
     Connection(String),
+    /// A request that offered tools was refused in a way that says the server cannot use them (a server started without the template
+    /// support some of them need for tool calling). The question box explains this instead of showing a bare status.
+    #[error("the model server does not support tool calls")]
+    ToolsUnsupported,
 }
 
 /// The port behind which a model server sits: a real HTTP adapter, or a fake in tests. Blocking; callers run it off the UI thread.
@@ -313,4 +318,9 @@ pub trait LlmService: Send + Sync {
     /// Sends the request and calls `on_event` for each piece of the answer as it arrives, until the answer ends or `on_event` says stop.
     fn stream_chat(&self, request: &ChatRequest, on_event: &mut dyn FnMut(StreamEvent) -> Flow)
         -> Result<(), LlmError>;
+
+    /// Sends one turn and returns the whole reply, which may ask for tools. A server that cannot do it answers `ToolsUnsupported`.
+    fn chat_turn(&self, _request: &TurnRequest) -> Result<TurnReply, LlmError> {
+        Err(LlmError::ToolsUnsupported)
+    }
 }

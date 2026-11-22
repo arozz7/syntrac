@@ -1,4 +1,5 @@
 //! A tiny scripted HTTP server on loopback for the adapter tests. Each connection gets one request and one scripted reply, then is closed.
+#![allow(dead_code)] // Shared by several test files, each of which uses a different part.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};

@@ -38,6 +38,7 @@ pub mod pipeline;
 pub mod ports;
 pub mod process_tree;
 pub mod program_group;
+pub mod question_loop;
 pub mod retention;
 pub mod review;
 pub mod rollup;
@@ -50,6 +51,7 @@ pub mod spawns;
 pub mod storage_guard;
 pub mod task_xml;
 pub mod time;
+pub mod tool_chat;
 pub mod trend;
 pub mod usage;
 

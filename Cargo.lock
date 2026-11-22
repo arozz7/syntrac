@@ -3936,6 +3936,7 @@ dependencies = [
 name = "syntrac-testkit"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
  "syntrac-core",
  "uuid",
 ]

@@ -23,6 +23,7 @@ mod memory_spawns;
 mod memory_usage;
 pub mod mock_llm;
 pub mod mock_process;
+pub mod mock_tools;
 pub mod mocks;
 pub mod names_contract;
 pub mod owner_contract;

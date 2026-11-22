@@ -9,6 +9,7 @@ use syntrac_core::llm::{
     chat_body, parse_stream_line, ChatRequest, Flow, LlmError, LlmService, LoopbackEndpoint, ServerState, StreamEvent,
     StreamLine,
 };
+use syntrac_core::tool_chat::{parse_turn_reply, turn_body, TurnReply, TurnRequest};
 
 /// The limits of one adapter. The defaults suit a slow local model: a long wait for the first words, a bounded answer.
 #[derive(Debug, Clone, Copy)]
@@ -106,18 +107,60 @@ impl LlmService for HttpLlm {
 
         let status = response.status().as_u16();
         if status == 503 {
-            let retry_after_secs = response
-                .headers()
-                .get("retry-after")
-                .and_then(|value| value.to_str().ok())
-                .and_then(|text| text.trim().parse().ok());
-            return Err(LlmError::Loading { retry_after_secs });
+            return Err(loading_error(&response));
         }
         if status != 200 {
             return Err(LlmError::Status(status));
         }
         read_stream(response.body_mut().as_reader(), self.limits, on_event)
     }
+
+    fn chat_turn(&self, request: &TurnRequest) -> Result<TurnReply, LlmError> {
+        let agent = self.agent(self.limits.first_byte_timeout, self.limits.answer_timeout);
+        let body = turn_body(request).to_string();
+        let mut response = agent
+            .post(&self.endpoint.api_url("/chat/completions"))
+            .content_type("application/json")
+            .send(body.as_str())
+            .map_err(|error| failure_of(&error))?;
+
+        let status = response.status().as_u16();
+        if status == 503 {
+            return Err(loading_error(&response));
+        }
+        // At most one byte more than the limit is read, so a server cannot make the app hold an unbounded reply in memory.
+        let mut text = Vec::new();
+        let read_at_most = (self.limits.max_answer_bytes as u64).saturating_add(1);
+        response
+            .body_mut()
+            .as_reader()
+            .take(read_at_most)
+            .read_to_end(&mut text)
+            .map_err(|error| io_failure(&error))?;
+        if status != 200 {
+            let refused_tools = !request.tools.is_empty() && mentions_tools(&String::from_utf8_lossy(&text));
+            return Err(if refused_tools { LlmError::ToolsUnsupported } else { LlmError::Status(status) });
+        }
+        if text.len() > self.limits.max_answer_bytes {
+            return Err(LlmError::TooLong);
+        }
+        parse_turn_reply(&String::from_utf8_lossy(&text))
+    }
+}
+
+fn loading_error(response: &ureq::http::Response<ureq::Body>) -> LlmError {
+    let retry_after_secs = response
+        .headers()
+        .get("retry-after")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|text| text.trim().parse().ok());
+    LlmError::Loading { retry_after_secs }
+}
+
+/// Whether a refusal says the server cannot do tool calls: a message about tools, or about the template support they need.
+fn mentions_tools(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    lower.contains("tool") || lower.contains("jinja")
 }
 
 /// Reads server-sent lines until the end marker, the end of the data, a failure, or a request to stop.
