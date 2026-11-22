@@ -3819,7 +3819,7 @@ dependencies = [
 
 [[package]]
 name = "syntrac-app"
-version = "0.1.0"
+version = "0.7.0"
 dependencies = [
  "rusqlite",
  "serde",
@@ -3840,7 +3840,7 @@ dependencies = [
 
 [[package]]
 name = "syntrac-collector"
-version = "0.1.0"
+version = "0.7.0"
 dependencies = [
  "ferrisetw",
  "flate2",
@@ -3855,7 +3855,7 @@ dependencies = [
 
 [[package]]
 name = "syntrac-core"
-version = "0.1.0"
+version = "0.7.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -3866,7 +3866,7 @@ dependencies = [
 
 [[package]]
 name = "syntrac-demo"
-version = "0.1.0"
+version = "0.7.0"
 dependencies = [
  "rusqlite",
  "serde_json",
@@ -3880,7 +3880,7 @@ dependencies = [
 
 [[package]]
 name = "syntrac-ipc"
-version = "0.1.0"
+version = "0.7.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -3891,7 +3891,7 @@ dependencies = [
 
 [[package]]
 name = "syntrac-llm"
-version = "0.1.0"
+version = "0.7.0"
 dependencies = [
  "serde_json",
  "syntrac-core",
@@ -3900,7 +3900,7 @@ dependencies = [
 
 [[package]]
 name = "syntrac-service"
-version = "0.1.0"
+version = "0.7.0"
 dependencies = [
  "ctrlc",
  "serde",
@@ -3920,7 +3920,7 @@ dependencies = [
 
 [[package]]
 name = "syntrac-store"
-version = "0.1.0"
+version = "0.7.0"
 dependencies = [
  "rusqlite",
  "serde_json",
@@ -3934,7 +3934,7 @@ dependencies = [
 
 [[package]]
 name = "syntrac-testkit"
-version = "0.1.0"
+version = "0.7.0"
 dependencies = [
  "serde_json",
  "syntrac-core",

@@ -3,8 +3,8 @@
 #
 # Folders (mapped by the launcher): C:\SetupTest\good and C:\SetupTest\broken hold the two installers, C:\Results is where the report goes.
 $ErrorActionPreference = 'Continue'
-$good = (Get-ChildItem 'C:\SetupTest\good\*_x64-setup.exe' | Select-Object -First 1).FullName
-$broken = (Get-ChildItem 'C:\SetupTest\broken\*_x64-setup.exe' | Select-Object -First 1).FullName
+$good = (Get-ChildItem 'C:\SetupTest\good\*_x64-setup.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+$broken = (Get-ChildItem 'C:\SetupTest\broken\*_x64-setup*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
 $report = 'C:\Results\report.txt'
 $installDir = 'C:\Program Files\SYNTRAC'
 $serviceExe = Join-Path $installDir 'bin\syntrac-service.exe'

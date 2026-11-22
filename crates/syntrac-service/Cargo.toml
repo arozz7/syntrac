@@ -9,10 +9,10 @@ license.workspace = true
 [dependencies]
 ctrlc = "3.5.2"
 serde = { version = "1.0.229", features = ["derive"] }
-syntrac-collector = { version = "0.1.0", path = "../syntrac-collector" }
-syntrac-core = { version = "0.1.0", path = "../syntrac-core" }
-syntrac-ipc = { version = "0.1.0", path = "../syntrac-ipc" }
-syntrac-store = { version = "0.1.0", path = "../syntrac-store" }
+syntrac-collector = { path = "../syntrac-collector" }
+syntrac-core = { path = "../syntrac-core" }
+syntrac-ipc = { path = "../syntrac-ipc" }
+syntrac-store = { path = "../syntrac-store" }
 thiserror = "2.0.21"
 toml = "1.2.1"
 tracing = "0.1.44"

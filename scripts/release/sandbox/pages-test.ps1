@@ -2,7 +2,7 @@
 # pressing Enter (the default button) to move on. Pictures and report.txt go to C:\Results. Compatible with Windows PowerShell 5.1.
 $ErrorActionPreference = 'Continue'
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-$installer = (Get-ChildItem 'C:\SetupTest\good\*_x64-setup.exe' | Select-Object -First 1).FullName
+$installer = (Get-ChildItem 'C:\SetupTest\good\*_x64-setup.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
 $installDir = 'C:\Program Files\SYNTRAC'
 $shots = 'C:\Results\pages'
 New-Item -ItemType Directory -Force -Path $shots | Out-Null
@@ -48,6 +48,15 @@ Say "service after the install: $(State)"
 Say "app installed: $(Test-Path (Join-Path $installDir 'syntrac-app.exe'))"
 Get-Process -Name syntrac-app -ErrorAction SilentlyContinue | ForEach-Object { Say "the app is running (window title '$($_.MainWindowTitle)')" }
 Shot 'desktop-after-install'
+# The window can be taller than a small screen, which hides the foot of the menu (where the version is): maximise it and look again.
+$app = Get-Process -Name syntrac-app -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($app) {
+    [void]$shell.AppActivate($app.Id)
+    Start-Sleep -Milliseconds 500
+    [Windows.Forms.SendKeys]::SendWait('% x')
+    Start-Sleep -Seconds 2
+    Shot 'app-maximised'
+}
 
 # The installer again, over the installed one: the page that offers to reinstall or uninstall first.
 Get-Process -Name syntrac-app -ErrorAction SilentlyContinue | Stop-Process -Force

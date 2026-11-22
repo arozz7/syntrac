@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 import { ApiProvider } from './api/ApiContext';
+import { APP_VERSION } from './version';
 import { findingsView, health, makeFakeApi } from './test/fakeApi';
 
 vi.mock('./components/Chart', () => ({ Chart: () => <div data-testid="chart" /> }));
@@ -25,6 +26,12 @@ describe('App', () => {
     expect(await screen.findByText('chrome.exe')).toBeTruthy();
     expect(screen.getByRole('status').getAttribute('data-state')).toBe('running');
     expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('Overview');
+  });
+
+  it('shows which version of the app this is', async () => {
+    show();
+    const version = await screen.findByText(/^Version \d+\.\d+\.\d+/);
+    expect(version.textContent).toBe(`Version ${APP_VERSION}`);
   });
 
   it('navigates between the views and marks the current one', async () => {

@@ -21,7 +21,16 @@ be a harmless reason) and leaves the decision to you. Everything stays on your m
 
 SYNTRAC has two parts. A **service** (it runs as the Windows `Syntrac` service with administrator rights, because reading process and
 network events requires them) collects the data and writes it to a local SQLite database. The **app** (it runs as you, with no special
-rights) reads that database and shows it. They are built from this repository; there is no installer yet.
+rights) reads that database and shows it. The app shows its version at the bottom of the left-hand menu.
+
+**The easy way: the installer.** `SYNTRAC_<version>_x64-setup.exe` installs both parts and sets up the service for the account you are signed in as.
+Run it, accept the licence, and press Finish. Windows will warn "Windows protected your PC" because the installer is not signed yet: check the
+SHA-256 that the release lists, then choose More info, Run anyway. Running a newer installer over an older one upgrades in place and keeps your data and
+settings; uninstalling keeps them too (the box *Delete the application data* removes only the app's own settings, never the database). The details,
+including what happens when an upgrade fails, are in [RELEASE.md](RELEASE.md). The installer has been tried in a clean Windows (Windows Sandbox) but is
+new: if you would rather not use it, build everything yourself as below.
+
+**Building it yourself** (the rest of this section):
 
 **You need:** Windows 11 (x64), the Rust toolchain (stable, MSVC) with the Visual Studio C++ Build Tools, Node.js 22 or later, and pnpm.
 The WebView2 runtime ships with Windows 11.
@@ -52,10 +61,10 @@ The WebView2 runtime ships with Windows 11.
    ```
    The first screen is the Overview. Give the service a few minutes to write its first samples.
 
-**Updating:** build both again, run the install script again, and run the new app. The service and the app must be the same version
+**Updating (a build of your own):** build both again, run the install script again, and run the new app. The service and the app must be the same version
 (they share the database format); if they differ, the app says so.
 
-**Uninstalling:** run `scripts/deploy/uninstall-service.ps1` from an administrator PowerShell. It keeps your data unless you pass
+**Uninstalling (a build of your own; with the installer, use Settings, Apps):** run `scripts/deploy/uninstall-service.ps1` from an administrator PowerShell. It keeps your data unless you pass
 `-RemoveData`.
 
 ## Try it without installing: the demo

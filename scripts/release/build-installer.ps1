@@ -110,6 +110,13 @@ if ($CertificateThumbprint) {
     $signed = 'UNSIGNED (Windows SmartScreen will warn when it is run; see docs/RELEASE.md)'
 }
 
+if ($ServiceExe) {
+    # An installer with a stand-in service must never be mistaken for the real one: it gets another name, in the build folder and in the copy.
+    $testName = $installer.Name -replace '-setup\.exe$', '-setup-TEST-ONLY.exe'
+    Move-Item -Path $installer.FullName -Destination (Join-Path $installer.DirectoryName $testName) -Force
+    $installer = Get-Item (Join-Path $installer.DirectoryName $testName)
+}
+
 if ($CopyInstallerTo) {
     New-Item -ItemType Directory -Force -Path $CopyInstallerTo | Out-Null
     Copy-Item $installer.FullName (Join-Path $CopyInstallerTo $installer.Name) -Force

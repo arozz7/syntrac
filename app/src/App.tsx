@@ -4,6 +4,7 @@ import markUrl from './assets/brand/syntrac-mark.svg';
 import { AiEnabledProvider } from './components/AiEnabled';
 import { StatusBanner } from './components/StatusBanner';
 import { usePolled } from './hooks/usePolled';
+import { APP_VERSION } from './version';
 import { AiHelp } from './views/AiHelp';
 import { Connections } from './views/Connections';
 import { Findings } from './views/Findings';
@@ -105,7 +106,10 @@ export function App() {
           >
             Toasts: {toastsOn ? 'on' : 'off'}
           </button>
-          <p className="sidebar__foot muted">Local only. Nothing leaves this machine.</p>
+          <div className="sidebar__foot muted">
+            <p>Local only. Nothing leaves this machine.</p>
+            <p>Version {APP_VERSION}</p>
+          </div>
         </aside>
 
         <main className="main">

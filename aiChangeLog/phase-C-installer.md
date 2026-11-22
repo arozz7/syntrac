@@ -36,6 +36,13 @@ Read from the generated NSIS script first (`target/installer/release/nsis/x64/in
 runs `sandbox-test.ps1` in Windows Sandbox: first install, install again, the in-place uninstall of an upgrade, a failing upgrade that must roll back, a
 folder outside Program Files, and a real uninstall that keeps the data.
 
+## C4: version, docs, tag
+- Version **0.7.0** in `Cargo.toml`, `tauri.conf.json` and `package.json` (the build script checks they agree). The crates' path dependencies no longer
+  carry a `version = "0.1.0"` of their own (the crates are never published), so a release changes only those three places.
+- The app shows **Version x.y.z** at the bottom of its menu (`app/src/version.ts`, filled from `package.json` by `vite.config.ts` at build time, so it needs no permission and
+  cannot drift from the installer). Test first in `App.test.tsx`.
+- `docs/RELEASE.md`: how to release a version (no hosted CI); `docs/USER-GUIDE.md`: installing with the installer.
+
 ## Found by the sandbox test (and fixed)
 The first runs in Windows Sandbox failed, and showed two real problems that no test on the development machine could:
 - **The programs needed the Visual C++ runtime** (`VCRUNTIME140.dll`), which a clean Windows does not have, so the service could not even print its version. The installer build now links the runtime in (`-C target-feature=+crt-static`) and **fails if either program still imports it** (`Find-DynamicRuntimeImports`, tested). The install had stopped itself before changing anything, as designed.

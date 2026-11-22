@@ -7,7 +7,7 @@ publish.workspace = true
 license.workspace = true
 
 [dependencies]
-syntrac-core = { version = "0.1.0", path = "../syntrac-core" }
+syntrac-core = { path = "../syntrac-core" }
 serde_json = "1.0.154"
 uuid = "1.26.1"
 

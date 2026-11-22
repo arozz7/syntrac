@@ -3,6 +3,19 @@
 SYNTRAC ships as one Windows installer (`SYNTRAC_<version>_x64-setup.exe`, NSIS, built with Tauri). It installs the app and the background service, and
 it uses the same scripts in `scripts/deploy` that the manual install uses.
 
+## Releasing a version
+
+There is no hosted CI (it is billed per minute); everything is checked on the machine that releases. In order:
+1. **Change the version in three places, together:** `[workspace.package] version` in `Cargo.toml`, `version` in `app/src-tauri/tauri.conf.json` and in
+   `app/package.json`. The build script refuses to build if they differ. (The crates' path dependencies carry no version, so nothing else changes.) The app shows
+   the `package.json` version at the bottom of its menu; the service reports its own with `syntrac-service --version`.
+2. `scripts\deverify.ps1` must pass.
+3. Run the sandbox test and the pages test (below); both need to pass. They build the installer into `target\installer-test\good`: **release that copy**, the one that was tested. (The test also builds an installer with a stand-in service; its file name ends `-TEST-ONLY.exe`: never release it.)
+4. Commit, then tag: `git tag -a v<version> -m "SYNTRAC <version>"`. Push the commit and the tag only when the owner says so.
+5. Attach `SYNTRAC_<version>_x64-setup.exe` to the release together with its SHA-256 (printed by the build) and say that it is unsigned.
+
+Releases so far: **v0.7.0** is the first with an installer.
+
 ## Build it
 
 ```powershell
@@ -109,7 +122,8 @@ elease\sandbox
 un-installer-test.ps1
   ```
 
-  It builds the installer, runs 28 checks and writes `target\installer-test
+  `-Pages` instead takes a picture of every page of the installer and uninstaller (`target\installer-test
+esults\pages`). The checks build the installer, run 28 checks and writes `target\installer-test
 esults
 eport.txt` and the installers' logs. It passed on 2026-11-22. What it
   does not cover: a release that raises the database schema (the copy-and-restore path), and the installer's pages used by hand.

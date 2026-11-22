@@ -58,6 +58,21 @@
   font-size: 0.8rem;
 }
 
+.sidebar__foot p {
+  margin: 0 0 0.35rem;
+}
+
+/* The menu stays in view while a long page scrolls, so its foot (the note and the version) is always on screen. */
+@media (min-width: 821px) {
+  .sidebar {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    height: 100vh;
+    overflow-y: auto;
+  }
+}
+
 .main {
   padding: 1.5rem 2rem 2rem;
   min-width: 0;

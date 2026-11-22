@@ -9,11 +9,11 @@ description = "Synthetic demo data: a fictional machine for screenshots, and a w
 
 [dependencies]
 serde_json = "1.0.154"
-syntrac-core = { version = "0.1.0", path = "../syntrac-core" }
-syntrac-store = { version = "0.1.0", path = "../syntrac-store" }
-syntrac-ipc = { version = "0.1.0", path = "../syntrac-ipc" }
-syntrac-service = { version = "0.1.0", path = "../syntrac-service" }
-syntrac-testkit = { version = "0.1.0", path = "../syntrac-testkit" }
+syntrac-core = { path = "../syntrac-core" }
+syntrac-store = { path = "../syntrac-store" }
+syntrac-ipc = { path = "../syntrac-ipc" }
+syntrac-service = { path = "../syntrac-service" }
+syntrac-testkit = { path = "../syntrac-testkit" }
 
 [dev-dependencies]
 tempfile = "3"

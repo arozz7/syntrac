@@ -37,6 +37,10 @@ if (Get-Process -Name WindowsSandboxServer, vmmemWindowsSandbox -ErrorAction Sil
 }
 
 if (-not $SkipBuild) {
+    # Installers of earlier versions in these folders (made by this script, under target\) would be picked up by the test instead of the new ones.
+    foreach ($dir in $goodDir, $brokenDir) {
+        if (Test-Path $dir) { Get-ChildItem (Join-Path $dir '*_x64-setup*.exe') | Remove-Item -Force }
+    }
     $build = Join-Path $root 'scripts/release/build-installer.ps1'
     & powershell -NoProfile -ExecutionPolicy Bypass -File $build -CopyInstallerTo $goodDir
     if ($LASTEXITCODE -ne 0) { throw 'The installer did not build.' }
@@ -54,7 +58,7 @@ if (-not $SkipBuild) {
 }
 
 foreach ($dir in $goodDir, $brokenDir) {
-    if (-not (Get-ChildItem (Join-Path $dir '*_x64-setup.exe') -ErrorAction SilentlyContinue)) { throw "No installer in $dir (run without -SkipBuild)." }
+    if (-not (Get-ChildItem (Join-Path $dir '*_x64-setup*.exe') -ErrorAction SilentlyContinue)) { throw "No installer in $dir (run without -SkipBuild)." }
 }
 New-Item -ItemType Directory -Force -Path $resultsDir | Out-Null
 $reportFile = Join-Path $resultsDir 'report.txt'
