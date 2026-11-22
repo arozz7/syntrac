@@ -130,13 +130,18 @@ pub fn parse_turn_reply(text: &str) -> Result<TurnReply, LlmError> {
     let message = choice.get("message").unwrap_or(&Value::Null);
     let text_of = |key: &str| message.get(key).and_then(Value::as_str).filter(|t| !t.is_empty());
 
-    let tool_calls: Vec<ToolCall> = message
+    let mut tool_calls: Vec<ToolCall> = message
         .get("tool_calls")
         .and_then(Value::as_array)
         .map(|calls| calls.iter().enumerate().filter_map(|(index, call)| tool_call(index, call)).collect())
         .unwrap_or_default();
+    let mut content = text_of("content").unwrap_or_default().to_owned();
+    if tool_calls.is_empty() {
+        // A server that does not parse tool calls itself hands back what the model wrote: calls in `<tool_call>` tags.
+        (content, tool_calls) = tagged_calls(&content);
+    }
     Ok(TurnReply {
-        content: text_of("content").unwrap_or_default().to_owned(),
+        content,
         reasoning_chars: text_of("reasoning_content").or_else(|| text_of("reasoning")).map_or(0, |t| t.chars().count()),
         tool_calls,
         cut_off: choice.get("finish_reason").and_then(Value::as_str) == Some("length"),
@@ -158,4 +163,37 @@ fn tool_call(index: usize, call: &Value) -> Option<ToolCall> {
         .filter(|id| !id.is_empty())
         .map_or_else(|| format!("call_{}", index + 1), str::to_owned);
     Some(ToolCall { id, name: name.to_owned(), arguments })
+}
+
+const CALL_OPEN: &str = "<tool_call>";
+const CALL_CLOSE: &str = "</tool_call>";
+/// How many calls written as text are taken from one reply.
+const MAX_TAGGED_CALLS: usize = 8;
+
+/// The calls a model wrote as `<tool_call>{"name": ..., "arguments": ...}</tool_call>` in its text, and the text without them. A block that is
+/// not such a call stays in the text.
+fn tagged_calls(content: &str) -> (String, Vec<ToolCall>) {
+    let mut calls = Vec::new();
+    let mut rest = String::new();
+    let mut remaining = content;
+    while let Some(start) = remaining.find(CALL_OPEN) {
+        let after_open = &remaining[start + CALL_OPEN.len()..];
+        let Some(end) = after_open.find(CALL_CLOSE) else { break };
+        let block = &after_open[..end];
+        let call = (calls.len() < MAX_TAGGED_CALLS).then(|| tagged_call(calls.len(), block)).flatten();
+        rest.push_str(&remaining[..start]);
+        match call {
+            Some(call) => calls.push(call),
+            None => rest.push_str(&remaining[start..start + CALL_OPEN.len() + end + CALL_CLOSE.len()]),
+        }
+        remaining = &after_open[end + CALL_CLOSE.len()..];
+    }
+    rest.push_str(remaining);
+    (rest.trim().to_owned(), calls)
+}
+
+fn tagged_call(index: usize, block: &str) -> Option<ToolCall> {
+    let value: Value = serde_json::from_str(block.trim()).ok()?;
+    // The same shape as a call from the server, so name, arguments and the id are read in one place.
+    tool_call(index, &json!({ "function": value }))
 }

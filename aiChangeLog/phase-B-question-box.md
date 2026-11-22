@@ -35,8 +35,11 @@ only read. Off unless the AI help is on; nothing runs until **Ask** is pressed.
 - The `<user>` and `<address>` placeholders the tools write reach the model unchanged; any other angle-bracket text is still neutralised.
 - The stand-in model's text no longer has stray indentation.
 
+## Found on the user's own server
+A real server answered with the call as text, `<tool_call>{"name": ..., "arguments": ...}</tool_call>`, in the answer instead of a structured call (the server was not parsing tool calls), so nothing ran and the page showed the raw text as the answer. `parse_turn_reply` now reads tagged calls (at most 8 per reply, only when the server gave no structured ones; a block that is not a call stays in the text). Tests first in `tests/tool_chat.rs`.
+
 ## Not yet checked
-The round trip has only run against the stand-in model. It has not been run against a real tool-calling server.
+The round trip has been seen once against the user's own server (above); the fix for what it returned is tested only with text from that reply, not yet re-run against it.
 
 ## Also fixed
 - Process tree (A1): the window is read newest first up to 20,000 processes; the view now says when more existed (commit `563c50d`).

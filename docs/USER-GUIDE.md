@@ -271,7 +271,7 @@ it. It uses at most six lookups and a limited time, then answers from what it ga
 tools give names and numbers only; *Full* adds addresses, hashes and command lines (with the values of arguments named like a token, password
 or key hidden). A tool can only read what SYNTRAC recorded: it never reads files from your disk, and it cannot change or start anything. Answers
 to questions are not saved. The setting *Start the server when I press Investigate* applies to **Ask** as well. This needs a server and model that support **tool calling**: if yours does not, the box says so (for
-`llama-server`, start it with the `--jinja` option and use a model whose chat template supports tools). Use **Investigate** instead if it does not.
+`llama-server`, start it with the `--jinja` option and use a model whose chat template supports tools). Some servers hand a tool call back as text (in `<tool_call>` tags) instead of a structured call; SYNTRAC reads that form too. Use **Investigate** instead if it does not.
 
 **If the server will not start or ends.** Set the **working folder** to the folder the server expects to run in: many servers read their
 settings file (for example `config.toml`) from the folder they run in, and without it they fall back to built-in defaults and fail. The tab

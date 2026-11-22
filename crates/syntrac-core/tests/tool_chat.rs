@@ -171,3 +171,65 @@ fn text_that_is_not_json_or_has_no_choice_is_unusable() {
     assert!(matches!(reply(json!({"choices": []})), Err(LlmError::BadResponse(_))));
     assert!(matches!(reply(json!({"something": "else"})), Err(LlmError::BadResponse(_))));
 }
+
+// ---- tool calls written as text (servers that do not parse them themselves)
+
+fn text_reply(content: &str) -> syntrac_core::tool_chat::TurnReply {
+    reply(json!({"choices": [{"message": {"role": "assistant", "content": content}, "finish_reason": "stop"}]}))
+        .unwrap()
+}
+
+#[test]
+fn a_tool_call_written_as_tagged_text_is_read_as_a_tool_call() {
+    let parsed = text_reply(
+        "<tool_call>\n{\"name\": \"top_programs\", \"arguments\": {\"metric\": \"network\", \"days\": 7, \"limit\": 5}}\n</tool_call>",
+    );
+    assert_eq!(parsed.content, "");
+    assert_eq!(parsed.tool_calls.len(), 1);
+    assert_eq!(parsed.tool_calls[0].name, "top_programs");
+    let args: Value = serde_json::from_str(&parsed.tool_calls[0].arguments).unwrap();
+    assert_eq!(args, json!({"metric": "network", "days": 7, "limit": 5}));
+    assert!(!parsed.tool_calls[0].id.is_empty());
+}
+
+#[test]
+fn text_around_the_tagged_call_is_kept_as_the_content() {
+    let parsed =
+        text_reply("I will look that up.\n<tool_call>{\"name\":\"list_findings\",\"arguments\":{}}</tool_call>");
+    assert_eq!(parsed.content, "I will look that up.");
+    assert_eq!(parsed.tool_calls[0].name, "list_findings");
+}
+
+#[test]
+fn several_tagged_calls_are_all_read_with_different_ids() {
+    let parsed = text_reply(
+        "<tool_call>{\"name\":\"a\",\"arguments\":{}}</tool_call><tool_call>{\"name\":\"b\",\"arguments\":\"{}\"}</tool_call>",
+    );
+    assert_eq!(parsed.tool_calls.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["a", "b"]);
+    assert_ne!(parsed.tool_calls[0].id, parsed.tool_calls[1].id);
+    assert_eq!(parsed.tool_calls[1].arguments, "{}");
+}
+
+#[test]
+fn a_tagged_block_that_is_not_a_call_stays_in_the_text() {
+    let parsed = text_reply("<tool_call>not json</tool_call> and more");
+    assert!(parsed.tool_calls.is_empty());
+    assert!(parsed.content.contains("not json"));
+}
+
+#[test]
+fn structured_calls_win_over_tagged_text() {
+    let parsed = reply(json!({"choices": [{"message": {
+        "content": "<tool_call>{\"name\":\"text_one\",\"arguments\":{}}</tool_call>",
+        "tool_calls": [{"id": "s", "type": "function", "function": {"name": "structured", "arguments": "{}"}}]
+    }}]}))
+    .unwrap();
+    assert_eq!(parsed.tool_calls.len(), 1);
+    assert_eq!(parsed.tool_calls[0].name, "structured");
+}
+
+#[test]
+fn no_more_than_a_few_tagged_calls_are_taken() {
+    let many = "<tool_call>{\"name\":\"a\",\"arguments\":{}}</tool_call>".repeat(50);
+    assert!(text_reply(&many).tool_calls.len() <= 8);
+}
