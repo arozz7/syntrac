@@ -34,6 +34,13 @@ Assert-That 'no self-test ships' (@($shipped | Where-Object { $_ -like '*.tests.
 Assert-That 'no development smoke script ships' (@($shipped | Where-Object { $_ -like 'smoke-*' }).Count -eq 0)
 Assert-That 'a Python helper does not ship' (-not ($shipped -contains 'check_db.py'))
 
+# --- a program for a clean Windows must not need the Visual C++ runtime, which a clean Windows does not have
+function Get-Bytes { param([string]$Text) return [Text.Encoding]::ASCII.GetBytes($Text) }
+Assert-That 'a program that imports only libraries that come with Windows is fine' (@(Find-DynamicRuntimeImports (Get-Bytes 'KERNEL32.dll api-ms-win-crt-runtime-l1-1-0.dll')).Count -eq 0)
+Assert-That 'a program that imports VCRUNTIME140 is reported' (@(Find-DynamicRuntimeImports (Get-Bytes 'xx VCRUNTIME140.dll xx')) -contains 'VCRUNTIME140.dll')
+Assert-That 'MSVCP140 is reported too' (@(Find-DynamicRuntimeImports (Get-Bytes 'MSVCP140.dll')) -contains 'MSVCP140.dll')
+Assert-That 'the case of the name does not matter' (@(Find-DynamicRuntimeImports (Get-Bytes 'vcruntime140_1.dll')).Count -eq 1)
+
 if ($script:failures -gt 0) { Write-Host "$($script:failures) failed" -ForegroundColor Red; exit 1 }
 Write-Host 'release-helpers: all passed'
 exit 0

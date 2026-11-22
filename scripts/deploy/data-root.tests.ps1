@@ -75,6 +75,13 @@ Assert-That 'a report whose integrity check passed is healthy' (Test-DatabaseRep
 Assert-That 'a report with a failed integrity check is not healthy' (-not (Test-DatabaseReportHealthy @('database:  x', 'schema:    v3', 'integrity: FAILED (Page 7 damaged)', 'table events 1')))
 Assert-That 'an empty report is not healthy' (-not (Test-DatabaseReportHealthy @()))
 
+# --- when the storage cmdlets know nothing about a drive (some virtual machines), the plain drive information is used
+$fallback = ConvertTo-VolumeFactsFromDriveInfo -IsReady $true -DriveType 'Fixed' -FreeBytes 50GB
+Assert-That 'a ready fixed drive from the plain drive information exists' ($fallback.Exists -and $fallback.DriveType -eq 'Fixed' -and $fallback.FreeBytes -eq 50GB)
+Assert-That 'its disk bus is unknown, which is not a reason to refuse it' ($fallback.BusType -eq 'Unknown' -and (Test-DataRootChoice -DataRoot 'C:\ProgramData\Syntrac' -Volume $fallback -MinFreeBytes 20GB).Ok)
+Assert-That 'a drive that is not ready does not exist' (-not (ConvertTo-VolumeFactsFromDriveInfo -IsReady $false -DriveType 'Fixed' -FreeBytes 0).Exists)
+Assert-That 'a removable drive from the plain information is still refused' (-not (Test-DataRootChoice -DataRoot 'E:\Syntrac' -Volume (ConvertTo-VolumeFactsFromDriveInfo -IsReady $true -DriveType 'Removable' -FreeBytes 50GB) -MinFreeBytes 20GB).Ok)
+
 if ($script:failures -gt 0) { Write-Host "$($script:failures) failed" -ForegroundColor Red; exit 1 }
 Write-Host 'data root helpers: all passed'
 exit 0

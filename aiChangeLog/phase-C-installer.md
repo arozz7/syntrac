@@ -36,9 +36,17 @@ Read from the generated NSIS script first (`target/installer/release/nsis/x64/in
 runs `sandbox-test.ps1` in Windows Sandbox: first install, install again, the in-place uninstall of an upgrade, a failing upgrade that must roll back, a
 folder outside Program Files, and a real uninstall that keeps the data.
 
-## Not verified yet
-- **The installer has not been run.** Windows Sandbox is not installed on this machine, and the installer must not be run on a machine whose service is in
-  use. Until the sandbox test has passed, install, upgrade, rollback and uninstall are only checked in parts: the installer compiles, the PowerShell scripts parse, and
-  every decision is unit-tested.
-- The database-copy rollback (a release that raises the schema) is covered by the pure tests only; the sandbox test uses a stand-in with the same schema.
+## Found by the sandbox test (and fixed)
+The first runs in Windows Sandbox failed, and showed two real problems that no test on the development machine could:
+- **The programs needed the Visual C++ runtime** (`VCRUNTIME140.dll`), which a clean Windows does not have, so the service could not even print its version. The installer build now links the runtime in (`-C target-feature=+crt-static`) and **fails if either program still imports it** (`Find-DynamicRuntimeImports`, tested). The install had stopped itself before changing anything, as designed.
+- **The data-folder check said "Drive C: is not available"**: `Get-Volume` knows nothing about the drive in a sandbox or some virtual machines. `Get-VolumeFacts` now falls back to the plain .NET drive information (`ConvertTo-VolumeFactsFromDriveInfo`, tested); a removable or too-small drive is still refused.
+- The test also copies the installer logs out of the sandbox (step logs) so a failure can be read, and the launcher stops with a message if a Sandbox is already open (a second launch quietly joins it and the test never starts).
+
+## Verified
+`scripts/release/sandbox/run-installer-test.ps1` passed all 28 checks in Windows Sandbox (2026-11-22): first install (service running, config names the user, database appears, the user reaches the service over its pipe); installing again keeps config and data and the previous program; the in-place uninstall an upgrade runs leaves the service running; an upgrade to a service that cannot start fails and puts the old service, program and config back; a folder outside Program Files is refused with nothing written; a real uninstall removes the service, `bin\` and the app and keeps the config and the data.
+
+## Not verified
+- The database-copy rollback (a release that raises the schema) is covered by the pure tests only; the sandbox test's stand-in has the same schema.
+- Only one clean Windows build (the sandbox's) and a fresh machine were tried; no upgrade from an older real release exists yet.
+- Interactive use: the installer's pages, the Start menu entry and the app's first launch were not looked at (the test is silent).
 - Signing has never been run (no certificate).

@@ -43,6 +43,12 @@ function Test-DataRootChoice {
     return [pscustomobject]@{ Ok = ($problems.Count -eq 0); Problems = [string[]]$problems.ToArray() }
 }
 
+# The facts of a drive from the plain .NET drive information (ready, type, free space). The disk bus is not known this way.
+function ConvertTo-VolumeFactsFromDriveInfo {
+    param([bool]$IsReady, [string]$DriveType, [int64]$FreeBytes)
+    return [pscustomobject]@{ Exists = $IsReady; DriveType = $DriveType; BusType = 'Unknown'; FreeBytes = $FreeBytes }
+}
+
 # Facts about the volume a data root would live on. A UNC path or an unreadable volume yields "does not exist"
 # facts; Test-DataRootChoice has already refused a UNC path for its own reason.
 function Get-VolumeFacts {
@@ -51,7 +57,12 @@ function Get-VolumeFacts {
     if ($DataRoot -notmatch '^[A-Za-z]:') { return $facts }
     $letter = $DataRoot.Substring(0, 1)
     $volume = Get-Volume -DriveLetter $letter -ErrorAction SilentlyContinue
-    if (-not $volume) { return $facts }
+    if (-not $volume) {
+        # The storage cmdlets can know nothing about a drive that is fine (Windows Sandbox, some virtual machines): ask .NET instead.
+        $drive = New-Object IO.DriveInfo($letter)
+        if ($drive.IsReady) { return ConvertTo-VolumeFactsFromDriveInfo -IsReady $true -DriveType $drive.DriveType.ToString() -FreeBytes $drive.AvailableFreeSpace }
+        return $facts
+    }
     $facts.Exists = $true
     $facts.DriveType = [string]$volume.DriveType
     $facts.FreeBytes = [int64]$volume.SizeRemaining

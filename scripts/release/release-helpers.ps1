@@ -45,3 +45,16 @@ function Select-ShippedDeployFiles {
     param([Parameter(Mandatory = $true)][string[]]$Names)
     return @($Names | Where-Object { $_ -like '*.ps1' -and $_ -notlike '*.tests.ps1' -and $_ -notlike 'smoke-*' })
 }
+
+# The Visual C++ runtime libraries a program file imports (found by name in its bytes). A clean Windows does not have them, so a program that needs
+# them cannot even start there: the release is built with the runtime linked in, and this proves it.
+function Find-DynamicRuntimeImports {
+    param([Parameter(Mandatory = $true)][byte[]]$Bytes)
+    $text = [Text.Encoding]::ASCII.GetString($Bytes)
+    $found = @()
+    foreach ($match in [regex]::Matches($text, '(?i)(vcruntime140(_1)?|msvcp140(_1|_2)?|vcomp140|concrt140)\.dll')) {
+        $name = $match.Value.ToUpperInvariant().Replace('.DLL', '.dll')
+        if ($found -notcontains $name) { $found += $name }
+    }
+    return $found
+}

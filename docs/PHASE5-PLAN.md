@@ -9,7 +9,7 @@ before the commit. Pushed once per phase, when asked.
 | A1 | History, **Process tree**: who started whom (`aiChangeLog/phase-A1-process-tree.md`) | done, `991e183` |
 | A2 | History, **Connection map**: which programs talked to which networks (`aiChangeLog/phase-A2-connection-map.md`) | done, `48eb720` |
 | B | **L4e** free-form question box for the AI help, with read-only tools (`aiChangeLog/phase-B-question-box.md`) | done, `16e2754` + `445c878` |
-| C | Windows **installer** (NSIS via Tauri) that installs the app and the service (`aiChangeLog/phase-C-installer.md`, `docs/RELEASE.md`) | C1 and C2 built, C3 test written but not run (needs Windows Sandbox), C4 docs partly done |
+| C | Windows **installer** (NSIS via Tauri) that installs the app and the service (`aiChangeLog/phase-C-installer.md`, `docs/RELEASE.md`) | C1-C3 built; the sandbox test passes (28 checks, 2026-11-22); C4 (version tag, final docs) left |
 
 Out of scope for now: a day timeline and a global search.
 

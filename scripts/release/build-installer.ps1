@@ -29,6 +29,8 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 # overwritten, and a release for others should not depend on whatever the development builds left behind. The first build compiles everything.
 $targetDir = Join-Path $root 'target/installer'
 $env:CARGO_TARGET_DIR = $targetDir
+# A clean Windows has no Visual C++ runtime (the first sandbox test found the service could not even start): link it into the programs.
+$env:RUSTFLAGS = '-C target-feature=+crt-static'
 . (Join-Path $PSScriptRoot 'release-helpers.ps1')
 . (Join-Path $PSScriptRoot '../dev/use-cargo.ps1')
 . (Join-Path $PSScriptRoot '../dev/use-pnpm.ps1')
@@ -85,6 +87,13 @@ try {
     Invoke-Checked 'tauri build (NSIS)' { pnpm tauri build --config (Join-Path $root 'app/src-tauri/tauri.installer.conf.json') }
 } finally {
     Pop-Location
+}
+
+# The programs must run on a Windows that has nothing extra installed.
+foreach ($program in (Join-Path $targetDir 'release/syntrac-app.exe'), (Join-Path $setup 'syntrac-service.exe')) {
+    if ($ServiceExe -and $program -like '*syntrac-service.exe') { continue }
+    $needed = @(Find-DynamicRuntimeImports ([IO.File]::ReadAllBytes($program)))
+    if ($needed.Count -gt 0) { throw "$program needs $($needed -join ', '), which a clean Windows does not have." }
 }
 
 # 4. The result.

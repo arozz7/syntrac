@@ -28,6 +28,12 @@ if (-not (Test-Path $sandboxExe)) {
     exit 2
 }
 
+# Windows allows one sandbox at a time: a second launch quietly joins the first, and the test then never starts.
+if (Get-Process -Name WindowsSandboxServer, vmmemWindowsSandbox -ErrorAction SilentlyContinue) {
+    Write-Host 'A Windows Sandbox is already running. Close its window and run this again.' -ForegroundColor Yellow
+    exit 3
+}
+
 if (-not $SkipBuild) {
     $build = Join-Path $root 'scripts/release/build-installer.ps1'
     & powershell -NoProfile -ExecutionPolicy Bypass -File $build -CopyInstallerTo $goodDir
@@ -35,6 +41,8 @@ if (-not $SkipBuild) {
 
     . (Join-Path $root 'scripts/dev/use-cargo.ps1')
     $env:CARGO_TARGET_DIR = Join-Path $root 'target/installer'
+    # Like the real build: a clean Windows has no Visual C++ runtime, so the stand-in carries it too.
+    $env:RUSTFLAGS = '-C target-feature=+crt-static'
     cargo build --release -p syntrac-demo --bin broken-service
     if ($LASTEXITCODE -ne 0) { throw 'The stand-in service did not build.' }
     & powershell -NoProfile -ExecutionPolicy Bypass -File $build -ServiceExe (Join-Path $root 'target/installer/release/broken-service.exe') -CopyInstallerTo $brokenDir

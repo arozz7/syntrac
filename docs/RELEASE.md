@@ -96,5 +96,16 @@ signed installer shows the warning until it has built up reputation with SmartSc
 The behaviour above is tested in two layers:
 - `scripts/deploy/installer-helpers.tests.ps1` (run by `scripts/dev/verify.ps1`) tests every decision: the reading user, the allowed folder, whether an upgrade
   needs a database copy, and what a rollback puts back.
-- A run in a throw-away Windows (Windows Sandbox) checks the real thing: a first install, a reinstall, a failing upgrade that rolls back, and an uninstall that
-  keeps the data. See `scripts/release/sandbox/`.
+- A run in a throw-away Windows (Windows Sandbox) checks the real thing: a first install, a reinstall, the in-place uninstall of an upgrade, a failing upgrade
+  that rolls back, a refused folder, and an uninstall that keeps the data. It needs Windows Sandbox (`Enable-WindowsOptionalFeature -Online -FeatureName
+  Containers-DisposableClientVM -All`, then restart) and a closed Sandbox window:
+
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File scriptselease\sandboxun-installer-test.ps1
+  ```
+
+  It builds the installer, runs 28 checks and writes `target\installer-testesultseport.txt` and the installers' logs. It passed on 2026-11-22. What it
+  does not cover: a release that raises the database schema (the copy-and-restore path), and the installer's pages used by hand.
+
+The programs are built with the Visual C++ runtime linked in, and the build refuses to produce an installer if either still imports it: a clean Windows does not
+have that runtime.

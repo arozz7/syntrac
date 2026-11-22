@@ -27,7 +27,20 @@ function Wait-For {
     return $false
 }
 function Hash { param([string]$Path) if (Test-Path $Path) { return (Get-FileHash -Algorithm SHA256 $Path).Hash } return 'absent' }
-function Install { param([string]$Installer, [string[]]$More = @()) (Start-Process -FilePath $Installer -ArgumentList (@('/S', "/USERSID=$sid") + $More) -Wait -PassThru).ExitCode }
+# The installer's logs live in this sandbox's temp folder; a copy goes to the results folder after every install so a failure can be read on the host.
+$script:installs = 0
+function Save-Logs {
+    $script:installs++
+    foreach ($log in Get-ChildItem (Join-Path $env:TEMP 'SYNTRAC-*.log') -ErrorAction SilentlyContinue) {
+        Copy-Item $log.FullName ("C:\Results\step{0}-{1}" -f $script:installs, $log.Name) -Force
+    }
+}
+function Install {
+    param([string]$Installer, [string[]]$More = @())
+    $code = (Start-Process -FilePath $Installer -ArgumentList (@('/S', "/USERSID=$sid") + $More) -Wait -PassThru).ExitCode
+    Save-Logs
+    return $code
+}
 
 Set-Content -Path $report -Value "SYNTRAC installer test, $(Get-Date -Format s), user $sid"
 
