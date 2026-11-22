@@ -163,6 +163,12 @@ function Forest({ view, onOpenProgram }: { view: ProcessTreeView; onOpenProgram:
           </button>
         </div>
       </div>
+      {view.truncated && (
+        <p className="muted">
+          This window holds more processes than can be read, so only the newest {view.read.toLocaleString('en-US')}{' '}
+          processes were read. A process may be listed on its own only because the one that started it is older.
+        </p>
+      )}
       <ul className="tree">
         {view.roots.map((root) => (
           <Branch

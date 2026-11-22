@@ -156,4 +156,16 @@ describe('ProcessTree', () => {
     await screen.findByText('explorer.exe');
     expect(screen.getByText(/kept for 14 days/)).toBeTruthy();
   });
+
+  it('says when only the newest processes could be read', async () => {
+    const data = processTreeView({ truncated: true, read: 20_000, total: 20_000 });
+    show(apiWith(data));
+    expect(await screen.findByText(/only the newest 20,000 processes were read/i)).toBeTruthy();
+  });
+
+  it('says nothing about that when everything was read', async () => {
+    show();
+    await screen.findByText('explorer.exe');
+    expect(screen.queryByText(/only the newest/i)).toBeNull();
+  });
 });

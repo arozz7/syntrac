@@ -24,8 +24,12 @@ export interface ProcessNodeView {
 export interface ProcessTreeView {
   fromMs: number;
   toMs: number;
-  /** Processes alive in the window, and how many of them are shown. */
+  /** Processes alive in the window that were read, and how many of them are shown. */
   total: number;
   shown: number;
+  /** How many processes were read (at most 20,000). */
+  read: number;
+  /** The window held more than could be read: these are the newest, so a process may look parentless only because its starter is older. */
+  truncated: boolean;
   roots: ProcessNodeView[];
 }

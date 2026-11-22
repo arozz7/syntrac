@@ -17,8 +17,8 @@ pub const DETAIL_DAYS: u64 = 14;
 const MIN_WINDOW_SECS: u64 = 60;
 /// A command line is shown cut to this many characters (it comes from outside and can be very long).
 pub const MAX_COMMAND_LINE_CHARS: usize = 300;
-/// How many processes are read for one tree.
-const FETCH_LIMIT: usize = 20_000;
+/// How many processes are read for one tree (the newest ones, when the window holds more).
+pub const FETCH_LIMIT: usize = 20_000;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -46,9 +46,14 @@ pub struct ProcessNodeView {
 pub struct ProcessTreeView {
     pub from_ms: i64,
     pub to_ms: i64,
-    /// Processes alive in the window, and how many of them are shown.
+    /// Processes alive in the window that were read, and how many of them are shown.
     pub total: usize,
     pub shown: usize,
+    /// How many processes were read (at most `FETCH_LIMIT`).
+    pub read: usize,
+    /// The window held more than could be read: these are the newest ones, so a process may look parentless only because its starter is
+    /// among the older ones that were left out.
+    pub truncated: bool,
     pub roots: Vec<ProcessNodeView>,
 }
 
@@ -64,14 +69,21 @@ where
 {
     let window_secs = window_secs.clamp(MIN_WINDOW_SECS, DETAIL_DAYS * 24 * 3600);
     let from = Timestamp::from_micros(now.as_micros() - i64::try_from(window_secs).unwrap_or(i64::MAX) * 1_000_000);
-    let filter = ProcessFilter { alive_between: Some((from, now)), limit: FETCH_LIMIT, ..ProcessFilter::default() };
-    let forest = build_forest(repo.list_processes(&filter)?, TreeLimits::default());
+    // One more than the limit is asked for, to know whether the window held more (the list is newest first, so the extra is the oldest).
+    let filter = ProcessFilter { alive_between: Some((from, now)), limit: FETCH_LIMIT + 1, ..ProcessFilter::default() };
+    let mut records = repo.list_processes(&filter)?;
+    let truncated = records.len() > FETCH_LIMIT;
+    records.truncate(FETCH_LIMIT);
+    let read = records.len();
+    let forest = build_forest(records, TreeLimits::default());
     let identities = Identities::load(repo)?;
     Ok(ProcessTreeView {
         from_ms: ms(from),
         to_ms: ms(now),
         total: forest.total,
         shown: forest.shown,
+        read,
+        truncated,
         roots: forest.roots.into_iter().map(|node| node_view(node, &identities)).collect(),
     })
 }

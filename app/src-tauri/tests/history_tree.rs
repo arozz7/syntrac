@@ -1,6 +1,8 @@
 //! The process tree view (docs/PHASE5-PLAN.md, A1): who started whom over a window, as the History screen shows it.
 
-use syntrac_app_lib::history_tree::{process_tree, ProcessNodeView, ProcessTreeView, MAX_COMMAND_LINE_CHARS};
+use syntrac_app_lib::history_tree::{
+    process_tree, ProcessNodeView, ProcessTreeView, FETCH_LIMIT, MAX_COMMAND_LINE_CHARS,
+};
 use syntrac_core::{ProcessRecord, ProcessRepository, Timestamp};
 use syntrac_testkit::fixtures::{at_secs, running_process};
 use syntrac_testkit::InMemoryRepository;
@@ -143,4 +145,19 @@ fn an_empty_store_gives_an_empty_tree() {
     let view = tree(&InMemoryRepository::default(), 3600);
     assert!(view.roots.is_empty());
     assert_eq!((view.total, view.shown), (0, 0));
+}
+
+#[test]
+fn a_window_with_more_processes_than_can_be_read_says_only_the_newest_were() {
+    let mut repo = InMemoryRepository::default();
+    for pid in 1..=(FETCH_LIMIT as u32 + 5) {
+        start(&mut repo, pid, "busy", BASE + HOUR + i64::from(pid), None);
+    }
+
+    let view = tree(&repo, 24 * 3600);
+
+    assert!(view.truncated, "the oldest five were not read");
+    assert_eq!(view.read, FETCH_LIMIT);
+    let fewer = tree(&InMemoryRepository::default(), 3600);
+    assert!(!fewer.truncated);
 }

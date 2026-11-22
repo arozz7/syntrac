@@ -52,5 +52,14 @@ export function processTreeView(overrides: Partial<ProcessTreeView> = {}): Proce
     parentMissing: true,
     startedMs: NOW - 600_000,
   });
-  return { fromMs: NOW - 86_400_000, toMs: NOW, total: 4, shown: 4, roots: [explorer, orphan], ...overrides };
+  return {
+    fromMs: NOW - 86_400_000,
+    toMs: NOW,
+    total: 4,
+    shown: 4,
+    read: 4,
+    truncated: false,
+    roots: [explorer, orphan],
+    ...overrides,
+  };
 }
