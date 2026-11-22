@@ -10,6 +10,8 @@
 param(
     # Use the installers already built under target\installer-test instead of building them again.
     [switch]$SkipBuild,
+    # Instead of the checks, click through the installer's and the uninstaller's pages and take a picture of each (results\pages).
+    [switch]$Pages,
     [int]$TimeoutMinutes = 20
 )
 
@@ -57,8 +59,10 @@ foreach ($dir in $goodDir, $brokenDir) {
 New-Item -ItemType Directory -Force -Path $resultsDir | Out-Null
 $reportFile = Join-Path $resultsDir 'report.txt'
 if (Test-Path $reportFile) { Remove-Item $reportFile -Force }
+if ($Pages -and (Test-Path (Join-Path $resultsDir 'pages'))) { Remove-Item (Join-Path $resultsDir 'pages') -Recurse -Force }
 
-$guestScript = Join-Path $PSScriptRoot 'sandbox-test.ps1'
+$guestName = 'sandbox-test.ps1'
+if ($Pages) { $guestName = 'pages-test.ps1' }
 $configFile = Join-Path $work 'installer-test.wsb'
 $xml = @"
 <Configuration>
@@ -69,7 +73,7 @@ $xml = @"
     <MappedFolder><HostFolder>$PSScriptRoot</HostFolder><SandboxFolder>C:\SetupTest\scripts</SandboxFolder><ReadOnly>true</ReadOnly></MappedFolder>
     <MappedFolder><HostFolder>$resultsDir</HostFolder><SandboxFolder>C:\Results</SandboxFolder><ReadOnly>false</ReadOnly></MappedFolder>
   </MappedFolders>
-  <LogonCommand><Command>powershell -NoProfile -ExecutionPolicy Bypass -File C:\SetupTest\scripts\sandbox-test.ps1</Command></LogonCommand>
+  <LogonCommand><Command>powershell -NoProfile -ExecutionPolicy Bypass -File C:\SetupTest\scripts\$guestName</Command></LogonCommand>
 </Configuration>
 "@
 Set-Content -Path $configFile -Value $xml -Encoding UTF8
@@ -83,6 +87,7 @@ while ((Get-Date) -lt $deadline) {
 }
 if (-not (Test-Path $reportFile)) { throw "No report appeared within $TimeoutMinutes minutes: $reportFile" }
 Get-Content $reportFile
+if ($Pages) { Write-Host "Pictures are in $resultsDir\pages (close the sandbox window)"; exit 0 }
 if ((Get-Content $reportFile -Raw) -match 'ALL CHECKS PASSED') { Write-Host 'Installer test: PASSED (close the sandbox window)' -ForegroundColor Green; exit 0 }
 Write-Host 'Installer test: FAILED' -ForegroundColor Red
 exit 1

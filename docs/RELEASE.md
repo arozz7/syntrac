@@ -66,6 +66,9 @@ Settings, Apps, SYNTRAC, Uninstall (or `uninstall.exe`). It stops and removes th
 configuration (`config\`) and your data (database and logs). To remove those as well, run `scripts\deploy\uninstall-service.ps1 -RemoveProgramFiles
 -RemoveData` from an elevated PowerShell. The log is `%TEMP%\SYNTRAC-uninstall.log`.
 
+The uninstall page has an unticked box, **Delete the application data**. It removes only the app's own settings (the folder named after the app's identifier
+under the signed-in user's `AppData`), **never** the database or logs in `C:\ProgramData\Syntrac`, which only the script above removes.
+
 When a newer installer replaces an older one, the old uninstaller runs first. It recognises that and leaves the service alone.
 
 The app's "start with Windows" entry is a value named SYNTRAC in the signed-in user's `Run` key. The uninstaller removes it for the account that runs the
@@ -101,10 +104,14 @@ The behaviour above is tested in two layers:
   Containers-DisposableClientVM -All`, then restart) and a closed Sandbox window:
 
   ```powershell
-  powershell -ExecutionPolicy Bypass -File scriptselease\sandboxun-installer-test.ps1
+  powershell -ExecutionPolicy Bypass -File scripts
+elease\sandbox
+un-installer-test.ps1
   ```
 
-  It builds the installer, runs 28 checks and writes `target\installer-testesultseport.txt` and the installers' logs. It passed on 2026-11-22. What it
+  It builds the installer, runs 28 checks and writes `target\installer-test
+esults
+eport.txt` and the installers' logs. It passed on 2026-11-22. What it
   does not cover: a release that raises the database schema (the copy-and-restore path), and the installer's pages used by hand.
 
 The programs are built with the Visual C++ runtime linked in, and the build refuses to produce an installer if either still imports it: a clean Windows does not

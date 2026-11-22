@@ -45,8 +45,15 @@ The first runs in Windows Sandbox failed, and showed two real problems that no t
 ## Verified
 `scripts/release/sandbox/run-installer-test.ps1` passed all 28 checks in Windows Sandbox (2026-11-22): first install (service running, config names the user, database appears, the user reaches the service over its pipe); installing again keeps config and data and the previous program; the in-place uninstall an upgrade runs leaves the service running; an upgrade to a service that cannot start fails and puts the old service, program and config back; a folder outside Program Files is refused with nothing written; a real uninstall removes the service, `bin\` and the app and keeps the config and the data.
 
+### The pages, by hand-like clicking (2026-11-22)
+`run-installer-test.ps1 -Pages` (`pages-test.ps1`) opens the real installer in Windows Sandbox, presses the default button on every page and takes a picture of each.
+Looked at: Welcome, License (MIT), Choose Install Location (`C:\Program Files\SYNTRAC`, 21.1 MB), the progress, Completing Setup (Run SYNTRAC, Create desktop
+shortcut), then the app opening on the clean Windows with "Running" and live data. A second run shows **Already Installed** (Add/Reinstall components is the default;
+Uninstall SYNTRAC is the other option) and finishes with the service running. The uninstaller shows **Delete the application data** (unticked), and after it the service is
+gone and the config and data are kept. The checkbox removes only the app's settings under the user's AppData, not ProgramData (read in the generated NSIS script).
+
 ## Not verified
 - The database-copy rollback (a release that raises the schema) is covered by the pure tests only; the sandbox test's stand-in has the same schema.
 - Only one clean Windows build (the sandbox's) and a fresh machine were tried; no upgrade from an older real release exists yet.
-- Interactive use: the installer's pages, the Start menu entry and the app's first launch were not looked at (the test is silent).
+- Pages were stepped through with the default button only; the Back, Cancel and Browse paths, a different language and a high-DPI screen were not tried. A real person on a real machine has not used it.
 - Signing has never been run (no certificate).
